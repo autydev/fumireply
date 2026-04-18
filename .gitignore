@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# Node
+node_modules/
+dist/
+build/
+*.log
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Claude Code local settings (may contain credentials/user-specific config)
+.claude/settings.local.json
