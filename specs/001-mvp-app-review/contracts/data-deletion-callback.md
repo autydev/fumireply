@@ -103,11 +103,32 @@ If you have questions, please contact: <support email>
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `uuid` | PK |
-| `customer_psid` | `varchar(64)` | NOT NULL |
+| `psid_hash` | `varchar(64)` | NOT NULL（SHA-256 ハッシュ、平文 PSID は保存しない）|
 | `confirmation_code` | `varchar(32)` | UNIQUE NOT NULL |
 | `deleted_at` | `timestamptz` | NOT NULL DEFAULT `now()` |
 
-**設計意図**: PSID の削除記録を残し、status endpoint で確認できるようにする。PSID 自体は削除対象ユーザーの ID だが、**削除完了を証明するためには最低限 PSID と削除日時を監査ログとして保持する必要がある**。プライバシーポリシーに「削除監査ログは 7 年間保管」と記載してこの保持を正当化する（GDPR 対応）。
+**設計意図**: 削除完了を証明する監査要件は「この PSID に対する削除を処理した事実」の記録で足りるため、**平文 PSID は保持しない**。ハッシュ化により漏洩時の個人情報露出を最小化する。
+
+**ハッシュ計算**:
+```
+psid_hash = SHA-256(salt || psid_raw)
+```
+- `salt` は SSM Parameter Store `/fumireply/review/deletion-log/hash-salt` で管理する 32 バイトのランダム文字列
+- salt 付与により、Meta 側データベースとの突合攻撃（rainbow table / brute force）を無効化
+
+**保存期間**: **3 年間**（当初 7 年案から GDPR の最小化原則に合わせて短縮）。プライバシーポリシーに「削除監査ログは 3 年間 SHA-256 ハッシュ化形式で保管」と記載する。
+
+**処理フローの更新**:
+1. `signed_request` を署名検証
+2. payload から PSID（平文）を抽出
+3. `conversations.customer_psid = <PSID>` の行を検索（**平文のまま検索**、messages / conversations は平文 PSID で保持中）
+4. 該当 conversation.id に紐づく `messages` を DELETE
+5. `conversations` を DELETE
+6. `psid_hash = SHA-256(salt || PSID)` を計算
+7. `deletion_log` に INSERT（平文 PSID は**ここで破棄**、ハッシュのみ保存）
+8. `confirmation_code` を Meta に返す
+
+**status endpoint のセキュリティ考慮**: 現状通り認証なしで `Deleted` 文言のみを返す。`confirmation_code` が漏洩しても、漏洩先からは PSID は逆引き不可能（UUID ベースでハッシュとの関連もない）。
 
 ---
 

@@ -7,6 +7,8 @@
 
 管理画面が呼び出す内部 API。全エンドポイント（`login` を除く）は JWT 認証ミドルウェアを通過する必須（FR-009）。未認証の場合は 401 で `/login` にリダイレクト。
 
+**呼び出し規約**: すべて TanStack Start の `createServerFn` として実装する。クライアント（ブラウザ）からは型付き RPC として呼び出され、内部的に HTTP POST に変換される。**外部の curl 等から直接叩く用途は想定しない**（疎通確認はブラウザで UI 経由で行う）。`createServerFn` の HTTP URL は TanStack Start ランタイムが自動割り当てするため、本契約では固定 URL を定義しない。外部連携（Meta Webhook 等）は `routes/api/*` 配下の HTTP ルートとして別途定義する（`contracts/meta-webhook.md`、`contracts/data-deletion-callback.md`）。
+
 ---
 
 ## `serverFn: login({ email, password })`

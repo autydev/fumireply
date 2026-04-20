@@ -207,7 +207,9 @@ tags = {
 | `/fumireply/review/meta/page-access-token` | SecureString | 長期 Page Access Token |
 | `/fumireply/review/meta/webhook-verify-token` | SecureString | Webhook 購読時の verify_token |
 | `/fumireply/review/rds/master-password` | SecureString | RDS マスターパスワード |
+| `/fumireply/review/cognito/operator-password` | SecureString | オペレーター恒久パスワード（バックアップ用） |
 | `/fumireply/review/cognito/reviewer-password` | SecureString | レビュワー用テストアカウントのパスワード（バックアップ用） |
+| `/fumireply/review/deletion-log/hash-salt` | SecureString | `deletion_log.psid_hash` の計算に使う 32 バイトランダム salt |
 
 **Inputs**:
 - `name_prefix`
@@ -504,7 +506,46 @@ Lambda 実行ロールの権限：
 ### 8.5 監査
 
 - CloudTrail は AWS アカウント全体で有効化（本プロジェクト外で設定済み想定）
-- Cognito User Pool の sign-in イベントは CloudWatch Logs に出力設定可能（MVP では未設定、Phase 2 で検討）
+- Cognito User Pool の sign-in イベントは CloudWatch Logs に出力（MVP で有効化、下記 8.6 の監視基盤と接続）
+
+### 8.6 レビュワーアカウントの補償統制
+
+2FA・IP 制限なし + パスワード固定 + 申請フォームへの認証情報記載 という Meta App Review 要件のため、通常のセキュリティ管理水準を下げる運用となる。これを補償するため、以下の統制を**すべて実装する**：
+
+#### 8.6.1 時限的な有効化
+
+- 平常時は `reviewer@malbek.co.jp` を `admin-disable-user` で無効化
+- 審査提出の直前に `admin-enable-user` で有効化
+- 審査結果通知（承認／却下）を受けて**24 時間以内に再度 disable**
+- disable 時はパスワードも同時に変更（`admin-set-user-password` で新規 random 値に更新 + SSM 記録）
+
+#### 8.6.2 サインインイベントの即時通知
+
+- Cognito User Pool → CloudWatch Logs に sign-in イベント出力
+- CloudWatch Logs Subscription Filter で `reviewer@malbek.co.jp` のサインイン成功イベントを検知
+- 検知されたら SNS Topic 経由で Malbek のメール + Slack に即時通知
+- 「審査期間中にレビュワーがログインした」事実をリアルタイムで把握できる状態にする
+
+#### 8.6.3 Cognito Advanced Security Features の有効化
+
+- User Pool の Advanced Security を `ENFORCED` に設定
+- Adaptive Authentication / Compromised Credentials Detection / Unusual Sign-In Activity 検知を全て有効化
+- 追加コスト：$0.05 per MAU（MVP の 3 ユーザー規模では事実上無料）
+- 異常検知イベントも 8.6.2 の通知経路で通知
+
+#### 8.6.4 IP 範囲のレコードと分析
+
+- WAF の CloudWatch metrics で reviewer アカウントアクセスの IP レンジを記録
+- 審査期間終了後に IP レンジを分析、Meta 社の想定レビュワー IP 範囲から外れるアクセスがあればインシデント扱い
+
+#### 8.6.5 期間ログの保管
+
+- reviewer アカウントの全活動ログ（CloudTrail + Cognito Logs）を **1 年間保持**
+- 万が一の不正利用時の追跡用
+
+#### 運用手順
+
+上記 8.6.1〜8.6.5 の具体的な操作手順（コマンド、確認項目、タイミング）は `docs/operations/audit-runbook.md` に記載する（MVP 実装時に作成）。
 
 ---
 

@@ -61,22 +61,23 @@ design v2 の技術選定に対して、「MVP 審査通過」という狭い目
 
 ---
 
-## R-003: 公開ページ（Privacy / Terms / Data Deletion / 会社情報）は TanStack Start 内に同居
+## R-003: 公開ページ（Privacy / Terms / Data Deletion / 会社情報）は TanStack Start 内に同居し、SSG で S3 配信
 
-- **決定**: 公開ページ 4 種は TanStack Start の `routes/(public)/` 配下に実装し、SSR 配信する。別途静的サイトジェネレータや S3 ホスティングは使わない。
+- **決定**: 公開ページ 4 種は TanStack Start の `routes/(public)/` 配下に実装し、**ビルド時に SSG で静的 HTML を生成して S3 + CloudFront から配信する**（配信アーキテクチャの詳細は R-010 参照）。別途 Astro/Next.js 等の静的サイトジェネレータは使わず、単一コードベースで実装する。
 - **根拠**:
-  - 独自ドメイン（例: `malbek.co.jp`）配下に 1 アプリで公開するのが最もシンプル。Business Verification 書類のドメインと一致させやすい。
-  - CloudFront の `path-based routing` でキャッシュ戦略を分ける必要はない（ページ数が 4 つだけ、更新頻度も低い）。
+  - 独自ドメイン（例: `malbek.co.jp`）配下に 1 コードベースで公開するのが最もシンプル。Business Verification 書類のドメインと一致させやすい。
   - 会社情報ページを会社の公式サイトとして流用できる（Business Verification のドメイン整合性要件を満たす）。
+  - R-010 の決定により、配信は Lambda ではなく S3 + CloudFront から行う（審査中のダウンタイム耐性を最優先）。
 - **検討した代替案**:
-  - **代替 A: S3 + CloudFront で静的配信**：ランニングコストは最小だが、デプロイパイプラインが 2 系統になる。
-  - **代替 B: 別途 Astro / Next.js 静的ビルド**：SEO やページ速度は最良だが、MVP には過剰。
+  - **代替 A: SSR 配信（当初の案）**：公開ページが Lambda 依存となり、コールドスタート遅延や Lambda 障害時にアクセスできなくなる。R-010 で棄却済み。
+  - **代替 B: 別途 Astro / Next.js 静的ビルド**：SEO やページ速度は最良だが、コードベースとデプロイパイプラインが 2 系統になる。単一コードベースで SSG 可能な TanStack Start を使う利点を捨てることになる。
 - **注意点**: 審査提出前に各ページのコピーを英語で用意する。プライバシーポリシーには以下を必ず含める：
   - 取得データ項目（Messenger メッセージ本文、送信者 ID、タイムスタンプ）
   - 保存期間（例：180 日、Meta のデータ保存ポリシーと整合）
   - 削除依頼窓口（メールアドレス）
   - 第三者提供の有無（Claude API は Phase 2 以降のため、MVP では「なし」と記載可能）
   - 連絡先（会社住所、メール、電話）
+- **関連**: R-010（ルート単位のレンダリング戦略）、[`infrastructure.md`](./infrastructure.md) の `modules/static-site`
 
 ---
 

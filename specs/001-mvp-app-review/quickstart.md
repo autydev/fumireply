@@ -131,19 +131,22 @@ terraform apply tfplan
 
 ### 3.1 Cognito テストユーザー作成（Terraform apply 後）
 
-Terraform で User Pool 本体が作られたら、テストユーザーを手動または Terraform の `aws_cognito_user` リソースで作成：
+Terraform で User Pool 本体が作られたら、テストユーザーを手動または Terraform の `aws_cognito_user` リソースで作成。**パスワードは必ずコマンドラインで乱数生成し、定数をコピペ流用しない**：
 
 ```bash
 # User Pool ID を Terraform output から取得
 USER_POOL_ID=$(terraform output -raw cognito_user_pool_id)
 APP_CLIENT_ID=$(terraform output -raw cognito_app_client_id)
 
-# オペレーターユーザー作成
+# ---- オペレーターユーザー ----
+OP_TEMP_PASSWORD=$(openssl rand -base64 24)
+OP_PERM_PASSWORD=$(openssl rand -base64 24)
+
 aws cognito-idp admin-create-user \
   --user-pool-id $USER_POOL_ID \
   --username "operator@malbek.co.jp" \
   --user-attributes Name=email,Value=operator@malbek.co.jp Name=email_verified,Value=true \
-  --temporary-password "TempPass123!" \
+  --temporary-password "$OP_TEMP_PASSWORD" \
   --message-action SUPPRESS
 
 aws cognito-idp admin-add-user-to-group \
@@ -151,19 +154,27 @@ aws cognito-idp admin-add-user-to-group \
   --username "operator@malbek.co.jp" \
   --group-name "operators"
 
-# 恒久パスワードに変更（初回ログインプロンプト回避）
 aws cognito-idp admin-set-user-password \
   --user-pool-id $USER_POOL_ID \
   --username "operator@malbek.co.jp" \
-  --password "<SECURE_PASSWORD>" \
+  --password "$OP_PERM_PASSWORD" \
   --permanent
 
-# レビュワー用テストアカウント作成（同様に）
+# オペレーター恒久パスワードを SSM にバックアップ保管
+aws ssm put-parameter \
+  --name "/fumireply/review/cognito/operator-password" \
+  --type SecureString \
+  --value "$OP_PERM_PASSWORD"
+
+# ---- レビュワー用テストアカウント ----
+REVIEWER_PERM_PASSWORD=$(openssl rand -base64 24)
+REVIEWER_TEMP_PASSWORD=$(openssl rand -base64 24)
+
 aws cognito-idp admin-create-user \
   --user-pool-id $USER_POOL_ID \
   --username "reviewer@malbek.co.jp" \
   --user-attributes Name=email,Value=reviewer@malbek.co.jp Name=email_verified,Value=true \
-  --temporary-password "TempPass123!" \
+  --temporary-password "$REVIEWER_TEMP_PASSWORD" \
   --message-action SUPPRESS
 
 aws cognito-idp admin-add-user-to-group \
@@ -174,15 +185,24 @@ aws cognito-idp admin-add-user-to-group \
 aws cognito-idp admin-set-user-password \
   --user-pool-id $USER_POOL_ID \
   --username "reviewer@malbek.co.jp" \
-  --password "<REVIEWER_PASSWORD>" \
+  --password "$REVIEWER_PERM_PASSWORD" \
   --permanent
+
+# レビュワーパスワードを SSM に保管（申請フォームにはこの値を記載）
+aws ssm put-parameter \
+  --name "/fumireply/review/cognito/reviewer-password" \
+  --type SecureString \
+  --value "$REVIEWER_PERM_PASSWORD"
+
+echo "Reviewer password for Meta submission: $REVIEWER_PERM_PASSWORD"
 ```
 
-- `<REVIEWER_PASSWORD>` は審査申請フォームに記載するため、一意でシンプルなものを選ぶ（2FA は無効のまま）
-- 両ユーザーのパスワードは SSM にバックアップ保管を推奨：
-  ```bash
-  aws ssm put-parameter --name "/fumireply/review/cognito/reviewer-password" --type SecureString --value "<REVIEWER_PASSWORD>"
-  ```
+**レビュワーアカウントのセキュリティ補償統制**:
+- 2FA・IP 制限を外す代わりに、以下の補償統制を必ず運用する（詳細は `infrastructure.md` §8.6 と `docs/operations/audit-runbook.md`）：
+  1. **審査提出時にのみ enable**：それ以外の期間は `admin-disable-user` で無効化
+  2. **承認／却下通知後 24 時間以内にパスワード変更 + 無効化**
+  3. **reviewer アカウントのサインイン成功イベントは即時 Slack/メール通知**（CloudWatch + SNS 経由）
+  4. **Cognito Advanced Security Features** の UnusualSignInActivity 検知を有効化
 - IAM Role（Lambda 実行 + SSM 読み取り + CloudWatch 書き込み）
 
 **所要時間**: RDS 作成含めて 15〜20 分
@@ -221,17 +241,24 @@ npm run db:seed:review
 
 ## 5. 疎通確認（スモークテスト）
 
+### 5.1 Webhook 検証エンドポイント（CLI 確認可能）
+
 ```bash
-# Webhook 検証エンドポイント
 curl "https://review.malbek.co.jp/api/webhook?hub.mode=subscribe&hub.verify_token=<TOKEN>&hub.challenge=test123"
 # → test123
-
-# ログイン
-curl -X POST https://review.malbek.co.jp/api/login \
-  -d '{"email":"operator@malbek.co.jp","password":"..."}' \
-  -H "Content-Type: application/json"
-# → { ok: true, user: {...} } + Set-Cookie
 ```
+
+### 5.2 ログインと管理画面（ブラウザで確認）
+
+ログインは TanStack Start の `createServerFn` 経由で処理されるため、curl での直接 POST は呼び出し規約の観点から非推奨。ブラウザで画面を開いて確認する：
+
+1. `https://review.malbek.co.jp/login` をブラウザで開く
+2. SSM に保管した `operator@malbek.co.jp` のパスワードでログイン
+3. 受信トレイ画面（`/inbox`）に遷移すること、Cookie（`id_token`、`refresh_token`）が発行されることを DevTools で確認
+
+### 5.3 データ削除エンドポイント（Meta App Dashboard から）
+
+Meta App Dashboard の Data Deletion Request URL 設定画面で「Send test」を押し、200 応答が返ることを確認する。
 
 ### エンドツーエンド確認
 

@@ -105,13 +105,23 @@ Meta のデータ削除コールバックに対する削除実行の監査ログ
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | `id` | `uuid` | PK | |
-| `customer_psid` | `varchar(64)` | NOT NULL | 削除対象の Meta PSID |
+| `psid_hash` | `varchar(64)` | NOT NULL | 削除対象の Meta PSID の **SHA-256 ハッシュ**（平文 PSID は保存しない） |
 | `confirmation_code` | `varchar(32)` | UNIQUE NOT NULL | Meta への応答・ステータス確認 URL 用 |
 | `deleted_at` | `timestamptz` | NOT NULL DEFAULT `now()` | |
 
-**Indexes**: `confirmation_code`（UNIQUE）
+**Indexes**:
+- `confirmation_code`（UNIQUE）
+- `psid_hash`（INDEX、同一 PSID に対する重複削除リクエストの冪等性確認用）
 
-**保存期間**: GDPR 対応のため 7 年間保持（プライバシーポリシーに明記）。
+**設計意図**:
+- **平文 PSID を保存しない**：監査要件は「この PSID に対して削除処理を実行した事実」の証明であり、PSID そのものの特定は不要。漏洩時の影響を最小化するため一方向ハッシュで保存する。
+- ハッシュ計算時にはアプリ固有の salt（SSM Parameter Store `/fumireply/review/deletion-log/hash-salt` で管理）を結合し、Meta 側データベースとの突合攻撃を防ぐ：`sha256(salt || psid)`。
+- `confirmation_code` は漏洩しても PSID を逆引きできない（ランダム UUID）。
+- status URL は現状通り認証なしで公開（Meta 仕様要件）。ただし返却するのは「Deleted」だけで、PSID や他の個人情報を含まない。
+
+**保存期間**: **3 年間保持**。当初は 7 年案だったが、GDPR の「必要最小限」原則とのバランスで 3 年に短縮。監査対応と最小化原則の折衷。3 年経過後は自動削除（Phase 2 で cron バッチ実装、MVP では `audit-runbook.md` に手動 cleanup 手順を記載）。
+
+**プライバシーポリシーへの記載**: 削除証跡を 3 年間 SHA-256 ハッシュ化形式で保持する旨を明示。
 
 ---
 
