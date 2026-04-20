@@ -210,6 +210,92 @@ design v2 の技術選定に対して、「MVP 審査通過」という狭い目
 
 ---
 
+## R-011: CI/CD をプロジェクト最初期に構築（Walking Skeleton）
+
+- **決定**: 実装の 1 週目で GitHub Actions による CI パイプラインを構築し、「空のアプリ + テスト 1 件」が PR で自動検証される状態を先に作る。機能実装はその後。
+- **根拠**:
+  - Meta App Review 提出までに独自ドメイン + 24/7 稼働が必須（spec FR-016）。本番稼働に直結するリスクを早期に検出できる仕組みが必要。
+  - 後から CI を入れるとテスト資産が肥大化した後で書き直しが発生しやすい。小さいうちに「PR → テスト → マージ → デプロイ」のループを通しておく方が総コスト低。
+  - 「Walking Skeleton」手法（Alistair Cockburn）に準拠：**最小機能 + 最小インフラ + 最小 CI が全部繋がっている状態**を先に作り、そこに機能を足していく。
+  - Terraform の変更も PR で `plan` をコメント投稿 → 人がレビュー → 手動承認で apply、というフローを最初から作ることで、インフラ変更の安全性を確保する。
+- **初期 CI で達成する状態**:
+  1. `app/` ディレクトリに最小の TanStack Start プロジェクト（Hello World ルート 1 つ）
+  2. 健康チェック用の統合テスト 1 件（`GET /` が 200 を返す）
+  3. `vitest run` が CI で実行される
+  4. `terraform fmt -check` と `terraform validate` が CI で実行される
+  5. Lambda 用 zip パッケージのビルドが CI で成功する（デプロイはまだしなくて良い）
+- **段階的な CI 拡張（スプリントごと）**:
+
+  | スプリント | CI で追加する検証 |
+  |-----------|------------------|
+  | Sprint 1（W1）| vitest + eslint + tsc + terraform fmt/validate + build zip |
+  | Sprint 2（W1〜2）| `terraform plan` を PR にコメント投稿 |
+  | Sprint 3（W2）| `playwright` E2E を GitHub Actions で実行（CI 用の簡易 DB + モック）|
+  | Sprint 4（W2〜3）| `terraform apply` を手動承認ゲート付きで実行（envs/review）|
+  | Sprint 5（W3）| Lambda デプロイパイプライン（S3 upload + update-function-code）|
+  | Sprint 6（W3〜4）| 静的サイトビルド + S3 sync + CloudFront invalidation |
+
+- **GitHub Actions ワークフロー構成**:
+
+  ```
+  .github/workflows/
+  ├── ci.yml              # PR 時：lint + test + build
+  ├── terraform-plan.yml  # PR 時（terraform/ 変更）：plan 出力コメント
+  ├── terraform-apply.yml # main マージ後：手動承認後 apply
+  ├── deploy-app.yml      # main マージ後：Lambda + S3 デプロイ
+  └── e2e.yml             # nightly：本番相当環境で E2E
+  ```
+
+- **AWS 認証方式**:
+  - GitHub Actions からの AWS アクセスは **OIDC（OpenID Connect）ベースの IAM Role 引き受け**を採用。長期 IAM アクセスキーは発行しない。
+  - IAM Role は Terraform で管理（`modules/github-actions-oidc`）、GitHub Environment ごとに異なる Role を割り当て（review → review-deployer Role、prod → prod-deployer Role）。
+- **検討した代替案**:
+  - **代替 A: 機能完成後に CI 追加**：速く書けるが、本番事故のリスクと手戻りコストが高い。
+  - **代替 B: CircleCI / GitLab CI**：GitHub Actions より機能豊富だが、GitHub との統合面で Actions が最短。
+  - **代替 C: IAM アクセスキー認証**：OIDC より設定シンプルだが、漏洩リスクあり。2026 年時点で OIDC が AWS 公式推奨。
+- **テスト戦略との関係**: CI で回すテストは Plan の Testing 節で定義済み（vitest + playwright）。本 R-011 はその**実行パイプライン**を規定する。
+- **禁止事項**:
+  - `main` ブランチへの直接コミット禁止（PR 経由のみ）
+  - CI を skip する `[skip ci]` コミットは非常時以外禁止
+  - `terraform apply` のローカル実行は禁止（Bootstrap を除く）
+
+---
+
+## R-010: ルート単位のレンダリング戦略（SSG / SSR / CSR の使い分け）
+
+- **決定**: ルート単位で SSG / SSR / CSR を使い分け、**Lambda を通すのは管理画面と API のみ**とする。公開ページは SSG で S3 + CloudFront から配信する。
+- **根拠**:
+  - 公開ページ（`/`, `/privacy`, `/terms`, `/data-deletion`）は **審査必須かつ静的コンテンツ**。SSR する意味がない上に、Lambda 経由にすると審査中のコールドスタートや Lambda 障害時にページが落ちるリスクがある。S3 + CloudFront なら SLA 99.9%+ で稼働し続ける。
+  - `/login` は認証前のためサーバーで事前レンダリングすべき動的データがない。CSR で十分、Lambda 節約になる。
+  - `/inbox`, `/threads/$id` は認証チェックと受信データフェッチを同時に行うため SSR が素直（認証クッキー検証 → DB クエリ → HTML 返却）。CSR にすると「初期 HTML → 認証チェック API → データフェッチ API → レンダリング」で 3 ラウンドトリップ発生する。
+  - TanStack Start はルート単位で `ssr: false` / prerendering 指定が可能。単一アプリで混在運用できる。
+- **ルート別の具体設定**:
+
+  | ルート | 設定 | ビルド時挙動 | ランタイム挙動 |
+  |--------|------|-------------|---------------|
+  | `/`, `/privacy`, `/terms`, `/data-deletion` | `prerender: true` | ビルド時に HTML 静的生成 → S3 に配置 | CloudFront がエッジキャッシュから返却、Lambda 呼び出しなし |
+  | `/login` | `ssr: false` | JS バンドル + 空の HTML shell を S3 に配置 | クライアントで React レンダリング、ログイン API のみ Lambda |
+  | `/inbox`, `/threads/$id` | デフォルト（SSR）| ビルド不要 | Lambda で SSR、認証確認 + DB クエリ → HTML |
+  | `/api/webhook`, `/api/data-deletion` | API route | | Lambda で Server Function 処理 |
+
+- **CloudFront のルーティング設定**:
+  - `/api/*` および `/inbox*`, `/threads/*`, `/login` の **動的リクエスト** → API Gateway（Lambda）
+  - それ以外（`/`, `/privacy`, `/terms`, `/data-deletion`, `/_build/*`, `/assets/*`）→ S3 Origin（静的ファイル）
+  - S3 に存在しない場合のフォールバックは設定しない（404 を素直に返す）
+- **検討した代替案**:
+  - **代替 A: 全ルート SSR（当初案）**：設定がシンプルだが、公開ページが Lambda 依存となり審査中の稼働リスクが上がる。
+  - **代替 B: 全ルート SPA（CSR）**：Lambda 使用量は最小だが、SEO と認証チェックが複雑化、初期表示も遅くなる。
+  - **代替 C: 公開ページを別アプリ（Next.js 静的ビルド等）で構築**：デプロイパイプラインが 2 系統になる。1 アプリで混在できる TanStack Start を使うメリットを捨てることになる。
+- **効果**:
+  - 公開ページが Lambda から独立 → 審査期間中のダウンタイムリスク大幅低減（SC-005 の 99.5% 稼働率を守りやすくなる）
+  - 公開ページのレスポンスが p95 < 500ms に（Lambda コールドスタート数秒を回避）
+  - Lambda 起動回数が数割減少 → コストとコールドスタート頻度の両方が下がる
+- **注意点**:
+  - 公開ページ更新時はビルド → S3 アップロード → CloudFront invalidation が必要。プライバシーポリシー等は変更頻度が低いので許容。
+  - TanStack Start の prerender 対応は routes の `loader` 内で静的データのみ扱うこと。DB アクセス等は SSR ルートに限定する。
+
+---
+
 ## 未解決事項
 
 なし。すべての設計上の NEEDS CLARIFICATION は解消済み。次フェーズ（Phase 1: Design & Contracts）に進む。

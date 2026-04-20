@@ -120,9 +120,10 @@ terraform apply tfplan
 構築される AWS リソース：
 
 - RDS Postgres `db.t4g.micro`（VPC 内プライベートサブネット）
-- Lambda（TanStack Start アプリ + Webhook ハンドラ）
-- API Gateway HTTP API（`/api/webhook`, `/api/data-deletion` 等）
-- CloudFront + ACM 証明書（独自ドメイン配下）
+- Lambda（TanStack Start SSR アプリ + Webhook ハンドラ）
+- API Gateway HTTP API（`/api/webhook`, `/api/data-deletion`, `/inbox*`, `/threads/*`, `/login` 等）
+- **S3 バケット**（SSG 公開ページ + CSR login ページの静的ファイル配信元）
+- CloudFront + ACM 証明書（独自ドメイン配下、S3 と API Gateway の 2 Origin を振り分け）
 - **Cognito User Pool + App Client**（認証基盤）
 - **Cognito Groups**（`operators`, `reviewers`）
 - SSM Parameter Store（上記 2.5 で既に登録済みの値を参照）
