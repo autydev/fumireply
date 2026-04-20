@@ -24,8 +24,8 @@ MVP ではシングルテナント前提のため、`tenants` / `products` / `cu
 | `id` | `uuid` | PK | `gen_random_uuid()` |
 | `page_id` | `varchar(64)` | UNIQUE NOT NULL | Facebook ページ ID |
 | `page_name` | `varchar(255)` | NOT NULL | 表示名 |
-| `page_access_token_ssm_key` | `varchar(255)` | NOT NULL | SSM Parameter Store のキー（実トークンは DB に入れない） |
-| `webhook_verify_token_ssm_key` | `varchar(255)` | NOT NULL | Webhook 購読時の verify_token の SSM キー |
+| `page_access_token_ssm_key` | `varchar(255)` | NOT NULL | SSM Parameter Store のキー（実トークンは DB に入れない）。MVP の seed 値は `/fumireply/review/meta/page-access-token`（`infrastructure.md` §3.4 と一致） |
+| `webhook_verify_token_ssm_key` | `varchar(255)` | NOT NULL | Webhook 購読時の verify_token の SSM キー。MVP の seed 値は `/fumireply/review/meta/webhook-verify-token` |
 | `connected_at` | `timestamptz` | NOT NULL DEFAULT `now()` | |
 | `is_active` | `boolean` | NOT NULL DEFAULT `true` | 停止時に `false` |
 
@@ -134,19 +134,24 @@ Meta のデータ削除コールバックに対する削除実行の監査ログ
 | `sub` | Cognito 内部の一意 ID（UUID）。DB の `sent_by_cognito_sub` と突合 |
 | `email` | ログイン ID + 通知宛先 |
 | `email_verified` | MVP では作成時に true 固定 |
-| `custom:role` | `operator` / `reviewer` のカスタム属性 |
 
-### User Pool Groups（代替案）
+MVP ではカスタム属性（`custom:role` 等）は**使用しない**。ロール管理は次節の User Pool Groups で行う。
 
-`custom:role` の代わりに Cognito User Pool Groups を使う選択肢もある：
+### User Pool Groups（ロール管理の正式方式）
+
+ロール管理は Cognito User Pool Groups を採用する。JWT の `cognito:groups` クレームから権限を判定する：
 
 - グループ `operators` — Malbek 運用者
 - グループ `reviewers` — Meta 審査用テストアカウント
 
-**推奨**: User Pool Groups を採用。理由：
+**採用理由**:
 - `cognito:groups` クレームが JWT に自動的に入る（権限判定が追加 API 呼び出し不要）
 - IAM Role の割当てが必要になった時にグループ単位で簡単に制御できる
 - DVA 試験範囲として Groups の概念を実践できる
+
+**代替案として検討した `custom:role`**: カスタム属性を JWT に載せる方式は、属性変更時に ID Token を再発行する必要があり、Groups より運用が煩雑。MVP では採用しない。
+
+**`contracts/admin-api.md` との対応**: `serverFn: login` のレスポンスの `user.role` は `cognito:groups` の先頭要素から派生させる（`operators` → `'operator'`、`reviewers` → `'reviewer'`）。
 
 ### 初期ユーザー（Terraform 側で作成）
 
@@ -205,6 +210,9 @@ SSM Parameter Store / connected_pages / Cognito User Pool は削除対象外。
 
 初期マイグレーション（`0001_init.sql`）には以下を含める：
 - 全 4 テーブル（`connected_pages`, `conversations`, `messages`, `deletion_log`）の CREATE
-- `connected_pages` の seed（Malbek のテスト FB ページ情報）
+- `connected_pages` の seed（Malbek のテスト FB ページ情報）。SSM キー名は以下の固定値を用いる：
+  - `page_access_token_ssm_key = '/fumireply/review/meta/page-access-token'`
+  - `webhook_verify_token_ssm_key = '/fumireply/review/meta/webhook-verify-token'`
+  - `page_id` / `page_name` は運用時に確定させる（seed では placeholder、`npm run db:seed:review` 実行前に envs/review 用の実値に差し替える）
 
 Cognito ユーザーは Terraform（`terraform/modules/auth`）で管理し、DB マイグレーションには含めない。

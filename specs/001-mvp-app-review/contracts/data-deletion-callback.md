@@ -118,6 +118,8 @@ psid_hash = SHA-256(salt || psid_raw)
 
 **保存期間**: **3 年間**（当初 7 年案から GDPR の最小化原則に合わせて短縮）。プライバシーポリシーに「削除監査ログは 3 年間 SHA-256 ハッシュ化形式で保管」と記載する。
 
+**自動削除の実装タイミング**: MVP では自動 cleanup バッチを実装せず、`docs/operations/audit-runbook.md` に記載した手動 cleanup 手順で運用する。Phase 2 で cron / EventBridge Scheduled Rule ベースの自動削除バッチを追加する（`data-model.md` § `deletion_log` と整合）。
+
 **処理フローの更新**:
 1. `signed_request` を署名検証
 2. payload から PSID（平文）を抽出
