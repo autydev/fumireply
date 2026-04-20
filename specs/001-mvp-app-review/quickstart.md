@@ -13,7 +13,7 @@
 | Meta for Developers アカウント | Malbek の Business アカウント配下 |
 | 独自ドメイン（例: `malbek.co.jp`） | 取得済み + Route53 or 他 DNS 管理 |
 | GitHub リポジトリ | 本リポジトリ（fumireply） |
-| Node.js 20.x / npm or pnpm | ローカル開発用 |
+| Node.js 20.x / **npm**（pnpm・yarn は使わない。lockfile は `package-lock.json` を正とし、CI は `npm ci` でインストールする） | ローカル開発用 |
 | Terraform CLI | AWS リソース構築用 |
 | AWS CLI + 認証プロファイル | Terraform apply 用 |
 
@@ -104,6 +104,15 @@ aws ssm put-parameter \
   --name "/fumireply/review/meta/webhook-verify-token" \
   --type "SecureString" \
   --value "$(openssl rand -hex 16)"
+
+# Data Deletion Callback で使う PSID ハッシュ salt（32 バイトランダム）。
+# `data-model.md` の deletion_log テーブル設計と
+# `infrastructure.md` §3.4 の SSM 定義に対応。
+# 初回デプロイ前に必ず投入すること（未設定だと削除コールバックが失敗する）。
+aws ssm put-parameter \
+  --name "/fumireply/review/deletion-log/hash-salt" \
+  --type "SecureString" \
+  --value "$(openssl rand -hex 32)"
 ```
 
 ---
@@ -131,7 +140,12 @@ terraform apply tfplan
 
 ### 3.1 Cognito テストユーザー作成（Terraform apply 後）
 
-Terraform で User Pool 本体が作られたら、テストユーザーを手動または Terraform の `aws_cognito_user` リソースで作成。**パスワードは必ずコマンドラインで乱数生成し、定数をコピペ流用しない**：
+Terraform で User Pool 本体が作られたら、テストユーザーを手動または Terraform の `aws_cognito_user` リソースで作成。**パスワードは必ずコマンドラインで乱数生成し、定数をコピペ流用しない**。
+
+> ⚠️ **Reviewer アカウントのパスワード運用ルール**（`infrastructure.md` §8.6、§9.1 と一致）:
+> - **審査提出時〜結果通知までの期間中は、reviewer パスワードを変更しない**（Meta の申請フォームに記載した認証情報が無効化されると「Cannot reproduce」差し戻しの原因になる）。
+> - 審査期間外（初回セットアップ時・承認/却下通知後 24 時間以内）は、本節の `admin-set-user-password` を再実行して新規 random 値にローテーションしてよい。
+> - 開発環境のテストで reviewer 相当の挙動を確認する際は、別途 `envs/local` の User Pool を使い、本番 `envs/review` のパスワードを流用しない。
 
 ```bash
 # User Pool ID を Terraform output から取得

@@ -111,6 +111,10 @@ design v2 の技術選定に対して、「MVP 審査通過」という狭い目
   - **代替 A: 環境変数（Lambda の ENV）に直接埋め込む**：簡単だが、Terraform state 経由で平文漏洩リスク + ローテーション困難。
   - **代替 B: Secrets Manager**：自動ローテーション機能が売りだが Meta トークンは自動ローテーション非対応、コストも発生。
 - **ローテーション運用**: 審査通過後、または Meta トークンが失効した場合は手動で SSM を更新。MVP では自動ローテーションは実装しない。
+- **Graph API バージョン**: `v19.0` に固定する（`contracts/meta-send-api.md` の `graph.facebook.com/v19.0/me/messages`、`quickstart.md` §2.4 の `fb_exchange_token` 呼び出しと一致）。
+  - 根拠：2026-04-20 時点で安定稼働しており、`pages_messaging` / `pages_read_engagement` / `pages_manage_metadata` の挙動がリファレンスドキュメントと一致しているため。
+  - 再評価トリガー：(a) Meta の [Versioning Policy](https://developers.facebook.com/docs/graph-api/guides/versioning) で v19.0 が deprecated 予告に入った、(b) Phase 2 で `messenger_platform` 系の新機能（Private Replies 等）を使う必要が出てきた、(c) 審査期間中にバージョン起因の挙動差異が観測された、のいずれか。
+  - 変更時は `contracts/meta-send-api.md` の URL、`quickstart.md` §2.4 の curl コマンドを同一 PR で更新する。
 
 ---
 
