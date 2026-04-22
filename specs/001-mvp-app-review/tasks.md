@@ -68,7 +68,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6"
 - [ ] T025 [P] Create `terraform/modules/auth/` — Cognito User Pool (password policy, auto_verified_attributes: email), App Client (USER_PASSWORD_AUTH enabled, no client secret), Groups `operators` / `reviewers`, Users `operator@malbek.co.jp` / `reviewer@malbek.co.jp` with initial passwords from SSM SecureString parameters
 - [ ] T026 [P] Create `terraform/modules/secrets/` — SSM Parameter Store SecureString definitions: `/fumireply/review/meta/page-access-token`, `/fumireply/review/meta/webhook-verify-token`, `/fumireply/review/meta/app-secret`, `/fumireply/review/deletion-log/hash-salt` (値は後から手動投入、Terraform は空の placeholder)
 - [ ] T027 [P] Create `terraform/modules/app-lambda/` — Lambda function skeleton (handler TBD in T032), IAM role with policies (VPC access, RDS access, SSM Get, Cognito), API Gateway HTTP API with `$default` route → Lambda integration
-- [ ] T028 [P] Create `terraform/modules/static-site/` — S3 bucket (private, OAC), CloudFront distribution with 2 origins (S3 / API Gateway), path pattern routing (`/api/*`, `/login*`, `/inbox*`, `/threads/*`, `/_serverFn/*` → APIGW、残り → S3), ACM certificate in us-east-1, Route53 A record for custom domain
+- [ ] T028 [P] Create `terraform/modules/static-site/` — S3 bucket (private, OAC), CloudFront distribution with 2 origins (S3 / API Gateway), path pattern routing: `/api/*`, `/_serverFn/*`, `/inbox*`, `/threads/*` → **API Gateway**、`/`, `/login`, `/privacy`, `/terms`, `/data-deletion`, `/data-deletion-status/*`, `/assets/*` → **S3**（`/login` は CSR のため HTML shell + JS bundle を S3 から配信、loginFn は `/_serverFn/*` 経由で APIGW に到達、plan.md L46-54 のレンダリング表に準拠）; ACM certificate in us-east-1, Route53 A record for custom domain
 - [ ] T029 [P] Create `terraform/modules/github-actions-oidc/` — IAM OIDC provider for GitHub, role with trust policy for `repo:<owner>/fumireply:*`, policies for `terraform plan/apply` and Lambda/S3/CloudFront deploy
 - [ ] T030 [P] Create `terraform/modules/observability/` — CloudWatch alarms (Lambda errors > 1% for 5min, 5xx > 1, RDS CPU > 80%), SNS topic for email subscription
 - [ ] T031 Create `terraform/envs/review/{main.tf,variables.tf,providers.tf,backend.tf}` — wire all modules; `backend.tf` points to S3 backend bucket from bootstrap
@@ -181,8 +181,8 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6"
 - [ ] T085 [US3] Create `app/src/routes/api/data-deletion/index.ts` — POST handler per `contracts/data-deletion-callback.md`: Meta `signed_request` verify (HMAC-SHA256) → body から `user_id` (PSID) 抽出 → `delete-user-data` 実行 → `{ url: "https://<domain>/data-deletion-status/<code>", confirmation_code: "<code>" }` 返却
 - [ ] T086 [P] [US3] Create `app/src/test/routes/api/data-deletion/index.test.ts` — integration: valid signed_request → 200 + JSON 返却、invalid signature → 401
 - [ ] T087 [US3] Create `app/src/routes/(public)/data-deletion-status/$code.tsx` — SSR route: status URL; `deletion_log` から code で検索し「Deleted」or「Not found」のみ返す (個人情報含めない)
-- [ ] T088 [US3] Update `terraform/modules/static-site/` CloudFront behaviors: `/`, `/privacy`, `/terms`, `/data-deletion`, `/data-deletion-status/*` → S3 origin; `/api/*`, `/_serverFn/*`, `/login*`, `/inbox*`, `/threads/*` → API Gateway origin; `terraform apply` で反映
-- [ ] T089 Create `.github/workflows/deploy-app.yml` — on merge to main: `npm run build --prefix app` → upload SSG output (public HTML + assets) to S3 via AWS CLI → CloudFront invalidation (`/*`) → package Lambda zip → `aws lambda update-function-code`
+- [ ] T088 [US3] Update `terraform/modules/static-site/` CloudFront behaviors: `/`, `/login`, `/privacy`, `/terms`, `/data-deletion`, `/data-deletion-status/*`, `/assets/*` → **S3 origin**（login は CSR ビルド出力）; `/api/*`, `/_serverFn/*`, `/inbox*`, `/threads/*` → **API Gateway origin**; `terraform apply` で反映。plan.md L46-54 レンダリング表と一致させる（`/login` は S3 配信、loginFn 呼び出しは `_serverFn/*` 経由で APIGW へ）
+- [ ] T089 Create `.github/workflows/deploy-app.yml` — on merge to main: `npm run build --prefix app` → upload to S3 via AWS CLI the **SSG output**（`(public)/*` の HTML）+ **CSR ビルド出力**（`(auth)/login` の HTML shell + JS bundle）+ 共通 assets → CloudFront invalidation (`/*`) → package Lambda zip（SSR ルートと server-only ルートのみ）→ `aws lambda update-function-code`
 
 **Checkpoint US3**: 4 公開 URL が独自ドメイン HTTPS で配信、データ削除コールバックが signed_request を処理、CloudFront ルーティングが正
 
@@ -220,11 +220,14 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6"
 - [ ] T097 [P] Enable CloudWatch alarms in `terraform/envs/review/main.tf` — Lambda error rate, 5xx, RDS CPU, SNS email 購読、`terraform apply`
 - [ ] T098 [P] Create `.github/workflows/terraform-apply.yml` — on merge to main, paths `terraform/**`: manual approval gate (environment=production) → `terraform apply` via OIDC role
 - [ ] T099 [P] Update `contracts/admin-api.md` — serverFn パスを route-colocated 配置 (`app/src/routes/(auth)/login/-lib/login.fn.ts` 等) に同期、全 serverFn の file path を plan.md の構造と一致させる
-- [ ] T100 Verify Page Access Token は長期トークン化: Meta Graph API `fb_exchange_token` で short-lived → long-lived → never-expiring Page Token に変換し SSM `/fumireply/review/meta/page-access-token` に格納; 手順を `audit-runbook.md` にも記録
+- [ ] T106 [P] **Create test Facebook page** in Meta Business Manager: operator@malbek.co.jp がページ管理者権限を持つ新規 FB ページを作成、Messenger 受信を有効化、Meta App の Webhook を当該ページに購読、short-lived Page Access Token を取得 → `terraform/envs/review/terraform.tfvars` の `page_id` / `page_name` を実値に置換 → `npm run db:seed:review` 再実行で `connectedPages` 行を更新（FR-021、T100 の前提条件）
+- [ ] T100 Verify Page Access Token は長期トークン化（**T106 完了後に実施**）: Meta Graph API `fb_exchange_token` で short-lived → long-lived → never-expiring Page Token に変換し SSM `/fumireply/review/meta/page-access-token` に格納; 手順を `audit-runbook.md` にも記録
 - [ ] T101 Manual smoke test (FR-001〜008): テスト FB アカウントから Messenger 送信 → 30 秒以内に inbox 反映 (SC-003) → スレッド開く → reply 送信 → 5 秒以内に Messenger 受信 (SC-004); 失敗ケースも再現 (トークン失効、24h 超過)
+- [ ] T107 [P] **Verify FR-017 Webhook 20-second SLA** via CloudWatch Logs Insights: query `fields @timestamp, @duration | filter @log like /webhook/ | stats pct(@duration, 95) as p95, pct(@duration, 99) as p99, max(@duration) as max` を直近 48 時間で実行、p95 < 5000ms / p99 < 15000ms / max < 20000ms を確認（plan.md L56-57 performance goals 準拠）。違反時は Phase 2 で同期 DB 挿入を SQS 経由の非同期化に移行する判断材料とする
+- [ ] T108 [P] **Verify SC-002 login → inbox p95 < 10 seconds**: reviewer@malbek.co.jp で 5 回ログイン測定（Lambda cold start 直後 1 回 + warm 4 回）、ブラウザ DevTools Network タブで form submit から inbox 初期表示完了までのレイテンシを計測、全値と p95 を `docs/operations/audit-runbook.md` に記録。p95 が 10 秒を超える場合はプロビジョンドコンカレンシー導入の判断材料とする
 - [ ] T102 Verify 公開 4 URL: `curl -I https://<domain>/`, `/privacy`, `/terms`, `/data-deletion`, `/data-deletion-status/test` がすべて HTTPS + 200 (SC-006)
 - [ ] T103 Verify 24/7 稼働 (48 時間連続観測): CloudWatch で Lambda / RDS / CloudFront にエラーなく稼働、ダウンタイムなし (FR-016, SC-005)
-- [ ] T104 Update `specs/001-mvp-app-review/quickstart.md` §6「審査提出前チェックリスト」 — 全項目をチェック済みに更新、未達項目があれば T096〜T103 にフィードバック
+- [ ] T104 Update `specs/001-mvp-app-review/quickstart.md` §6「審査提出前チェックリスト」 — 全項目をチェック済みに更新、未達項目があれば T096〜T103 / T106〜T108 にフィードバック
 - [ ] T105 Submit Meta App Review: App Dashboard フォームで Webhook Callback URL (`https://<domain>/api/webhook`) + Privacy Policy URL + Terms URL + Data Deletion URL + 管理画面 URL + screencast (`docs/review-submission/`) + use case description (`docs/review-submission/use-case-description.md`) + reviewer credentials (`docs/review-submission/reviewer-credentials.md`) を全項目入力、`pages_messaging` / `pages_manage_metadata` / `pages_read_engagement` をリクエスト、submit
 
 **Checkpoint 審査提出完了**: Meta 申請フォーム全項目入力済み、submit ボタン押下完了、申請 ID 取得
@@ -332,7 +335,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6"
 | Sprint 3 | US1 + US2 着手 + E2E | Phase 3 (T049〜T064) + Phase 4 着手 (T065〜T071) |
 | Sprint 4 | US2 完結 + screencast ドラフト | Phase 4 完結 (T072〜T077) + Phase 6 ドラフト (T090〜T091) |
 | Sprint 5 | screencast 撮影 + Use Case + data deletion | Phase 5 完結 (T082〜T089) + Phase 6 (T092〜T093) + Phase 7 (T094〜T095) |
-| Sprint 6 | 提出リハーサル | Phase 8 (T096〜T105) |
+| Sprint 6 | 提出リハーサル | Phase 8 (T096〜T108、T105 が最終 submit) |
 
 ---
 
