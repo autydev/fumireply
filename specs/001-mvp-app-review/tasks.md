@@ -28,27 +28,27 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6"
 
 **Purpose**: TanStack Start の scaffolding、TanStack Intent 導入、CI 稼働、Hello World 1 件通過
 
-- [ ] T001 Create `app/` directory and initialize npm project: `cd app && npm init -y`; edit `app/package.json` to set `"name": "fumireply-app"`, `"engines": { "node": ">=20.0.0" }`, and commit the generated `app/package-lock.json` (pnpm/yarn 禁止 per plan.md)
-- [ ] T002 Install TanStack Start runtime in `app/`: `@tanstack/react-start`, `@tanstack/react-router`, `react`, `react-dom`, `vinxi` (TanStack Start の bundler)
-- [ ] T003 [P] Install TanStack Router Vite plugin: `@tanstack/router-plugin` into `app/package.json` devDependencies
-- [ ] T004 Create `app/vite.config.ts` wiring `@tanstack/router-plugin/vite` (auto route tree generation) + `@vitejs/plugin-react`
-- [ ] T005 Create `app/tsconfig.json` with `strict: true`, `moduleResolution: "bundler"`, path alias `"~/*": ["./src/*"]`
-- [ ] T006 Create `app/src/routes/__root.tsx` minimal root layout (HTML shell, `<Outlet />`)
-- [ ] T007 **Run TanStack Intent setup**: `npx @tanstack/intent@latest install` from repository root; accept default target `CLAUDE.md`; verify `intent-skills` block is added so subsequent tasks auto-load `@tanstack/react-router` / `@tanstack/react-start` SKILL.md entries from `node_modules/`
-- [ ] T008 [P] Create `app/tsr.config.json` documenting `routeFileIgnorePrefix: "-"` (既定値を明示): `{ "routesDirectory": "./src/routes", "generatedRouteTree": "./src/routeTree.gen.ts", "routeFileIgnorePrefix": "-" }`
-- [ ] T009 [P] Install testing deps in `app/`: `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom`, `msw`, `@vitest/coverage-v8`
-- [ ] T010 [P] Create `app/vitest.config.ts` with `environment: "jsdom"`, `setupFiles: ["./src/test/setup.ts"]`, `include: ["src/**/*.test.{ts,tsx}", "tests/**/*.test.{ts,tsx}"]`
-- [ ] T011 [P] Create `app/src/test/setup.ts` — `@testing-library/jest-dom` import + MSW server lifecycle hooks (空で可、Phase 3 で handler 追加)
-- [ ] T012 [P] Create `app/src/test/file-route-utils.tsx` — TanStack 公式ガイド準拠の `createTestRouter` ヘルパー（memory history + 指定ルートを mount する renderWithRouter 関数）
-- [ ] T013 [P] Install lint/format deps in `app/`: `eslint`, `prettier`, `typescript-eslint`, `eslint-config-prettier`
-- [ ] T014 [P] Create `app/.eslintrc.cjs` + `app/.prettierrc` (TanStack 系の無難な設定: 2 spaces, single quotes, trailing commas)
-- [ ] T015 [P] Add scripts to `app/package.json`: `"dev": "vinxi dev"`, `"build": "vinxi build"`, `"start": "vinxi start"`, `"test": "vitest run"`, `"typecheck": "tsc -b"`, `"lint": "eslint src/ tests/"`
-- [ ] T016 Create `app/src/routes/(public)/index.tsx` — "Hello World" 仮ページ（US3 で本番の会社情報ページに置換）
-- [ ] T017 [P] Create `app/src/test/routes/(public)/index.test.tsx` — smoke test: renderWithRouter `/` → "Hello World" が見える（TanStack 公式ガイドのミラー配置）
-- [ ] T018 Create `.github/workflows/ci.yml` — trigger on PR: checkout → `actions/setup-node@v4` (node 20) → `npm ci --prefix app` → `npm run typecheck --prefix app` → `npm run lint --prefix app` → `npm run test --prefix app` → `npm run build --prefix app`
-- [ ] T019 [P] Create `terraform/bootstrap/main.tf` — S3 bucket `malbek-terraform-state` (versioning, KMS encryption, public access block), DynamoDB `malbek-terraform-locks`, KMS alias `alias/terraform-state`; local state で一度だけ apply する想定（README コメント必須）
-- [ ] T020 [P] Create `terraform/bootstrap/outputs.tf` — 本編が参照するバケット名・テーブル名・KMS ARN を output
-- [ ] T021 [P] Create `.github/workflows/terraform-plan.yml` — trigger on PR touching `terraform/**`: `terraform fmt -check` + `validate` + `plan`、結果を PR コメント投稿（AWS OIDC role は Phase 2 T025 で接続）
+- [x] T001 Create `app/` directory and initialize npm project: `cd app && npm init -y`; edit `app/package.json` to set `"name": "fumireply-app"`, `"engines": { "node": ">=20.0.0" }`, and commit the generated `app/package-lock.json` (pnpm/yarn 禁止 per plan.md)
+- [x] T002 Install TanStack Start runtime in `app/`: `@tanstack/react-start`, `@tanstack/react-router`, `react`, `react-dom`, `vinxi` (TanStack Start の bundler)
+- [x] T003 [P] Install TanStack Router Vite plugin: `@tanstack/router-plugin` into `app/package.json` devDependencies
+- [x] T004 Create `app/vite.config.ts` wiring `@tanstack/router-plugin/vite` (auto route tree generation) + `@vitejs/plugin-react`
+- [x] T005 Create `app/tsconfig.json` with `strict: true`, `moduleResolution: "bundler"`, path alias `"~/*": ["./src/*"]`
+- [x] T006 Create `app/src/routes/__root.tsx` minimal root layout (HTML shell, `<Outlet />`)
+- [x] T007 **Run TanStack Intent setup**: `npx @tanstack/intent@latest install` from repository root; accept default target `CLAUDE.md`; verify `intent-skills` block is added so subsequent tasks auto-load `@tanstack/react-router` / `@tanstack/react-start` SKILL.md entries from `node_modules/`
+- [x] T008 [P] Create `app/tsr.config.json` documenting `routeFileIgnorePrefix: "-"` (既定値を明示): `{ "routesDirectory": "./src/routes", "generatedRouteTree": "./src/routeTree.gen.ts", "routeFileIgnorePrefix": "-" }`
+- [x] T009 [P] Install testing deps in `app/`: `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom`, `msw`, `@vitest/coverage-v8`
+- [x] T010 [P] Create `app/vitest.config.ts` with `environment: "jsdom"`, `setupFiles: ["./src/test/setup.ts"]`, `include: ["src/**/*.test.{ts,tsx}", "tests/**/*.test.{ts,tsx}"]`
+- [x] T011 [P] Create `app/src/test/setup.ts` — `@testing-library/jest-dom` import + MSW server lifecycle hooks (空で可、Phase 3 で handler 追加)
+- [x] T012 [P] Create `app/src/test/file-route-utils.tsx` — TanStack 公式ガイド準拠の `createTestRouter` ヘルパー（memory history + 指定ルートを mount する renderWithRouter 関数）
+- [x] T013 [P] Install lint/format deps in `app/`: `eslint`, `prettier`, `typescript-eslint`, `eslint-config-prettier`
+- [x] T014 [P] Create `app/.eslintrc.cjs` + `app/.prettierrc` (TanStack 系の無難な設定: 2 spaces, single quotes, trailing commas)
+- [x] T015 [P] Add scripts to `app/package.json`: `"dev": "vinxi dev"`, `"build": "vinxi build"`, `"start": "vinxi start"`, `"test": "vitest run"`, `"typecheck": "tsc -b"`, `"lint": "eslint src/ tests/"`
+- [x] T016 Create `app/src/routes/(public)/index.tsx` — "Hello World" 仮ページ（US3 で本番の会社情報ページに置換）
+- [x] T017 [P] Create `app/src/test/routes/(public)/index.test.tsx` — smoke test: renderWithRouter `/` → "Hello World" が見える（TanStack 公式ガイドのミラー配置）
+- [x] T018 Create `.github/workflows/ci.yml` — trigger on PR: checkout → `actions/setup-node@v4` (node 20) → `npm ci --prefix app` → `npm run typecheck --prefix app` → `npm run lint --prefix app` → `npm run test --prefix app` → `npm run build --prefix app`
+- [x] T019 [P] Create `terraform/bootstrap/main.tf` — S3 bucket `malbek-terraform-state` (versioning, KMS encryption, public access block), DynamoDB `malbek-terraform-locks`, KMS alias `alias/terraform-state`; local state で一度だけ apply する想定（README コメント必須）
+- [x] T020 [P] Create `terraform/bootstrap/outputs.tf` — 本編が参照するバケット名・テーブル名・KMS ARN を output
+- [x] T021 [P] Create `.github/workflows/terraform-plan.yml` — trigger on PR touching `terraform/**`: `terraform fmt -check` + `validate` + `plan`、結果を PR コメント投稿（AWS OIDC role は Phase 2 T025 で接続）
 - [ ] T022 Create first PR with T001〜T021 の成果物、CI の `ci.yml` と `terraform-plan.yml` が緑であることを確認（Walking Skeleton 完了基準）
 
 **Checkpoint Sprint 1 終了**: `npm test` が 1 件通過、CI 全緑、TanStack Intent 経由で Router/Start SKILL が Claude に auto-load される状態
