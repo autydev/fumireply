@@ -113,9 +113,9 @@ specs/001-mvp-app-review/
 ### Source Code (repository root)
 
 ```text
-app/                              # TanStack Start アプリ
+app/                              # TanStack Start アプリ（ルート単位コロケーション + 公式テストガイド準拠）
 ├── src/
-│   ├── routes/
+│   ├── routes/                   # `-` prefix の名前はルート化対象外（routeFileIgnorePrefix 既定値）
 │   │   ├── __root.tsx            # 共通レイアウト
 │   │   ├── (public)/             # SSG（prerender: true） → S3 配信
 │   │   │   ├── index.tsx         # 会社情報（TOP）
@@ -123,37 +123,65 @@ app/                              # TanStack Start アプリ
 │   │   │   ├── terms.tsx         # 利用規約
 │   │   │   └── data-deletion.tsx # データ削除手順
 │   │   ├── (auth)/               # CSR（ssr: false） → S3 配信
-│   │   │   └── login.tsx
+│   │   │   └── login/
+│   │   │       ├── index.tsx           # ルート本体
+│   │   │       └── -components/        # ルート専用 UI
+│   │   │           └── LoginForm.tsx
 │   │   ├── (app)/                # SSR → Lambda（認証必須・管理画面）
-│   │   │   ├── inbox.tsx         # 受信一覧
-│   │   │   └── threads.$id.tsx   # スレッド詳細 + 返信送信
+│   │   │   ├── inbox/
+│   │   │   │   ├── index.tsx           # 受信一覧
+│   │   │   │   └── -components/
+│   │   │   │       └── InboxList.tsx   # mock/inbox-screens.jsx を参考
+│   │   │   └── threads/
+│   │   │       └── $id/
+│   │   │           ├── index.tsx       # スレッド詳細 + 返信送信
+│   │   │           └── -components/
+│   │   │               ├── ThreadMessages.tsx
+│   │   │               └── ReplyForm.tsx
 │   │   └── api/                  # Server-only → Lambda
-│   │       ├── webhook.ts        # Meta Webhook 受信（GET 検証 + POST 受信）
-│   │       └── data-deletion.ts  # Meta データ削除コールバック
-│   ├── server/
+│   │       ├── webhook/
+│   │       │   ├── index.ts            # Meta Webhook（GET 検証 + POST 受信）
+│   │       │   └── -lib/               # このルート専用ロジック
+│   │       │       ├── signature.ts    # X-Hub-Signature-256 検証
+│   │       │       ├── signature.test.ts
+│   │       │       └── idempotency.ts  # meta_message_id 冪等挿入
+│   │       └── data-deletion/
+│   │           └── index.ts            # Meta データ削除コールバック
+│   ├── test/                     # 公式ガイド準拠：routes/ をミラーする並行構造
+│   │   ├── setup.ts                    # vitest セットアップ（global mocks, MSW 等）
+│   │   ├── file-route-utils.tsx        # createRouter モック、renderWithRouter 等の共通ユーティリティ
+│   │   └── routes/                     # routes/ と同じ階層でルート単位テストを配置
+│   │       ├── (auth)/
+│   │       │   └── login/
+│   │       │       └── index.test.tsx
+│   │       ├── (app)/
+│   │       │   ├── inbox/
+│   │       │   │   └── index.test.tsx
+│   │       │   └── threads/
+│   │       │       └── $id/
+│   │       │           └── index.test.tsx
+│   │       └── api/
+│   │           ├── webhook/
+│   │           │   └── index.test.ts
+│   │           └── data-deletion/
+│   │               └── index.test.ts
+│   ├── server/                   # ルート横断で再利用される server-only コード
 │   │   ├── db/
 │   │   │   ├── schema.ts         # Drizzle スキーマ（4 エンティティ）
 │   │   │   ├── client.ts         # 接続プール
 │   │   │   └── migrations/       # drizzle-kit が生成
-│   │   ├── services/
-│   │   │   ├── messenger.ts      # Send API ラッパー
-│   │   │   ├── webhook.ts        # 署名検証 + 冪等挿入
+│   │   ├── services/             # 非ルートファイルは素直にコロケーションでテスト配置
+│   │   │   ├── messenger.ts      # Send API ラッパー（Phase 2 の分類 Lambda でも再利用）
+│   │   │   ├── messenger.test.ts
 │   │   │   ├── auth.ts           # Cognito InitiateAuth / GlobalSignOut + JWT 検証
+│   │   │   ├── auth.test.ts
 │   │   │   └── token.ts          # Page Access Token 取得（SSM）
 │   │   └── env.ts                # 環境変数スキーマ
-│   ├── components/
-│   │   ├── Inbox.tsx             # mock/inbox-screens.jsx を参考
-│   │   ├── Thread.tsx
-│   │   └── LoginForm.tsx
 │   └── styles/
-├── tests/
-│   ├── unit/
-│   │   ├── webhook-signature.test.ts
-│   │   ├── messenger-service.test.ts
-│   │   └── auth.test.ts
+├── tests/                        # ルート横断の統合・E2E
 │   ├── integration/
-│   │   ├── webhook-receive.test.ts    # Meta ペイロードの実形で流す
-│   │   └── send-reply.test.ts
+│   │   ├── webhook-receive.test.ts    # Meta ペイロードの実形で流す（webhook → DB）
+│   │   └── send-reply.test.ts         # 返信送信（thread route → Send API モック → DB）
 │   └── e2e/
 │       └── review-flow.spec.ts        # Playwright: ログイン→受信→返信
 ├── drizzle.config.ts
@@ -203,7 +231,11 @@ docs/
 
 CloudFront は単一ディストリビューションで、パスパターンに応じて S3 Origin と API Gateway Origin を振り分ける（`/api/*`, `/inbox*`, `/threads/*` → API Gateway、それ以外 → S3）。
 
-tests は `app/tests/` に unit / integration / e2e の 3 階層で配置。Terraform は `terraform/` にルート + モジュール構成で、審査用環境（`envs/review/`）のみ定義する。Phase 2 で Webhook を別 Lambda に分離する際は、`app/src/routes/api/webhook.ts` のロジックを独立 Lambda に複製 → API Gateway のルーティングを分離、という移行パス。
+**フロント構成はルート単位のコロケーションを採用する**：各ルートは `routes/<path>/index.tsx`（または `.ts`）をエントリとし、そのルート専用のコンポーネントを `-components/`、ルート専用のサーバーロジックを `-lib/` として同一ディレクトリに配置する。`-` prefix のファイル/ディレクトリは TanStack Router の `routeFileIgnorePrefix`（既定値 `-`）によってファイルベースルーティングから除外されるため、URL 空間を汚染せずに近接配置できる。複数ルートで再利用される server-only コード（DB クライアント / Cognito 認証 / SSM トークン取得 / Send API ラッパー）のみ `src/server/` に残す（`messenger.ts` は Phase 2 の分類 Lambda でも再利用する想定のため横断層に置く）。
+
+**テスト配置は TanStack 公式「Test Router with File-Based Routing」ガイドに準拠**し、ルート単位のユニットテストは `src/test/routes/` に `src/routes/` をミラーする並行構造で配置する（`src/test/setup.ts`・`src/test/file-route-utils.tsx` も公式例に従って設置）。これによりルートの URL ツリーとテストツリーが同型で保たれ、テストコードがルート生成や型生成に影響しない。一方、ルート配下の `-lib/` や `src/server/services/` のような**非ルートファイル**はテストをコロケーション（`.test.ts` を実体の隣）して構わない（ルート化の対象外であり、Vitest のデフォルトで解決できるため）。ルート横断の統合テストと Playwright E2E のみ `app/tests/integration/`・`app/tests/e2e/` に集約する。
+
+Terraform は `terraform/` にルート + モジュール構成で、審査用環境（`envs/review/`）のみ定義する。Phase 2 で Webhook を別 Lambda に分離する際は、`app/src/routes/api/webhook/` ディレクトリ一式（ルート本体 + `-lib/` の signature / idempotency）を独立 Lambda に複製 → API Gateway のルーティングを分離、という移行パス。
 
 ## Sprint 計画と User Story の対応
 
