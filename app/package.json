@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src tests"
+    "lint": "eslint src tests --no-error-on-unmatched-pattern"
   },
   "dependencies": {
     "@tanstack/react-router": "^1.168.23",
