@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { render, type RenderResult } from '@testing-library/react'
 import {
   createMemoryHistory,
@@ -23,7 +24,7 @@ export function renderRoute({
   initialEntries = ['/'],
 }: {
   path: string
-  component: () => JSX.Element
+  component: () => ReactNode
   initialEntries?: Array<string>
 }): RenderResult {
   const rootRoute = createRootRoute({
