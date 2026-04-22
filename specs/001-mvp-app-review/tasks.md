@@ -49,7 +49,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6"
 - [x] T019 [P] Create `terraform/bootstrap/main.tf` — S3 bucket `malbek-terraform-state` (versioning, KMS encryption, public access block), DynamoDB `malbek-terraform-locks`, KMS alias `alias/terraform-state`; local state で一度だけ apply する想定（README コメント必須）
 - [x] T020 [P] Create `terraform/bootstrap/outputs.tf` — 本編が参照するバケット名・テーブル名・KMS ARN を output
 - [x] T021 [P] Create `.github/workflows/terraform-plan.yml` — trigger on PR touching `terraform/**`: `terraform fmt -check` + `validate` + `plan`、結果を PR コメント投稿（AWS OIDC role は Phase 2 T025 で接続）
-- [ ] T022 Create first PR with T001〜T021 の成果物、CI の `ci.yml` と `terraform-plan.yml` が緑であることを確認（Walking Skeleton 完了基準）
+- [x] T022 Create first PR with T001〜T021 の成果物、CI の `ci.yml` と `terraform-plan.yml` が緑であることを確認（Walking Skeleton 完了基準）
 
 **Checkpoint Sprint 1 終了**: `npm test` が 1 件通過、CI 全緑、TanStack Intent 経由で Router/Start SKILL が Claude に auto-load される状態
 
