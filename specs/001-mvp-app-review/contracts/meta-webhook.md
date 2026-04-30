@@ -6,7 +6,7 @@
 **External spec**: https://developers.facebook.com/docs/messenger-platform/webhooks
 **Updated**: 2026-04-30 (SQS enqueue を追加、AI 下書き生成キックオフ)
 
-本アプリが Meta に対して提供する受信エンドポイントの契約。Meta App Dashboard で Callback URL として登録する。受信 Lambda は **同期で署名検証 → DB INSERT → ai_drafts pending insert → SQS enqueue → 200** までを行い、AI 下書き生成は Worker Lambda に分離する（R-001 / FR-017）。
+本アプリが Meta に対して提供する受信エンドポイントの契約。Meta App Dashboard で Callback URL として登録する。**全テナント共通の単一エンドポイント**。受信 Lambda は **同期で署名検証 → page_id から tenant_id 解決 → DB INSERT → ai_drafts pending insert → SQS enqueue → 200** までを行い、AI 下書き生成は Worker Lambda に分離する（R-001 / R-015 / FR-017）。
 
 ---
 
@@ -84,15 +84,19 @@ Messenger メッセージや配信イベントを受信する。
 ### 処理フロー（POST 詳細）
 
 1. ヘッダ `X-Hub-Signature-256` を取得
-2. `app-secret` を SSM から取得（メモリキャッシュ）
+2. `app-secret` を SSM から取得（メモリキャッシュ、全テナント共通）
 3. `crypto.timingSafeEqual` で HMAC-SHA256 検証 → 失敗時 401
 4. zod で payload バリデーション → 失敗時 200 + `parse_error` ログ（Meta 再送ループ回避）
-5. トランザクションで以下を実行：
-   - `conversations` を upsert（`page_id` + `customer_psid` で UNIQUE 制約）
-   - `messages` を INSERT（`INSERT ... ON CONFLICT (meta_message_id) DO NOTHING`）
-   - `messages.message_type = 'text'` の場合のみ `ai_drafts` に `status='pending'` で INSERT（`ON CONFLICT (message_id) DO NOTHING`、再配信耐性）
-6. `ai_drafts` を INSERT した場合、SQS に `{ messageId: <messages.id> }` を enqueue
-7. 200 + `EVENT_RECEIVED` 返却
+5. **テナント解決（service role 接続、RLS バイパス）**：
+   - `entry[].id`（= page_id）を取り出す
+   - `SELECT tenant_id, id AS page_uuid FROM connected_pages WHERE page_id = $1 AND is_active = true`
+   - 見つからなければ 200 + `unknown_page` ログ（Meta は Webhook 購読を保持しているが連携停止された等の状態。Meta 再送を発生させない）
+6. **`withTenant(tenant_id, tx => ...)` で以下を実行**：
+   - `conversations` を upsert（`page_id` + `customer_psid` で UNIQUE 制約、`tenant_id=resolved`）
+   - `messages` を INSERT（`tenant_id=resolved`、`INSERT ... ON CONFLICT (meta_message_id) DO NOTHING`）
+   - `messages.message_type = 'text'` の場合のみ `ai_drafts` に `status='pending'`, `tenant_id=resolved` で INSERT（`ON CONFLICT (message_id) DO NOTHING`）
+7. `ai_drafts` を INSERT した場合、SQS に `{ messageId: <messages.id> }` を enqueue（tenant_id は載せない、Worker 側で DB から再解決）
+8. 200 + `EVENT_RECEIVED` 返却
 
 ### Response
 

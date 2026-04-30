@@ -35,7 +35,7 @@ design v2 の技術選定に対して、「MVP 審査通過 + AI 下書き生成
   - **Access Token**（1 時間有効）— `sub`（Supabase Auth UUID）、`email`、`role` を含む JWT。HttpOnly Cookie に保存、各リクエストで署名検証して認証判定に使用。
   - **Refresh Token**（30 日有効、Supabase 側でローテーション）— Access Token 失効時にクライアント SDK が自動更新。HttpOnly Cookie に別途保存。
   - **JWT 検証**: Supabase が公開する JWKS エンドポイント（`https://<project>.supabase.co/auth/v1/keys`）から鍵を取得して JOSE ライブラリで検証。または `@supabase/supabase-js` の `auth.getUser(jwt)` を呼ぶ。Lambda メモリで JWKS をキャッシュ。
-- **ロール管理**: MVP では `role` カラムを使わず、Supabase Auth の `user_metadata.role` または専用テーブルに参照を置く。MVP 規模（運用者 1 名 + レビュワー 1 名）では権限分岐がほぼ不要のため、ログインできれば全機能アクセスできる単純運用とする。
+- **テナント識別 / ロール管理**: Supabase Auth の `user_metadata` に `tenant_id`（必須、所属テナント UUID）と `role`（任意、UI 表示用）を保存。JWT に自動的に含まれる。**マルチテナント識別は `tenant_id` で行い、ロール分岐は MVP / Phase 2 では実装しない**（1 user = 1 tenant、ログインできれば全機能アクセス可）。Phase 3 以降でマルチオペレーター運用が要求されたら `tenant_users` 中間テーブルで拡張する余地を残す。
 - **検討した代替案**:
   - **Cognito User Pool**（旧 R-002 案）：DVA 試験対策には良いが、VPC + RDS 構成を捨てた今、Auth だけ AWS に残す合理性が薄い。Cognito 廃止で SSM パラメータ・Terraform モジュール・初期ユーザー作成スクリプトが大きく削減できる。
   - **better-auth / Lucia（DB セッション）**：Lambda 親和性が低い（毎回 DB 参照）。
@@ -188,7 +188,8 @@ design v2 の技術選定に対して、「MVP 審査通過 + AI 下書き生成
   1. app-lambda Error Rate > 1%（5 分間）
   2. webhook-lambda Error Rate > 0.5%（5 分間、Meta 再送リスクのため厳しめ）
   3. ai-worker DLQ Approximate Message Visible > 0（即時）
-  4. keep-alive Lambda 失敗（即時、Supabase Pause 防止のため）
+  4. keep-alive Lambda Errors >= 1（即時、Supabase Pause 防止のため）
+  5. keep-alive Lambda Invocations < 1 in 36 hours（実行されていない異常）
 - **根拠**:
   - Meta レビュワーの疎通失敗は「Cannot reproduce」での差し戻し原因になる。即時検知が必要。
   - Supabase の自動 Pause が起きると全機能停止するため keep-alive 失敗は最重要。
@@ -279,7 +280,7 @@ design v2 の技術選定に対して、「MVP 審査通過 + AI 下書き生成
 - **無料プランの制約と対策**:
   - 500 MB DB → MVP 規模では十分余裕
   - 50,000 MAU → 個人運用で問題なし
-  - **7 日無アクティブで自動 Pause** → **EventBridge + keep-alive Lambda で 6 日に 1 回 SELECT 1 を発行（FR-027）**
+  - **7 日無アクティブで自動 Pause** → **EventBridge + keep-alive Lambda で 1 日 1 回 SELECT 1 を発行（FR-027）**。Lambda 内部で 3 回指数バックオフリトライ + 最終失敗時に SNS Publish + CloudWatch アラーム（Errors >= 1 即時通知 + 36 時間 Invocation なし検知）+ OnFailure Destination の多重防御。1 日 1 回 + 7 日 Pause 閾値で運用者に最低 6 日の対応猶予を確保。
   - Point-in-Time Recovery なし → 日次 `pg_dump` を audit-runbook に組み込む
 - **Phase 2 以降への移行**:
   - Pro プラン $25/月で Pause 解除 + 8GB DB + Daily backups
@@ -334,6 +335,49 @@ design v2 の技術選定に対して、「MVP 審査通過 + AI 下書き生成
 - **検討した代替案**:
   - **Lambda 専用ハンドラ**：API Gateway イベントを直接受け取り Express 風に処理。ローカルとの環境差異が生じる + TanStack Start の SSR 機能を活かしにくい。
   - **Vercel Adapter / Cloudflare Pages**：マルチクラウドになり、AWS 統一性を失う + 学習コスト。
+
+---
+
+## R-015: マルチテナント SaaS を最初から組み込む（RLS 採用に転換）
+
+- **決定**: 将来の SaaS 販売（月額課金）を見据え、**最初からマルチテナントアーキテクチャ**で構築する。`tenants` テーブル + 全データテーブルに `tenant_id` カラム + **RLS（Row Level Security）を全テナント所有テーブルで ON**。MVP 期間中は tenant 1 件（Malbek）を seed で事前作成し、Meta レビュワーは既存テナントにログインする。**セルフサインアップ画面 + Stripe 課金統合は Phase 2**。
+- **根拠**:
+  - **後付けマイグレーションの罠を避ける**：シングルテナントで本番運用を始めた後にマルチテナント化すると、(a) 全テーブルに `tenant_id NOT NULL` を追加するため既存行の backfill が必要、(b) 全クエリに `WHERE tenant_id = X` を後付けする監査が膨大、(c) RLS を後から ON にすると本番で「クエリが返らなくなる」事故が起きやすい。**最初から組み込む方が桁違いに楽**。
+  - **DB 設計コストは小さい**：`tenant_id` カラムを 5 テーブルに足し、RLS ポリシーを 5 行書くだけ。後付けに比べ初期工数の差は数時間。
+  - **MVP 提出時の見え方は変わらない**：レビュワーは事前作成済み tenant にログインするだけ。マルチテナントの存在は審査に影響しない。
+- **RLS 採用への転換**:
+  - 旧方針（単独運用前提）では RLS は overengineering と判断していたが、**マルチテナント化により計算が逆転**：
+    - 1 行のクエリ漏れ（`WHERE tenant_id = X` 忘れ）が**他テナントのデータ漏洩**に直結する
+    - 課金してプロダクトを売る以上、データ越境バグは事業継続レベルのインシデント
+    - RLS は「アプリのバグがあっても DB レイヤで止まる」最後の防衛線
+  - **多層防御**：(1) Auth middleware で JWT から `tenant_id` 抽出 → (2) `withTenant` トランザクションヘルパで `SET LOCAL app.tenant_id = '<uuid>'` を流す → (3) RLS ポリシー `tenant_id = current_setting('app.tenant_id')::uuid` が DB 側で強制 → (4) service role / anon role 分離（service role は migration / system 操作専用）
+  - **Supabase Pooler との互換性**：Transaction Pooler（port 6543）で `SET LOCAL` が transaction scope で機能する。Drizzle の `db.transaction()` で囲めば自然に統合できる。
+- **Page Access Token を SSM から DB 暗号化カラムへ**:
+  - 旧方針：`/fumireply/<tenant>/page-access-token` のようにテナントごとに SSM を増やす想定。
+  - 新方針：`connected_pages.page_access_token_encrypted bytea` カラムに **AES-256-GCM で暗号化**して保存。マスター鍵 1 本のみ SSM `/fumireply/master-encryption-key` に保管。
+  - 根拠：(a) SaaS のセルフサインアップで tenant が増えるたびに admin が SSM 操作する運用は破綻する。(b) アプリが encrypt/decrypt する形式なら tenant 数に依存せずスケールする。(c) マスター鍵 1 本なら IAM・監査・ローテーションの管理対象も 1 つ。
+  - 形式：`iv (12B) || auth_tag (16B) || ciphertext`。Lambda メモリでマスター鍵をキャッシュ（TTL 5 分）。
+  - ローテーション戦略は Phase 2 で整備（多鍵運用 or KMS 移行）。
+- **JWT に tenant claim**:
+  - Supabase Auth の `user_metadata.tenant_id` に所属テナントの UUID を保存。JWT に自動的に含まれる。
+  - middleware が `verifyAccessToken(token).user_metadata.tenant_id` で抽出 → `tenants.status='active'` を確認 → `withTenant(tenant_id, fn)` で全 DB 操作を実行。
+  - 1 user = 1 tenant（Phase 3 以降でマルチオペレーター対応するなら `tenant_users` 中間テーブルで拡張可能）。
+- **Webhook ルーティング**:
+  - 単一の Meta App、単一の `/api/webhook` エンドポイント。全テナントが共有。
+  - 受信 Lambda は **service role** で `connected_pages WHERE page_id = $1` を検索 → `tenant_id` 解決 → 以降の DB INSERT は解決した tenant_id をセットして実行。
+- **検討した代替案**:
+  - **シングルテナントで開始 → Phase 2 でマルチテナント化**：上述の通り後付けは桁違いにコストが高く、本番事故のリスクも大きい。
+  - **RLS なしで middleware の `WHERE tenant_id = X` だけで分離**：1 箇所の書き忘れで全テナント情報が漏洩する。SaaS 商用としては不可。
+  - **テナントごとに DB / Supabase プロジェクトを分ける（テナント＝物理隔離）**：強力だが、無料 Supabase プロジェクトの上限・運用コストが膨大。MVP〜中規模 SaaS には不適。
+- **コスト影響**:
+  - Supabase 無料プランのまま継続可能（DB サイズ・MAU 上限内）。
+  - 初期 LOC 増加：~300〜500 行（tenants schema、RLS ポリシー、`withTenant` ヘルパ、`crypto.ts`、middleware の tenant 解決）。
+- **未実装事項（Phase 2 で追加）**:
+  - セルフサインアップ画面（`/signup` + tenant 作成 + 初期ユーザー作成 + FB ページ連携ウィザード）
+  - Stripe Customer 作成 + プラン管理 + Webhook
+  - Page Access Token のローテーション運用
+  - tenant 削除フロー（解約）
+  - マルチオペレーター対応（必要になった段階で）
 
 ---
 

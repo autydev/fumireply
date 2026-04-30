@@ -111,7 +111,7 @@ Meta レビュワーが申請フォームに記載されたテスト用アカウ
 - 空メッセージ／スタンプのみ／画像のみの受信：テキスト以外のメッセージタイプを受信したとき、管理画面が落ちずにプレースホルダ表示できる。テキスト以外は AI 下書き生成の対象外とし、空の入力欄を表示する。
 - 同時ログイン：レビュワーが複数のセッションで同時ログインした場合でも、両方のセッションから閲覧・送信ができる。
 - AI 下書き生成失敗：Anthropic API 障害・タイムアウト・レート制限等で下書き生成が失敗した場合、画面は空の入力欄を表示しレビュワーは自由入力で送信できる。下書き生成失敗が送信フローを止めないこと。
-- Supabase 無料枠の自動 Pause：無料プランは 7 日間アクティビティがないと DB が自動 Pause される。審査期間中に Pause されると Webhook 全失敗 → 審査差し戻しの致命的リスク。EventBridge Scheduled Rule で 6 日に 1 回 keep-alive クエリを叩き Pause を回避する運用を必須とする。
+- Supabase 無料枠の自動 Pause：無料プランは 7 日間アクティビティがないと DB が自動 Pause される。審査期間中に Pause されると Webhook 全失敗 → 審査差し戻しの致命的リスク。**EventBridge Scheduled Rule で 1 日 1 回 keep-alive クエリを発行し、Lambda 内部で 3 回リトライ + 最終失敗時に SNS 通知 + 「36 時間 Invocation なし」アラーム + OnFailure Destination の多重防御で確実に Pause を回避する運用を必須とする。**1 日 1 回にすることで、1 度の失敗があっても残り 6 日間の対応猶予がある。
 
 ## Requirements *(mandatory)*
 
@@ -151,7 +151,7 @@ Meta レビュワーが申請フォームに記載されたテスト用アカウ
 - **FR-016**: 管理画面、Webhook エンドポイント、公開ページ群は、審査期間中（申請提出から承認／差し戻しまで）24 時間 365 日稼働し続けなければならない。
 - **FR-017**: Webhook エンドポイントは Meta からの受信リクエストに対し 20 秒以内に HTTP 200 を返さなければならない。受信 Lambda は署名検証 → DB INSERT → SQS enqueue → 200 のみを行い、AI 下書き生成は Worker Lambda に分離する。
 - **FR-018**: システムは Page Access Token の有効期限切れを検知した場合、管理画面上で管理者に通知しなければならない。
-- **FR-027**: システムは Supabase 無料プランの自動 Pause を回避するため、EventBridge Scheduled Rule で 6 日に 1 回以上 DB に keep-alive クエリ（軽量 SELECT 1 等）を発行する keep-alive Lambda を稼働させなければならない。
+- **FR-027**: システムは Supabase 無料プランの自動 Pause（7 日無アクティブで発動）を回避するため、EventBridge Scheduled Rule で **1 日 1 回**以上 DB に keep-alive クエリ（軽量 SELECT 1 等）を発行する keep-alive Lambda を稼働させなければならない。Lambda は内部で指数バックオフによる 3 回リトライを実装し、最終失敗時は SNS 経由で即時通知を発報しなければならない。1 日 1 回 + 7 日の Pause 閾値により、失敗が連続しても運用者には複数日の対応猶予がある。
 
 #### 申請ドキュメント
 - **FR-019**: 申請者はスクリーンキャスト動画を準備し、Story 1〜2 のフローと権限利用箇所、および「AI 下書きは候補に過ぎず送信は人間が承認する」旨を動画内で明示できなければならない。
@@ -160,11 +160,12 @@ Meta レビュワーが申請フォームに記載されたテスト用アカウ
 
 ### Key Entities *(include if feature involves data)*
 
-- **Connected Page**: 連携済みの Facebook ページ情報。ページ ID、ページ名、Page Access Token 参照キー（SSM Parameter Store）、連携日時を保持する。MVP では 1 件のみ。
+- **Tenant**: SaaS の契約事業者単位。テナント名、slug、プラン（`free`/`pro`/`enterprise`、MVP は `free` 固定）、ステータス、課金 ID（Phase 2）を保持する。MVP では 1 件（Malbek）を seed。
+- **Connected Page**: 連携済みの Facebook ページ情報。tenant_id、ページ ID、ページ名、AES-256-GCM 暗号化された Page Access Token、連携日時を保持する。1 tenant に複数ページ可能（MVP は 1 tenant × 1 page）。
 - **Conversation**: 特定の顧客（Messenger ユーザー）と当該ページの会話スレッド。顧客 PSID、最終受信日時、最終送信日時、24 時間窓の残時間目安を保持する。
 - **Message**: 個別のメッセージ。方向（受信／送信）、本文、送信者ハンドル、タイムスタンプ、Meta メッセージ ID（冪等キー）、送信ステータス（送信済／失敗／未送信）を保持する。
 - **AI Draft**: 受信メッセージに紐づいて Worker Lambda が生成した返信下書き。生成元 message ID、下書き本文、生成ステータス（pending/ready/failed）、使用モデル、生成所要時間を保持する。
-- **Admin User**: 管理画面にログインするユーザー。Supabase Auth 側に保存。アプリ DB には Supabase Auth UUID（`auth.users.id`）の参照のみ保持し、メールアドレスやパスワードは持たない。
+- **Admin User**: 管理画面にログインするユーザー。Supabase Auth 側に保存。所属テナントは `user_metadata.tenant_id` で表現（1 user = 1 tenant）。アプリ DB には Supabase Auth UUID の参照のみ保持し、メールアドレスやパスワードは持たない。
 
 ## Success Criteria *(mandatory)*
 
@@ -188,7 +189,11 @@ Meta レビュワーが申請フォームに記載されたテスト用アカウ
 - **顧客管理・商品管理 UI は最小化**：design v2 の顧客 CRUD、VIP タグ、購入履歴、商品マスタ等は審査用 MVP では非提供。受信・スレッド・返信送信に関係しない画面は実装しない。
 - **Slack 通知は含まない**：運用補助機能であり、審査には不要。
 - **24 時間窓外送信は対象外**：`pages_messaging_subscriptions` 権限（24 時間窓外での送信）は本 MVP では申請しない。審査中は 24 時間以内の受信への返信のみで権限利用を実証する。
-- **シングルテナント**：design v2 のマルチテナント設計（テナント分離、RLS、Cognito Meta OAuth）は審査用 MVP では単一テナント前提。運用対象は Malbek の連携ページ 1 件のみ。RLS（Row Level Security）は MVP でも Phase 2 でも採用しない（運営者が自分のデータを見るだけのシングルテナント運用）。
+- **マルチテナント SaaS 前提（最初から組み込み）**：本アプリは将来の SaaS 販売（月額課金）を見据え、**最初からマルチテナントアーキテクチャ**で構築する。`tenants` テーブル + 全データテーブルの `tenant_id` カラム + RLS（Row Level Security）でテナント間データ分離を強制する。
+  - **MVP 期間中は tenant 1 件（Malbek）を seed で事前作成**し、Meta レビュワーは既存テナントにログインする。レビュワーから見れば普通のシングルテナントアプリと変わらない。
+  - **セルフサインアップ画面と Stripe 課金統合は Phase 2** で実装する。`tenants.plan` / `tenants.stripe_customer_id` カラムは MVP 時点でスキーマに用意するが、MVP は `plan='free'` 固定。
+  - **マルチオペレーター運用 / RBAC は当面実装しない**：1 tenant あたりログインユーザーは 1〜2 名（運営者本人 + 補助）を想定。Supabase Auth の `user_metadata.tenant_id` で 1 user = 1 tenant を表現し、ロール分岐は実装しない。Phase 3 以降で複数オペレーター運用が要求される段階まで保留。
+  - **Page Access Token は DB に AES-256-GCM 暗号化して保存**（テナント増加時に SSM 操作が要らない設計）。マスター鍵は SSM `/fumireply/master-encryption-key`。
 - **独自ドメインでのホスティング**：会社サイト、管理画面、Webhook、公開ページ群はすべて Malbek 所有の独自ドメイン配下（サブドメイン違い可）で配信する。`*.onrender.com` 等のサービスドメイン単独での申請は避ける。
 - **Page Access Token は長期トークンを使用**：審査期間中は短期トークンが失効しないよう、Never-expiring Page Token に変換して保持する。
 - **テストアカウントは 2FA・IP 制限なし**：レビュワーがテストアカウントでログインできるよう、2FA と IP 制限は審査期間中は無効化する。
@@ -219,7 +224,10 @@ Meta レビュワーが申請フォームに記載されたテスト用アカウ
 - PayPal/Wise 請求リンク自動生成
 - 追跡番号自動返信
 - Shopify 在庫・価格連携
-- マルチテナント（RLS、Cognito OAuth プロバイダ連携）
+- セルフサインアップ画面 / 新規テナント作成ウィザード（Phase 2）
+- Stripe による月額課金統合（Phase 2）
+- マルチオペレーター運用 / ロールベースアクセス制御（RBAC）— 1 tenant あたり 1〜2 ユーザー想定で MVP / Phase 2 では実装しない（Phase 3 以降で再検討）
+- 外部 OAuth プロバイダ連携（Meta OAuth Federation 等）— Phase 2 以降
 - リアルタイム更新（WebSocket またはポーリング／審査に必須ではないため手動リロードで代替可）
 - AI 返信の完全自動送信（Human-in-the-Loop は MVP の必須要件）
 - トーン／カスタムプロンプト設定

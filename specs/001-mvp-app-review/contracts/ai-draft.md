@@ -27,24 +27,24 @@ Lambda は SQS Event Source Mapping で起動。Batch Size = 1（並列処理し
 ## 処理フロー
 
 1. SQS event の `Records[0].body` から JSON パースして `messageId` を取得
-2. DB から `messages` 行を取得（`id`, `body`, `message_type`, `conversation_id`）
-   - `message_type !== 'text'` の場合は処理をスキップして成功扱い（ガード、本来は webhook で enqueue されないはずだが防御）
-3. 同一 conversation の直近 N 件（MVP では N=5）の messages を取得（軽量な会話履歴を prompt に含めるため）
-4. SSM から Anthropic API キー取得（メモリキャッシュ、TTL 5 分）
+2. **service role 接続で `messages.tenant_id` を取得**（`SELECT tenant_id FROM messages WHERE id = $1`、RLS バイパス）。見つからなければスキップ成功扱い
+3. **`withTenant(tenant_id, async (tx) => ...)` 内で以下を実行**：
+   - `messages` から `body`, `message_type`, `conversation_id` を取得
+   - `message_type !== 'text'` ならスキップして成功扱い（ガード）
+   - 同一 conversation の直近 N 件（MVP では N=5）の messages を取得（会話履歴を prompt に含めるため）
+4. SSM から Anthropic API キー取得（メモリキャッシュ、TTL 5 分、全テナント共通）
 5. Anthropic API を呼び出し（後述「Anthropic API 呼び出し」節）
-6. 成功時：`ai_drafts` を UPDATE
-   ```sql
-   UPDATE ai_drafts
-   SET status = 'ready',
-       body = $body,
-       model = $model,
-       prompt_tokens = $input_tokens,
-       completion_tokens = $output_tokens,
-       latency_ms = $elapsed_ms,
-       updated_at = NOW()
-   WHERE message_id = $messageId;
-   ```
-7. 失敗時：`ai_drafts` を UPDATE with `status='failed'` + `error`
+6. 成功/失敗のいずれも、引き続き `withTenant(tenant_id, ...)` 内で `ai_drafts` を UPDATE：
+   - 成功時：
+     ```sql
+     UPDATE ai_drafts
+     SET status='ready', body=$body, model=$model,
+         prompt_tokens=$inp, completion_tokens=$out,
+         latency_ms=$ms, updated_at=NOW()
+     WHERE message_id = $messageId;
+     ```
+     （RLS により tenant_id 不一致なら影響行 0、これは異常）
+   - 失敗時：`status='failed'`, `error`, `latency_ms` を UPDATE
 8. SQS メッセージは正常終了で自動 ACK（throw しない）。`status='failed'` も Lambda としては「成功」扱い（DLQ には流さない）
 9. Lambda 自体が throw した場合（SDK バグ、SSM 取得失敗等）は SQS が自動再配信。MaxReceiveCount=3 を超えたら DLQ へ
 

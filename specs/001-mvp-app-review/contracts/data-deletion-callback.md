@@ -120,15 +120,18 @@ psid_hash = SHA-256(salt || psid_raw)
 
 **自動削除の実装タイミング**: MVP では自動 cleanup バッチを実装せず、`docs/operations/audit-runbook.md` に記載した手動 cleanup 手順で運用する。Phase 2 で cron / EventBridge Scheduled Rule ベースの自動削除バッチを追加する（`data-model.md` § `deletion_log` と整合）。
 
-**処理フローの更新**:
+**処理フローの更新（マルチテナント対応）**:
 1. `signed_request` を署名検証
 2. payload から PSID（平文）を抽出
-3. `conversations.customer_psid = <PSID>` の行を検索（**平文のまま検索**、messages / conversations は平文 PSID で保持中）
-4. 該当 conversation.id に紐づく `messages` を DELETE（**`ai_drafts` も CASCADE で連鎖削除される**）
-5. `conversations` を DELETE
-6. `psid_hash = SHA-256(salt || PSID)` を計算
-7. `deletion_log` に INSERT（平文 PSID は**ここで破棄**、ハッシュのみ保存）
-8. `confirmation_code` を Meta に返す
+3. **service role 接続で PSID を持つ全テナントを検索**：`SELECT DISTINCT tenant_id FROM conversations WHERE customer_psid = $PSID`（RLS バイパス）
+4. 該当する各 tenant について **`withTenant(tenant_id, async (tx) => ...)` 内で**：
+   - `conversations` で `customer_psid = <PSID>` の行を検索
+   - 該当 conversation.id に紐づく `messages` を DELETE（`ai_drafts` も CASCADE で連鎖削除）
+   - `conversations` を DELETE
+   - `psid_hash = SHA-256(salt || PSID)` を計算
+   - `deletion_log` に INSERT（平文 PSID は破棄、ハッシュのみ保存。tenant_id も記録）
+5. `confirmation_code`（テナント横断で UNIQUE）を生成し Meta に返す
+6. status エンドポイントは service role で `confirmation_code` 直引き、Deleted 文言のみ返す（テナント情報を露出させない）
 
 **status endpoint のセキュリティ考慮**: 現状通り認証なしで `Deleted` 文言のみを返す。`confirmation_code` が漏洩しても、漏洩先からは PSID は逆引き不可能（UUID ベースでハッシュとの関連もない）。
 

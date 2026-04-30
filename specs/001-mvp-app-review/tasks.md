@@ -6,7 +6,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 
 **Input**: Design documents from `/specs/001-mvp-app-review/`
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/, infrastructure.md
-**Updated**: 2026-04-30 (architecture pivot: Supabase + Anthropic API + AI 下書き Worker、Cognito/RDS/VPC/NAT 廃止)
+**Updated**: 2026-04-30 (architecture pivot: Supabase + Anthropic API + AI 下書き Worker + **マルチテナント SaaS 前提（最初から組み込み）**、Cognito/RDS/VPC/NAT 廃止、Page Access Token は DB 暗号化カラムへ)
 **Scope**: Sprint 1〜6（Meta App Review 提出まで）。Phase 2+（AI 自動分類, Instagram DM, Slack 通知, 顧客/商品管理）は含まない（spec.md §Out of Scope）。
 **Tests**: 含む（spec.md / plan.md / contracts/ のテスト項目が明示的）
 
@@ -32,7 +32,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 
 **Purpose**: TanStack Start の scaffolding、TanStack Intent 導入、CI 稼働、Hello World 1 件通過
 
-- [x] T001 Create `app/` directory and initialize npm project: `cd app && npm init -y`; edit `app/package.json` to set `"name": "fumireply-app"`, `"engines": { "node": ">=22.0.0" }`, and commit the generated `app/package-lock.json` (pnpm/yarn 禁止 per plan.md)
+- [x] T001 Create `app/` directory and initialize npm project: `cd app && npm init -y`; edit `app/package.json` to set `"name": "fumireply-app"`, `"engines": { "node": ">=24.0.0" }`, and commit the generated `app/package-lock.json` (pnpm/yarn 禁止 per plan.md)
 - [x] T002 Install TanStack Start runtime in `app/`: `@tanstack/react-start`, `@tanstack/react-router`, `react`, `react-dom`, `vinxi` (TanStack Start の bundler)
 - [x] T003 [P] Install TanStack Router Vite plugin: `@tanstack/router-plugin` into `app/package.json` devDependencies
 - [x] T004 Create `app/vite.config.ts` wiring `@tanstack/router-plugin/vite` (auto route tree generation) + `@vitejs/plugin-react`
@@ -72,15 +72,15 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 
 ### Terraform modules（各モジュール並行可、VPC/RDS/Cognito モジュールは廃止）
 
-- [ ] T025 [P] Create `terraform/modules/secrets/` — SSM Parameter Store SecureString definitions per `infrastructure.md` §3.1: `/fumireply/review/meta/{page-access-token,webhook-verify-token,app-secret}`、`/fumireply/review/supabase/{url,anon-key,service-role-key,db-url}`、`/fumireply/review/anthropic/api-key`、`/fumireply/review/deletion-log/hash-salt`（値は後から手動投入、Terraform は空 placeholder で `lifecycle.ignore_changes=[value]`）
+- [ ] T025 [P] Create `terraform/modules/secrets/` — SSM Parameter Store SecureString definitions per `infrastructure.md` §3.1: `/fumireply/review/meta/{webhook-verify-token,app-secret}`（**全テナント共通、page-access-token は DB 暗号化カラム化により廃止**）、`/fumireply/review/supabase/{url,anon-key,service-role-key,db-url}`、`/fumireply/review/anthropic/api-key`、`/fumireply/review/deletion-log/hash-salt`、**`/fumireply/master-encryption-key`**（マルチテナント用 AES-256 マスター鍵）。値は後から手動投入、Terraform は空 placeholder で `lifecycle.ignore_changes=[value]`
 - [ ] T026 [P] Create `terraform/modules/queue/` — SQS Standard Queue `fumireply-review-ai-draft-queue`（Visibility Timeout 90 秒、long polling 20 秒）+ DLQ `fumireply-review-ai-draft-dlq`（Retention 14 日）+ Redrive Policy（`maxReceiveCount=3`）per `infrastructure.md` §3.2
-- [ ] T027 [P] Create `terraform/modules/app-lambda/` — TanStack Start SSR Lambda（`nodejs22.x`、Memory 1024MB、Timeout 30 秒、**VPC 外**、Lambda Web Adapter Layer attach）+ IAM Role（SSM Get、CloudWatch Logs、**VPC 関連権限なし**）+ API Gateway HTTP API + `$default` route → Lambda integration、環境変数 `AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap`、`PORT=8080`、`SSM_PATH_PREFIX=/fumireply/review/`
-- [ ] T028 [P] Create `terraform/modules/webhook-lambda/` — Webhook 受信 Lambda（`nodejs22.x`、Memory 512MB、Timeout 10 秒、VPC 外）+ IAM Role（SSM Get、SQS SendMessage 限定 ARN、CloudWatch Logs）+ API Gateway Route `GET/POST /api/webhook` → このLambda integration（`app-lambda` の API Gateway を共有）
-- [ ] T029 [P] Create `terraform/modules/ai-worker-lambda/` — AI Worker Lambda（`nodejs22.x`、Memory 512MB、Timeout 60 秒、VPC 外）+ IAM Role（SSM Get、SQS Receive/Delete、CloudWatch Logs）+ SQS Event Source Mapping（Batch Size 1）+ 環境変数 `ANTHROPIC_MODEL=claude-haiku-4-5-20251001`
-- [ ] T030 [P] Create `terraform/modules/keep-alive-lambda/` — keep-alive Lambda（`nodejs22.x`、Memory 256MB、Timeout 30 秒、VPC 外）+ IAM Role（SSM Get、CloudWatch Logs）+ EventBridge Scheduled Rule `rate(6 days)` + Lambda Permission
+- [ ] T027 [P] Create `terraform/modules/app-lambda/` — TanStack Start SSR Lambda（`nodejs24.x`、Memory 1024MB、Timeout 30 秒、**VPC 外**、Lambda Web Adapter Layer attach）+ IAM Role（SSM Get、CloudWatch Logs、**VPC 関連権限なし**）+ API Gateway HTTP API + `$default` route → Lambda integration、環境変数 `AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap`、`PORT=8080`、`SSM_PATH_PREFIX=/fumireply/review/`
+- [ ] T028 [P] Create `terraform/modules/webhook-lambda/` — Webhook 受信 Lambda（`nodejs24.x`、Memory 512MB、Timeout 10 秒、VPC 外）+ IAM Role（SSM Get、SQS SendMessage 限定 ARN、CloudWatch Logs）+ API Gateway Route `GET/POST /api/webhook` → このLambda integration（`app-lambda` の API Gateway を共有）
+- [ ] T029 [P] Create `terraform/modules/ai-worker-lambda/` — AI Worker Lambda（`nodejs24.x`、Memory 512MB、Timeout 60 秒、VPC 外）+ IAM Role（SSM Get、SQS Receive/Delete、CloudWatch Logs）+ SQS Event Source Mapping（Batch Size 1）+ 環境変数 `ANTHROPIC_MODEL=claude-haiku-4-5-20251001`
+- [ ] T030 [P] Create `terraform/modules/keep-alive-lambda/` — keep-alive Lambda（`nodejs24.x`、Memory 256MB、Timeout 30 秒、VPC 外）+ IAM Role（SSM Get、CloudWatch Logs、SNS Publish）+ EventBridge Scheduled Rule **`rate(1 day)`** + Lambda Permission + Retry Policy（`maximum_retry_attempts=2`、`maximum_event_age_in_seconds=3600`）+ `dead_letter_config` を SNS Topic に設定 + `OnFailure` Destination を SNS Topic に設定 per `infrastructure.md` §3.6
 - [ ] T031 [P] Create `terraform/modules/static-site/` — S3 bucket（private、OAC）+ CloudFront distribution with 2 origins（S3 / API Gateway）+ path pattern routing per `infrastructure.md` §3.7: `/api/*`、`/_serverFn/*`、`/inbox*`、`/threads/*` → **API Gateway**；それ以外（`/`、`/login`、`/privacy`、`/terms`、`/data-deletion`、`/data-deletion-status/*`、`/_build/*`、`/assets/*`）→ **S3** + ACM certificate (us-east-1) + Route53 A record
 - [ ] T032 [P] Create `terraform/modules/github-actions-oidc/` — IAM OIDC provider for GitHub + role for `terraform plan/apply` および 4 Lambda の update-function-code、S3 sync、CloudFront invalidation
-- [ ] T033 [P] Create `terraform/modules/observability/` — CloudWatch alarms per `infrastructure.md` §3.8: app-lambda Error > 1%、webhook-lambda Error > 0.5%、ai-worker DLQ ApproximateMessageVisible > 0、ai-worker Duration p95 > 30s、keep-alive 失敗 + SNS topic + email subscription
+- [ ] T033 [P] Create `terraform/modules/observability/` — CloudWatch alarms per `infrastructure.md` §3.8: app-lambda Error > 1%、webhook-lambda Error > 0.5%、ai-worker DLQ ApproximateMessageVisible > 0、ai-worker Duration p95 > 30s、**keep-alive Errors >= 1（即時、DataPointsToAlarm=1）**、**keep-alive Invocations < 1 in 36h** + SNS topic + email subscription
 - [ ] T034 Create `terraform/envs/review/{main.tf,variables.tf,providers.tf,backend.tf}` — wire all modules (secrets, queue, app-lambda, webhook-lambda, ai-worker-lambda, keep-alive-lambda, static-site, github-actions-oidc, observability); `backend.tf` は bootstrap の S3 backend を参照
 - [ ] T035 Bootstrap state backend: `cd terraform/bootstrap && terraform init && terraform apply`（local state、一度だけ）— 既に T019/T020 で完了済みなら確認のみ
 - [ ] T036 **SSM 値投入** per `quickstart.md` §2.6: 上記の SSM Parameter（Meta、Supabase、Anthropic、deletion salt）を CLI で実値投入
@@ -89,30 +89,34 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 ### Database schema (Supabase 接続)
 
 - [ ] T038 [P] Install DB deps in `app/`: `drizzle-orm`, `postgres`, `drizzle-kit`, `zod`, `@supabase/supabase-js`
-- [ ] T039 Create `app/src/server/db/schema.ts` — 5 entities per `data-model.md`: `connectedPages`, `conversations`, `messages` (with `sent_by_auth_uid uuid`), **`aiDrafts` (新規、status/body/model/tokens/latency)**, `deletionLog`; include all indexes
-- [ ] T040 [P] Create `app/src/server/db/client.ts` — `postgres()` connection pool (`prepare: false` for Supabase Transaction Pooler), `drizzle(sql)` exported as `db`
+- [ ] T039 Create `app/src/server/db/schema.ts` — **6 entities** per `data-model.md`: **`tenants`（id/slug/name/plan/stripe_customer_id/status）**、`connectedPages` (with **`tenant_id`**, **`page_access_token_encrypted bytea`**), `conversations` (with `tenant_id`), `messages` (with `tenant_id`, `sent_by_auth_uid`), `aiDrafts` (with `tenant_id`), `deletionLog` (with `tenant_id`); include all indexes（tenant_id を含む複合 index）
+- [ ] T040 [P] Create `app/src/server/db/client.ts` — `postgres()` connection pool (`prepare: false` for Supabase Transaction Pooler) — **anon role 用と service role 用の 2 系統 export**: `db`（通常クエリ、RLS 有効）、`dbAdmin`（service role、migration / webhook の page_id→tenant_id 解決等の system 操作専用）。後者は使用箇所をレビューで監査する
 - [ ] T041 [P] Create `app/drizzle.config.ts` — `schema: "./src/server/db/schema.ts"`, `out: "./src/server/db/migrations"`, `dialect: "postgresql"`, `dbCredentials: { url: process.env.DATABASE_URL }`
-- [ ] T042 Run `npx drizzle-kit generate` to produce `app/src/server/db/migrations/0001_init.sql`; PR レビューで SQL 目視確認（5 テーブル + indexes）
-- [ ] T043 [P] Create `app/src/server/db/seed/review.ts` + `npm run db:seed:review` — seed `connectedPages` with Meta テスト FB ページ placeholder
+- [ ] T042 Run `npx drizzle-kit generate` to produce `app/src/server/db/migrations/0001_init.sql`; PR レビューで SQL 目視確認（**6 テーブル + indexes**）。**RLS ポリシー（tenants 以外の 5 テーブルに `tenant_isolation` ポリシー）を別ファイル `0002_rls.sql` で追加**：`ENABLE ROW LEVEL SECURITY` + `CREATE POLICY tenant_isolation ... USING (tenant_id = current_setting('app.tenant_id', true)::uuid) WITH CHECK (...)`
+- [ ] T043 [P] Create `app/src/server/db/seed/review.ts` + `npm run db:seed:review` per `quickstart.md` §3.1 — `tenants` に Malbek 行を INSERT (`slug='malbek'`, `plan='free'`, `status='active'`) → SSM master key 取得 → `META_PAGE_ACCESS_TOKEN` env を AES-256-GCM で暗号化 → `connectedPages` を INSERT (`tenant_id`, `page_id`, `page_name`, `page_access_token_encrypted`)
 - [ ] T044 Apply migration to Supabase: `DATABASE_URL=$(aws ssm get-parameter ...) npx drizzle-kit migrate`; seed を実行して `connectedPages` 1 行が存在することを確認
 
 ### Core shared services（auth / token / messenger / supabase）
 
 - [ ] T045 [P] Create `app/src/server/env.ts` — zod schema validating required env vars (`DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `META_APP_SECRET_SSM_KEY`, `META_PAGE_TOKEN_SSM_KEY`, `WEBHOOK_VERIFY_TOKEN_SSM_KEY`, `ANTHROPIC_API_KEY_SSM_KEY`, `AWS_REGION`)
-- [ ] T046 [P] Create `app/src/server/services/token.ts` — `getPageAccessToken()` using `@aws-sdk/client-ssm` `GetParameter` with `WithDecryption: true`; module-level 5 分 in-memory cache。同様に Anthropic API キー、Supabase URL/keys 用 getter も追加
-- [ ] T047 [P] Create `app/src/server/services/token.test.ts` — mock SSM client: cache hit/miss、decryption
-- [ ] T048 [P] Create `app/src/server/services/messenger.ts` — `sendMessengerReply({ recipientPsid, messageText })`: global `fetch`、`AbortSignal.timeout(5000)`、指数バックオフ (3 回, base 500ms) per `contracts/meta-send-api.md`; 返却型 `{ ok: true, messageId } | { ok: false, error: 'token_expired' | 'outside_window' | ... }`
+- [ ] T046 [P] Create `app/src/server/services/ssm.ts` — generic `getSsmParameter(name, ttl=300)` using `@aws-sdk/client-ssm` `GetParameter` with `WithDecryption: true`; module-level in-memory cache。共通 SSM 取得ヘルパ。Meta App Secret、Anthropic API キー、Supabase URL/keys、master encryption key、deletion-log salt 等で共通利用
+- [ ] T047 [P] Create `app/src/server/services/ssm.test.ts` — mock SSM client: cache hit/miss、decryption、TTL 切れ
+- [ ] T047a [P] Create `app/src/server/services/crypto.ts` — `encryptToken(plaintext, masterKey) → Buffer` + `decryptToken(blob, masterKey) → string` (AES-256-GCM、形式 `iv(12B)||tag(16B)||ciphertext`) per `data-model.md`「Page Access Token の暗号化」節 + `getMasterKey()` でマスター鍵を SSM から取得しキャッシュ + `getPageAccessTokenForTenant(tenantId)` (RLS 有効なクエリで `connected_pages.page_access_token_encrypted` を取得 → 復号)
+- [ ] T047b [P] Create `app/src/server/services/crypto.test.ts` — encrypt → decrypt round-trip、改竄された blob で auth tag 検証失敗、マスター鍵キャッシュ動作
+- [ ] T047c [P] Create `app/src/server/db/with-tenant.ts` — `withTenant<T>(tenantId, fn)` トランザクションヘルパ per `data-model.md` 「Drizzle との統合」: `db.transaction(async tx => { await tx.execute(sql\`SET LOCAL app.tenant_id = ${tenantId}::text\`); return fn(tx); })`
+- [ ] T047d [P] Create `app/src/server/db/with-tenant.test.ts` — integration: 別 tenant の行が SELECT で見えないこと、INSERT で `tenant_id` が WITH CHECK で強制されること、`SET LOCAL` 未設定の素のクエリで 0 行返ること
+- [ ] T048 [P] Create `app/src/server/services/messenger.ts` — `sendMessengerReply({ pageAccessToken, recipientPsid, messageText })`: global `fetch`、`AbortSignal.timeout(5000)`、指数バックオフ (3 回, base 500ms) per `contracts/meta-send-api.md`; 返却型 `{ ok: true, messageId } | { ok: false, error: 'token_expired' | 'outside_window' | ... }`。**トークンは引数で受け取り**（呼び出し側が tenant ごとに復号した値を渡す）
 - [ ] T049 [P] Create `app/src/server/services/messenger.test.ts` — MSW で Meta Send API モック
 - [ ] T050 [P] Create `app/src/server/services/auth.ts` — `createClient(SUPABASE_URL, SUPABASE_ANON_KEY)` singleton + helper `verifyAccessToken(token)` (内部で `supabase.auth.getUser`) + `refreshSession(refreshToken)` (内部で `supabase.auth.refreshSession`)
 - [ ] T051 [P] Create `app/src/server/services/auth.test.ts` — Supabase Auth API を MSW でモック: getUser 成功、access_token 期限切れ → refresh 成功 / 失敗分岐
-- [ ] T052 Create `app/src/server/middleware/auth-middleware.ts` — serverFn middleware per `contracts/admin-api.md`: read `sb-access-token` cookie → `verifyAccessToken` → on fail call `refreshSession` and reset cookies → on refresh fail redirect `/login?returnTo=...`; expose `{ user: { id, email, role } }`
+- [ ] T052 Create `app/src/server/middleware/auth-middleware.ts` — serverFn middleware per `contracts/admin-api.md` 「認証 + テナント解決ミドルウェア」: read `sb-access-token` cookie → `verifyAccessToken` → tenant_id 抽出 → **`tenants WHERE id = $tenant_id AND status = 'active'` で確認**（service role 接続、見つからなければ `/login?error=tenant_suspended` リダイレクト）→ on auth fail call `refreshSession` and reset cookies → on refresh fail redirect `/login?returnTo=...`; expose `{ user: { id, email, tenantId, role } }`
 - [ ] T053 [P] Create `app/src/server/services/anthropic.ts` — Anthropic API 呼び出しヘルパ（実体は ai-worker から import するためエクスポート用）。`generateDraft({ history, latestMessageBody })` returns `{ ok: true, body, model, inputTokens, outputTokens, latencyMs } | { ok: false, error }` per `contracts/ai-draft.md`; `@anthropic-ai/sdk` 使用、prompt caching 有効、retry/backoff 実装
 
 ### Supabase Auth テストユーザー作成
 
 - [ ] T054 Run Supabase Admin API user creation per `quickstart.md` §3.1 — `operator@malbek.co.jp` and `reviewer@malbek.co.jp` を作成、パスワードを SSM `/fumireply/review/supabase/{operator,reviewer}-password` に保管
 
-**Checkpoint Phase 2 終了**: Terraform apply 成功（4 Lambda + SQS + S3/CloudFront）、Supabase プロジェクト + 初期ユーザー、DB マイグレーション済み（5 テーブル）、全共通 service のユニットテスト通過
+**Checkpoint Phase 2 終了**: Terraform apply 成功（4 Lambda + SQS + S3/CloudFront）、Supabase プロジェクト + 初期 tenant (Malbek) + 初期ユーザー（`user_metadata.tenant_id` 設定済み）、DB マイグレーション済み（**6 テーブル + RLS ポリシー**）、`withTenant` ヘルパ + `crypto.encrypt/decrypt` ヘルパが integration test で実証、Page Access Token が DB に暗号化保存済み、全共通 service のユニットテスト通過
 
 ---
 
@@ -124,13 +128,13 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 
 ### Webhook 受信 Lambda（FR-001〜004, FR-017、FR-022〜FR-024 の起動）
 
-- [ ] T055 [P] [US1] Create `webhook/package.json` — minimal deps: `@aws-sdk/client-sqs`, `@aws-sdk/client-ssm`, `postgres`, `drizzle-orm`, `zod`; engines node 22
+- [ ] T055 [P] [US1] Create `webhook/package.json` — minimal deps: `@aws-sdk/client-sqs`, `@aws-sdk/client-ssm`, `postgres`, `drizzle-orm`, `zod`; engines node 24
 - [ ] T056 [P] [US1] Create `webhook/tsconfig.json` + `webhook/vitest.config.ts`
 - [ ] T057 [P] [US1] Create `webhook/src/signature.ts` — HMAC-SHA256 verification, `crypto.timingSafeEqual`
 - [ ] T058 [P] [US1] Create `webhook/src/signature.test.ts` — valid / invalid / missing header / wrong prefix
 - [ ] T059 [US1] Create `webhook/src/handler.ts` — API Gateway HTTP API event 直接ハンドラ per `contracts/meta-webhook.md`:
   - GET: `hub.mode=subscribe` → verify_token を SSM から取得して比較 → `hub.challenge` エコー
-  - POST: signature verify → zod payload validation → トランザクションで `conversations` upsert + `messages` INSERT (`ON CONFLICT (meta_message_id) DO NOTHING RETURNING id`) + `message_type='text'` の場合のみ `ai_drafts` INSERT (`status='pending'`, `ON CONFLICT (message_id) DO NOTHING`) → 新規挿入時のみ SQS `SendMessage({ messageId })` → 200
+  - POST: signature verify → zod payload validation → **service role 接続で `connected_pages WHERE page_id = entry[].id AND is_active=true` から `tenant_id` 解決**（見つからなければ 200 + `unknown_page` ログ）→ **`withTenant(tenant_id, async tx => ...)` 内で** `conversations` upsert + `messages` INSERT (`tenant_id`, `ON CONFLICT (meta_message_id) DO NOTHING RETURNING id`) + `message_type='text'` の場合のみ `ai_drafts` INSERT (`tenant_id`, `status='pending'`, `ON CONFLICT (message_id) DO NOTHING`) → 新規挿入時のみ SQS `SendMessage({ messageId })`（tenant_id は載せない、Worker 側で再解決）→ 200
 - [ ] T060 [P] [US1] Create `webhook/src/handler.test.ts` — integration: 実 Meta ペイロードで POST → signature 検証 → DB INSERT 確認 → SQS enqueue 確認（aws-sdk-client-mock）; sticker → ai_drafts 作らず SQS enqueue されない; 重複 mid → 1 件のみ
 - [ ] T061 [US1] Update `terraform/modules/webhook-lambda/` — Lambda の zip 成果物が `webhook/dist/` を指すようデプロイパイプラインで参照、API Gateway integration が `/api/webhook` を確実にルーティング（`/api/*` のうち `/api/webhook` のみこの Lambda、それ以外は app-lambda という設定）
 
@@ -165,21 +169,22 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T072 [P] [US2] Create `ai-worker/package.json` — minimal deps: `@anthropic-ai/sdk`, `@aws-sdk/client-ssm`, `postgres`, `drizzle-orm`, `zod`
 - [ ] T073 [P] [US2] Create `ai-worker/tsconfig.json` + `ai-worker/vitest.config.ts`
 - [ ] T074 [P] [US2] Create `ai-worker/src/prompt.ts` — system prompt 定数（TCG retailer customer support）+ `buildUserPrompt({ history, latestBody })` per `contracts/ai-draft.md`
-- [ ] T075 [US2] Create `ai-worker/src/handler.ts` — SQS event handler:
+- [ ] T075 [US2] Create `ai-worker/src/handler.ts` — SQS event handler per `contracts/ai-draft.md`:
   - parse `Records[0].body` → `messageId`
-  - DB から `messages` + 直近 5 件の同 conversation を取得
+  - **service role 接続で `messages.tenant_id` 解決**（見つからなければスキップ成功）
+  - **`withTenant(tenant_id, async tx => ...)` 内で** `messages` + 直近 5 件の同 conversation を取得
   - `message_type !== 'text'` ならスキップ成功
-  - SSM から Anthropic API キー取得（メモリキャッシュ）
+  - SSM から Anthropic API キー取得（メモリキャッシュ、全テナント共通）
   - Anthropic API（Claude Haiku 4.5）を `@anthropic-ai/sdk` で呼ぶ、prompt caching 有効、3 回リトライ指数バックオフ
-  - 成功時 `ai_drafts` UPDATE (`status='ready'`, `body`, `model`, tokens, `latency_ms`)
-  - 失敗時 `ai_drafts` UPDATE (`status='failed'`, `error`); SQS は ACK（throw しない）
+  - 成功時 `withTenant` 内で `ai_drafts` UPDATE (`status='ready'`, `body`, `model`, tokens, `latency_ms`)
+  - 失敗時 `withTenant` 内で `ai_drafts` UPDATE (`status='failed'`, `error`); SQS は ACK（throw しない）
   - SDK 例外時のみ throw → SQS が再配信
 - [ ] T076 [P] [US2] Create `ai-worker/src/handler.test.ts` — integration: Anthropic API を MSW モック → ai_drafts UPDATE 成功 / 401 失敗 / 429 リトライ / 5xx リトライ / sticker スキップ / 直近会話履歴の prompt 組み立て確認
 
 ### Thread 表示 + AI 下書き UI（FR-022〜FR-024、FR-005）
 
 - [ ] T077 [US2] Create `app/src/routes/(app)/threads/$id/-lib/get-conversation.fn.ts` — `getConversationFn` per `contracts/admin-api.md`: auth → `conversations` + `messages` (時系列) LEFT JOIN `ai_drafts`、最新 inbound に紐づく ready draft を `latest_draft` として返却 → `UPDATE conversations SET unread_count = 0`
-- [ ] T078 [US2] Create `app/src/routes/(app)/threads/$id/-lib/send-reply.fn.ts` — `sendReplyFn`: auth → 24h window check → INSERT `messages` (`send_status='pending'`, `sent_by_auth_uid=user.id`) → `sendMessengerReply` (T048) → UPDATE 結果 per `contracts/admin-api.md`; 5 秒以内に決着
+- [ ] T078 [US2] Create `app/src/routes/(app)/threads/$id/-lib/send-reply.fn.ts` — `sendReplyFn` per `contracts/admin-api.md`: auth → tenantId 取得 → **`withTenant(tenantId, async tx => ...)` 内で**：24h window check → `connected_pages.page_access_token_encrypted` を取得 → `crypto.decryptToken` で復号 → INSERT `messages` (`tenant_id`, `send_status='pending'`, `sent_by_auth_uid=user.id`) → `sendMessengerReply({ pageAccessToken, ... })` → UPDATE 結果; 5 秒以内に決着
 - [ ] T079 [P] [US2] Create `app/src/routes/(app)/threads/$id/-lib/send-reply.fn.test.ts` — integration with MSW Send API mock: 成功、outside_window、token_expired、meta_error
 - [ ] T080 [P] [US2] Create `app/src/routes/(app)/threads/$id/-lib/get-draft-status.fn.ts` — `getDraftStatusFn`: `ai_drafts` を `message_id` で検索、`{ status, body }` 返却（ポーリング用）
 - [ ] T081 [P] [US2] Create `app/src/routes/(app)/threads/$id/-components/ThreadMessages.tsx` — 時系列メッセージ表示、direction で左右、`send_status` でアイコン、`ai_draft.status='ready'` の inbound には「AI suggested:」のサブテキスト表示（任意のヒント、操作には影響しない）
@@ -254,7 +259,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 
 **Purpose**: 審査提出直前の仕上げ。CloudWatch / deploy pipeline / ドキュメント / 最終リハーサル。
 
-- [ ] T111 [P] Create `keep-alive/package.json` + `keep-alive/src/handler.ts` + `keep-alive/src/handler.test.ts` — Supabase Pooler に SELECT 1 を発行する最小 Lambda (FR-027)
+- [ ] T111 [P] Create `keep-alive/package.json` + `keep-alive/src/handler.ts` + `keep-alive/src/handler.test.ts` — Supabase Pooler に SELECT 1 を発行する Lambda (FR-027)。**指数バックオフ 3 回リトライ（500ms / 1.5s / 4.5s）**、3 回失敗時は SNS Publish で即時通知 + 構造化ログ `keepalive_critical` 出力 + throw（EventBridge 自動リトライへ）。テストは MSW 不要（postgres クライアントを mock）、リトライ動作・SNS Publish・throw 動作を unit テスト
 - [ ] T112 [P] Create `docs/operations/audit-runbook.md` — 審査期間中の監視手順: Supabase keep-alive 確認、ai-worker DLQ 対応、CloudWatch アラーム対応、deletion_log の 3 年超過分の手動 cleanup SQL、Page Access Token 延命手順、Supabase reviewer 無効化/有効化手順
 - [ ] T113 [P] Enable CloudWatch alarms in `terraform/envs/review/main.tf` — `terraform apply`
 - [ ] T114 [P] Create `.github/workflows/terraform-apply.yml` — on merge to main, paths `terraform/**`: manual approval gate → `terraform apply` via OIDC role
@@ -264,7 +269,8 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T118 [P] **Verify FR-017 Webhook 20-second SLA** via CloudWatch Logs Insights 直近 48 時間: webhook-lambda の duration p95 < 2000ms / p99 < 5000ms / max < 20000ms。違反時は Phase 2 で Provisioned Concurrency 検討
 - [ ] T119 [P] **Verify SC-002 login → inbox p95 < 10 seconds**: reviewer で 5 回ログイン測定、p95 を `audit-runbook.md` に記録
 - [ ] T120 [P] **Verify SC-008 AI 下書き p95 < 60 seconds**: 10 件のテストメッセージで「webhook 受信 → ai_drafts.status='ready'」までのレイテンシを CloudWatch Logs / DB タイムスタンプ差分で測定、p95 を `audit-runbook.md` に記録
-- [ ] T121 [P] **Verify FR-027 Supabase keep-alive**: EventBridge Rule + keep-alive Lambda の最終成功を CloudWatch Metrics で確認、6 日以内に必ず 1 回 invocation されている
+- [ ] T121 [P] **Verify FR-027 Supabase keep-alive**: EventBridge Rule + keep-alive Lambda の Invocations を CloudWatch Metrics で確認、**過去 24 時間に 1 回 + 過去 7 日で 7 回**の起動実績を確認。失敗注入テスト（postgres URL を一時的に壊す）→ 内部リトライ → SNS 通知到達まで End-to-End 検証
+- [ ] T121a [P] **Verify RLS テナント分離**：staging で 2 つ目の tenant（`acme`）を一時的に作成 → Malbek の reviewer JWT で acme の messages を SELECT しても 0 行が返ること、`SET LOCAL app.tenant_id = '<acme-uuid>'` を Malbek 接続でセットしても他テナントの page_access_token を decrypt できないこと、を integration / E2E で確認 → 確認後 acme tenant を削除
 - [ ] T122 Verify 公開 4 URL: `curl -I https://<domain>/`, `/privacy`, `/terms`, `/data-deletion`, `/data-deletion-status/test` がすべて HTTPS + 200 (SC-006)
 - [ ] T123 Verify 24/7 稼働 (48 時間連続観測): CloudWatch で 4 Lambda + Supabase keep-alive にエラーなく稼働 (FR-016, SC-005)
 - [ ] T124 Update `specs/001-mvp-app-review/quickstart.md` §6「審査提出前チェックリスト」 — 全項目をチェック済みに更新
@@ -374,5 +380,7 @@ T099 + T100: -lib 内で別ファイル、並行可
 - 全タスクはコロケーション構造 (`routes/<path>/index.tsx` + `-components/` + `-lib/`) と TanStack 公式テストガイドの `src/test/routes/` ミラー配置に従う。Webhook / AI Worker / keep-alive Lambda は独立ディレクトリ（`webhook/src/`、`ai-worker/src/`、`keep-alive/src/`）でコロケーションテスト。
 - **axios 禁止**：全外部 HTTP は `fetch`（CLAUDE.md 記載の memory 準拠）。Anthropic SDK は内部で fetch を使うため OK。
 - **VPC/NAT/RDS/Cognito 廃止**：これらモジュールは Phase 2 のタスクから外した。旧 tasks.md の T023（networking）、T024（database）、T025（auth=Cognito）は削除済み
+- **マルチテナント前提**：全 DB アクセスは `withTenant(tenantId, fn)` で囲む。RLS が DB レイヤで防衛、middleware が JWT から tenant_id を抽出。Page Access Token は `connected_pages.page_access_token_encrypted` (AES-256-GCM)。service role は migration / webhook の page_id→tenant_id 解決等の system 操作専用、PR レビューで service role 使用箇所を必ず監査
+- **Phase 2（審査通過後）の主要拡張**：セルフサインアップ + Stripe 課金（`/signup` 画面、tenant 作成 fn、Stripe Webhook Lambda、プラン管理）。これは MVP には含まないが、本 tasks.md の DB スキーマと middleware は最初から対応している
 - Phase 2+ 機能（AI 自動分類, Slack, Instagram, 顧客/商品管理）は本 tasks.md の範囲外。審査通過後に別 feature branch で追加。
 - 各タスク完了後に commit 推奨。
