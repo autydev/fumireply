@@ -1,6 +1,16 @@
 import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm'
 
-const client = new SSMClient({ region: process.env.AWS_REGION ?? 'ap-northeast-1' })
+let client: SSMClient | null = null
+
+function getClient(): SSMClient {
+  if (client) return client
+  const region = process.env.AWS_REGION
+  if (!region) {
+    throw new Error('AWS_REGION is required')
+  }
+  client = new SSMClient({ region })
+  return client
+}
 
 interface CacheEntry {
   value: string
@@ -17,7 +27,7 @@ export async function getSsmParameter(name: string, ttl = 300): Promise<string> 
   }
 
   const command = new GetParameterCommand({ Name: name, WithDecryption: true })
-  const response = await client.send(command)
+  const response = await getClient().send(command)
   const value = response.Parameter?.Value
   if (value === undefined) {
     throw new Error(`SSM parameter not found: ${name}`)

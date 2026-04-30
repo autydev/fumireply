@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+process.env.AWS_REGION ??= 'ap-northeast-1'
+
 const mockSend = vi.fn()
 
 vi.mock('@aws-sdk/client-ssm', () => {
@@ -47,17 +49,30 @@ describe('getSsmParameter', () => {
   })
 
   it('fetches again after TTL expiry', async () => {
-    mockSend
-      .mockResolvedValueOnce({ Parameter: { Value: 'old-value' } })
-      .mockResolvedValueOnce({ Parameter: { Value: 'new-value' } })
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'))
 
-    await getSsmParameter('/fumireply/test/key', 0)
-    // TTL=0 means immediately expired (expiresAt = now + 0)
-    // We need to advance time slightly; instead just clear cache
-    clearSsmCache()
-    const result = await getSsmParameter('/fumireply/test/key', 0)
-    expect(result).toBe('new-value')
-    expect(mockSend).toHaveBeenCalledTimes(2)
+      mockSend
+        .mockResolvedValueOnce({ Parameter: { Value: 'old-value' } })
+        .mockResolvedValueOnce({ Parameter: { Value: 'new-value' } })
+
+      const first = await getSsmParameter('/fumireply/test/key', 1)
+      expect(first).toBe('old-value')
+      expect(mockSend).toHaveBeenCalledTimes(1)
+
+      vi.setSystemTime(new Date('2024-01-01T00:00:00.500Z'))
+      const cached = await getSsmParameter('/fumireply/test/key', 1)
+      expect(cached).toBe('old-value')
+      expect(mockSend).toHaveBeenCalledTimes(1)
+
+      vi.setSystemTime(new Date('2024-01-01T00:00:01.001Z'))
+      const result = await getSsmParameter('/fumireply/test/key', 1)
+      expect(result).toBe('new-value')
+      expect(mockSend).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('throws when parameter not found', async () => {

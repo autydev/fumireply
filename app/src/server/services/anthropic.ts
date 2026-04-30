@@ -4,6 +4,7 @@ import { getSsmParameter } from './ssm'
 const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001'
 const MAX_TOKENS = 300
 const MAX_RETRIES = 3
+const REQUEST_TIMEOUT_MS = 30_000
 
 const SYSTEM_PROMPT = `You are a helpful customer support assistant for a TCG (trading card game) retailer.
 The customer is messaging on Facebook Messenger asking about products.
@@ -36,14 +37,21 @@ type DraftResult =
     }
   | { ok: false; error: string }
 
-let anthropicClient: Anthropic | null = null
+const anthropicClients = new Map<string, Promise<Anthropic>>()
 
 async function getAnthropicClient(apiKeySsmKey: string): Promise<Anthropic> {
-  if (!anthropicClient) {
-    const apiKey = await getSsmParameter(apiKeySsmKey)
-    anthropicClient = new Anthropic({ apiKey })
-  }
-  return anthropicClient
+  const cached = anthropicClients.get(apiKeySsmKey)
+  if (cached) return cached
+
+  const clientPromise = getSsmParameter(apiKeySsmKey)
+    .then((apiKey) => new Anthropic({ apiKey, timeout: REQUEST_TIMEOUT_MS, maxRetries: 0 }))
+    .catch((err) => {
+      anthropicClients.delete(apiKeySsmKey)
+      throw err
+    })
+
+  anthropicClients.set(apiKeySsmKey, clientPromise)
+  return clientPromise
 }
 
 function buildUserPrompt(history: MessageHistoryItem[], latestMessageBody: string): string {

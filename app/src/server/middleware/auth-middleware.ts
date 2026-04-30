@@ -49,7 +49,7 @@ export const authMiddleware = createMiddleware({ type: 'function' }).server(
       user = refreshed.user
     }
 
-    const tenantId = (user.user_metadata?.tenant_id as string | undefined) ?? ''
+    const tenantId = (user.app_metadata?.tenant_id as string | undefined) ?? ''
     if (!tenantId) {
       throw redirect({ to: '/login?error=no_tenant' })
     }
@@ -65,7 +65,7 @@ export const authMiddleware = createMiddleware({ type: 'function' }).server(
       throw redirect({ to: '/login?error=tenant_suspended' })
     }
 
-    const rawRole = user.user_metadata?.role as string | undefined
+    const rawRole = user.app_metadata?.role as string | undefined
     const role: AuthUser['role'] =
       rawRole === 'operator' || rawRole === 'reviewer' ? rawRole : null
 
