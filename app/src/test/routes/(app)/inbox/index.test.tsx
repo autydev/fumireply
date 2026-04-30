@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
+import { renderRoute } from '~/test/file-route-utils'
 import type { ConversationSummary } from '~/routes/(app)/inbox/-lib/list-conversations.fn'
 
 // Mock listConversationsFn — server functions are not invocable in jsdom
@@ -37,14 +38,17 @@ describe('InboxList', () => {
       }),
     ]
 
-    render(<InboxList conversations={conversations} />)
+    // renderRoute provides the router context required by TanStack Router's Link component
+    renderRoute({ path: '/inbox', component: () => <InboxList conversations={conversations} />, initialEntries: ['/inbox'] })
 
-    const items = screen.getAllByRole('listitem')
-    expect(items).toHaveLength(3)
-    // Verify render order matches given order (server-ordered latest first)
-    expect(items[0]).toHaveTextContent('Charlie')
-    expect(items[1]).toHaveTextContent('Alice')
-    expect(items[2]).toHaveTextContent('psid-2') // PSID fallback when customer_name is null
+    await waitFor(() => {
+      const items = screen.getAllByRole('listitem')
+      expect(items).toHaveLength(3)
+      // Verify render order matches given order (server-ordered latest first)
+      expect(items[0]).toHaveTextContent('Charlie')
+      expect(items[1]).toHaveTextContent('Alice')
+      expect(items[2]).toHaveTextContent('psid-2') // PSID fallback when customer_name is null
+    })
   })
 
   it('shows unread badge for conversations with unread_count > 0', async () => {
@@ -60,43 +64,50 @@ describe('InboxList', () => {
       }),
     ]
 
-    render(<InboxList conversations={conversations} />)
+    renderRoute({ path: '/inbox', component: () => <InboxList conversations={conversations} />, initialEntries: ['/inbox'] })
 
-    // Alice has 5 unread messages — badge must be visible
-    expect(screen.getByText('5')).toBeInTheDocument()
-    // Bob has 0 unread — no badge rendered
-    const items = screen.getAllByRole('listitem')
-    expect(items[1]).not.toHaveTextContent('0')
+    await waitFor(() => {
+      // Alice has 5 unread messages — badge must be visible
+      expect(screen.getByText('5')).toBeInTheDocument()
+      // Bob has 0 unread — no badge rendered
+      const items = screen.getAllByRole('listitem')
+      expect(items[1]).not.toHaveTextContent('0')
+    })
   })
 
   it('falls back to customer_psid when customer_name is null', async () => {
     const { InboxList } = await import('~/routes/(app)/inbox/-components/InboxList')
 
-    render(
-      <InboxList
-        conversations={[makeConv({ customer_name: null, customer_psid: 'psid-fallback-xyz' })]}
-      />,
-    )
+    renderRoute({
+      path: '/inbox',
+      component: () => <InboxList conversations={[makeConv({ customer_name: null, customer_psid: 'psid-fallback-xyz' })]} />,
+      initialEntries: ['/inbox'],
+    })
 
-    expect(screen.getByText('psid-fallback-xyz')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('psid-fallback-xyz')).toBeInTheDocument()
+    })
   })
 
   it('shows empty state when no conversations', async () => {
     const { InboxList } = await import('~/routes/(app)/inbox/-components/InboxList')
 
-    render(<InboxList conversations={[]} />)
+    renderRoute({ path: '/inbox', component: () => <InboxList conversations={[]} />, initialEntries: ['/inbox'] })
 
-    expect(screen.getByText('メッセージはありません')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('メッセージはありません')).toBeInTheDocument()
+    })
   })
 })
 
-describe('listConversationsFn redirect behavior', () => {
-  it('propagates redirect when authMiddleware rejects (unauthenticated)', async () => {
+describe('listConversationsFn error propagation', () => {
+  it('propagates errors thrown by the serverFn to its caller (e.g. route loader)', async () => {
+    // This test verifies that errors (including redirect errors thrown by authMiddleware)
+    // are not swallowed — the caller receives them. The route loader then propagates
+    // the redirect to TanStack Router which navigates to /login.
     const { listConversationsFn } = await import(
       '~/routes/(app)/inbox/-lib/list-conversations.fn'
     )
-    // authMiddleware throws a redirect when no session cookie is present.
-    // The route loader propagates this error → TanStack Router navigates to /login.
     const redirectError = Object.assign(new Error('redirect'), { to: '/login', _isRedirect: true })
     vi.mocked(listConversationsFn).mockRejectedValueOnce(redirectError)
 

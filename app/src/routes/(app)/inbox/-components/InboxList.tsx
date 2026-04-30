@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import type { ConversationSummary } from '../-lib/list-conversations.fn'
 
 export function InboxList({ conversations }: { conversations: ConversationSummary[] }) {
@@ -9,7 +10,8 @@ export function InboxList({ conversations }: { conversations: ConversationSummar
     <ul>
       {conversations.map((conv) => (
         <li key={conv.id}>
-          <a href={`/threads/${conv.id}`}>
+          {/* threads/$id route is implemented in U4.2; Link navigates via TanStack Router (SPA, no full reload) */}
+          <Link to={`/threads/${conv.id}` as string}>
             <span className="customer-name">{conv.customer_name ?? conv.customer_psid}</span>
             {conv.unread_count > 0 && (
               <span className="unread-badge" aria-label={`${conv.unread_count} 件の未読`}>
@@ -20,7 +22,7 @@ export function InboxList({ conversations }: { conversations: ConversationSummar
             <span className="window-status">
               {conv.within_24h_window ? '24h窓内' : '24h窓外'}
             </span>
-          </a>
+          </Link>
         </li>
       ))}
     </ul>
