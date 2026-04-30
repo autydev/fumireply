@@ -19,6 +19,11 @@ terraform {
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
+locals {
+  ssm_path_clean = trim(var.ssm_path_prefix, "/")
+  ssm_arn_prefix = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${local.ssm_path_clean}"
+}
+
 ###############################################################################
 # IAM role
 ###############################################################################
@@ -44,7 +49,7 @@ data "aws_iam_policy_document" "webhook_lambda_policy" {
     sid     = "SSMRead"
     actions = ["ssm:GetParameter"]
     resources = [
-      "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/fumireply/review/*",
+      "${local.ssm_arn_prefix}/*",
       "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/fumireply/master-encryption-key",
     ]
   }

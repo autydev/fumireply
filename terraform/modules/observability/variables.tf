@@ -34,11 +34,6 @@ variable "ai_draft_dlq_arn" {
   type        = string
 }
 
-variable "api_gateway_id" {
-  description = "ID of the API Gateway HTTP API"
-  type        = string
-}
-
 variable "alert_email" {
   description = "Email address to receive CloudWatch alarm notifications"
   type        = string

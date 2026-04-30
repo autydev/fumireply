@@ -19,6 +19,11 @@ terraform {
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
+locals {
+  ssm_path_clean = trim(var.ssm_path_prefix, "/")
+  ssm_arn_prefix = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${local.ssm_path_clean}"
+}
+
 ###############################################################################
 # IAM role
 ###############################################################################
@@ -41,11 +46,9 @@ resource "aws_iam_role" "ai_worker_lambda" {
 
 data "aws_iam_policy_document" "ai_worker_lambda_policy" {
   statement {
-    sid     = "SSMRead"
-    actions = ["ssm:GetParameter"]
-    resources = [
-      "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/fumireply/review/*",
-    ]
+    sid       = "SSMRead"
+    actions   = ["ssm:GetParameter"]
+    resources = ["${local.ssm_arn_prefix}/*"]
   }
 
   statement {

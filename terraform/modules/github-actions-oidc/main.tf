@@ -130,11 +130,18 @@ data "aws_iam_policy_document" "github_actions_policy" {
     resources = [var.cloudfront_distribution_arn]
   }
 
-  # ECR / SSM read for plan validation (terraform plan reads SSM parameter names)
+  # SSM DescribeParameters does not support resource-level permissions —
+  # it must be granted on Resource = "*" (AWS IAM constraint).
   statement {
-    sid = "SSMDescribeForPlan"
+    sid       = "SSMDescribeAll"
+    actions   = ["ssm:DescribeParameters"]
+    resources = ["*"]
+  }
+
+  # SSM GetParameter(s) for terraform plan refresh — scoped to /fumireply/*.
+  statement {
+    sid = "SSMReadFumireply"
     actions = [
-      "ssm:DescribeParameters",
       "ssm:GetParameter",
       "ssm:GetParameters",
     ]

@@ -301,6 +301,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
   - deletion_log の 3 年超過分の手動 cleanup SQL
   - Page Access Token 失効時の長期トークン再取得 → 暗号化 → DB UPDATE 手順
   - Supabase reviewer 無効化/有効化 + パスワードローテーション手順
+  - **TODO（Phase 2 以降）**：`static-site` モジュールの `additional_domain_names` 変数は ACM SAN と CloudFront aliases の両方に流れる。MVP 期間中は default `[]` のまま運用するが、ドメインを追加する際は (a) `certificate_sans` と `cloudfront_aliases` の変数を分離する、(b) 追加 alias 用の Route53 record を同モジュール内で作る、の 2 点を実施する（PR #4 の Copilot review C6/C11）
   - **🚨 マスター暗号化鍵（`/fumireply/master-encryption-key`）紛失時の復旧手順**（必須）:
     1. SSM に新しいマスター鍵を生成 → 投入（`openssl rand -hex 32`）
     2. **全テナントの Page Access Token は復号不能になる**（旧鍵紛失のため）

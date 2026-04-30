@@ -20,7 +20,9 @@ data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
 locals {
-  function_name = coalesce(var.function_name_override, "${var.name_prefix}-keep-alive")
+  function_name  = coalesce(var.function_name_override, "${var.name_prefix}-keep-alive")
+  ssm_path_clean = trim(var.ssm_path_prefix, "/")
+  ssm_arn_prefix = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${local.ssm_path_clean}"
 }
 
 ###############################################################################
@@ -45,11 +47,9 @@ resource "aws_iam_role" "keep_alive_lambda" {
 
 data "aws_iam_policy_document" "keep_alive_lambda_policy" {
   statement {
-    sid     = "SSMRead"
-    actions = ["ssm:GetParameter"]
-    resources = [
-      "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/fumireply/review/*",
-    ]
+    sid       = "SSMRead"
+    actions   = ["ssm:GetParameter"]
+    resources = ["${local.ssm_arn_prefix}/*"]
   }
 
   statement {

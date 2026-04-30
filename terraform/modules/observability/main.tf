@@ -50,7 +50,7 @@ resource "aws_cloudwatch_metric_alarm" "app_lambda_errors" {
 
   metric_query {
     id          = "error_rate"
-    expression  = "100 * errors / MAX([errors, invocations])"
+    expression  = "IF(invocations > 0, 100 * errors / invocations, 0)"
     label       = "Error Rate (%)"
     return_data = true
   }
@@ -100,7 +100,7 @@ resource "aws_cloudwatch_metric_alarm" "webhook_lambda_errors" {
 
   metric_query {
     id          = "error_rate"
-    expression  = "100 * errors / MAX([errors, invocations])"
+    expression  = "IF(invocations > 0, 100 * errors / invocations, 0)"
     label       = "Error Rate (%)"
     return_data = true
   }

@@ -20,6 +20,13 @@ terraform {
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
+locals {
+  # Strip leading/trailing slash so we can compose a valid SSM ARN
+  # (parameter ARNs use a leading slash before the name).
+  ssm_path_clean = trim(var.ssm_path_prefix, "/")
+  ssm_arn_prefix = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${local.ssm_path_clean}"
+}
+
 ###############################################################################
 # IAM role
 ###############################################################################
@@ -45,7 +52,7 @@ data "aws_iam_policy_document" "app_lambda_policy" {
     sid     = "SSMRead"
     actions = ["ssm:GetParameter"]
     resources = [
-      "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/fumireply/review/*",
+      "${local.ssm_arn_prefix}/*",
       "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/fumireply/master-encryption-key",
     ]
   }
@@ -139,6 +146,17 @@ resource "aws_apigatewayv2_stage" "default" {
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.apigw.arn
+    format = jsonencode({
+      requestId        = "$context.requestId"
+      ip               = "$context.identity.sourceIp"
+      requestTime      = "$context.requestTime"
+      httpMethod       = "$context.httpMethod"
+      routeKey         = "$context.routeKey"
+      status           = "$context.status"
+      protocol         = "$context.protocol"
+      responseLength   = "$context.responseLength"
+      integrationError = "$context.integrationErrorMessage"
+    })
   }
 
   tags = var.tags
