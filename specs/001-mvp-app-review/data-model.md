@@ -326,6 +326,84 @@ Supabase Auth User    ─── (*) messages        [sent_by_auth_uid, 論理参
 Supabase Auth User    ─── (1) tenants         [user_metadata.tenant_id, 論理参照]
 ```
 
+### Mermaid ER Diagram
+
+```mermaid
+erDiagram
+  TENANTS {
+    uuid id PK
+    varchar slug UK
+    varchar name
+    varchar plan
+    varchar status
+  }
+
+  CONNECTED_PAGES {
+    uuid id PK
+    uuid tenant_id FK
+    varchar page_id UK
+    varchar page_name
+    bytea page_access_token_encrypted
+    boolean is_active
+  }
+
+  CONVERSATIONS {
+    uuid id PK
+    uuid tenant_id FK
+    uuid page_id FK
+    varchar customer_psid
+    timestamptz last_inbound_at
+    timestamptz last_message_at
+    int unread_count
+  }
+
+  MESSAGES {
+    uuid id PK
+    uuid tenant_id FK
+    uuid conversation_id FK
+    varchar meta_message_id UK
+    varchar direction
+    varchar message_type
+    varchar send_status
+    uuid sent_by_auth_uid
+  }
+
+  AI_DRAFTS {
+    uuid id PK
+    uuid tenant_id FK
+    uuid message_id FK_UK
+    varchar status
+    varchar model
+  }
+
+  DELETION_LOG {
+    uuid id PK
+    uuid tenant_id FK
+    varchar psid_hash
+    varchar confirmation_code UK
+    timestamptz deleted_at
+  }
+
+  SUPABASE_AUTH_USER {
+    uuid id PK
+    uuid tenant_id LOGICAL
+    varchar email
+  }
+
+  TENANTS ||--o{ CONNECTED_PAGES : "tenant_id"
+  TENANTS ||--o{ CONVERSATIONS : "tenant_id"
+  TENANTS ||--o{ MESSAGES : "tenant_id"
+  TENANTS ||--o{ AI_DRAFTS : "tenant_id"
+  TENANTS ||--o{ DELETION_LOG : "tenant_id"
+
+  CONNECTED_PAGES ||--o{ CONVERSATIONS : "page_id"
+  CONVERSATIONS ||--o{ MESSAGES : "conversation_id"
+  MESSAGES ||--o| AI_DRAFTS : "message_id (unique)"
+
+  TENANTS ||--o{ SUPABASE_AUTH_USER : "user_metadata.tenant_id (logical)"
+  SUPABASE_AUTH_USER ||--o{ MESSAGES : "sent_by_auth_uid (logical)"
+```
+
 外部キー削除ポリシー：
 - `connected_pages.tenant_id` → `tenants.id`：ON DELETE RESTRICT（tenant 削除は専用フローで CASCADE 実装）
 - `conversations.page_id` → `connected_pages.id`：ON DELETE RESTRICT
