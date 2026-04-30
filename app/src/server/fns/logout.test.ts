@@ -12,8 +12,8 @@ vi.mock('@tanstack/react-start/server', () => ({
 
 const mockSetSession = vi.fn()
 const mockSignOut = vi.fn()
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn().mockReturnValue({
+vi.mock('~/server/services/auth', () => ({
+  getSupabaseClient: vi.fn().mockReturnValue({
     auth: {
       setSession: mockSetSession,
       signOut: mockSignOut,

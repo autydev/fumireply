@@ -21,6 +21,8 @@ export function LoginForm({ returnTo }: { returnTo?: string }) {
       } else {
         setError('Invalid email or password')
       }
+    } catch {
+      setError('Login failed. Please try again.')
     } finally {
       setLoading(false)
     }

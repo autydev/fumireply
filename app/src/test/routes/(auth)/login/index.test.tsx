@@ -108,6 +108,29 @@ describe('performLogin handler', () => {
     expect(result).toEqual({ ok: false, error: 'invalid_credentials' })
     expect(mockSetCookie).not.toHaveBeenCalled()
   })
+
+  it('returns invalid_credentials when tenant_id is absent in app_metadata', async () => {
+    server.use(
+      http.post('https://test.supabase.co/auth/v1/token', () =>
+        HttpResponse.json({
+          access_token: 'at-xyz',
+          refresh_token: 'rt-xyz',
+          user: { id: 'user-2', email: 'notenant@example.com', app_metadata: {} },
+          expires_in: 3600,
+          token_type: 'bearer',
+        }),
+      ),
+    )
+
+    const { performLogin } = await vi.importActual<
+      typeof import('~/routes/(auth)/login/-lib/login.server')
+    >('~/routes/(auth)/login/-lib/login.server')
+
+    const result = await performLogin({ email: 'notenant@example.com', password: 'secret' })
+
+    expect(result).toEqual({ ok: false, error: 'invalid_credentials' })
+    expect(mockSetCookie).not.toHaveBeenCalled()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -171,6 +194,22 @@ describe('LoginForm component', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('Invalid email or password')
+    })
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('shows generic error when loginFn throws', async () => {
+    loginFnMock.mockRejectedValueOnce(new Error('Network error'))
+
+    const { LoginForm } = await import('~/routes/(auth)/login/-components/LoginForm')
+    render(<LoginForm />)
+
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@example.com' } })
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'pass' } })
+    fireEvent.click(screen.getByRole('button', { name: /login/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Login failed. Please try again.')
     })
     expect(mockNavigate).not.toHaveBeenCalled()
   })

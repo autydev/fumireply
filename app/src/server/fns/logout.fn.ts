@@ -1,6 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getCookie, setCookie } from '@tanstack/react-start/server'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseClient } from '~/server/services/auth'
 
 const CLEARED_COOKIE_OPTS = {
   httpOnly: true,
@@ -16,10 +16,7 @@ export async function performLogout(): Promise<{ ok: true }> {
 
   if (accessToken && refreshToken) {
     try {
-      const supabase = createClient(
-        process.env.SUPABASE_URL!,
-        process.env.SUPABASE_PUBLISHABLE_KEY!,
-      )
+      const supabase = getSupabaseClient()
       await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
       await supabase.auth.signOut({ scope: 'global' })
     } catch {
