@@ -66,11 +66,13 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
 ### Supabase + 外部サービスのセットアップ
+<!-- unit: U2.1 | deps: none | scope: infra | tasks: T023,T024 | files: 0 | automation: manual -->
 
 - [ ] T023 [P] **Create Supabase project** (Tokyo region, Free plan): プロジェクト URL、anon key、service role key、Pooler 接続文字列（Transaction mode、port 6543）を控える。`quickstart.md` §2.5 参照
 - [ ] T024 [P] **Create Anthropic API account + key**: Anthropic Console で API キー発行、最低 $5 クレジット入金、`quickstart.md` §0 前提を満たす
 
 ### Terraform modules（各モジュール並行可、VPC/RDS/Cognito モジュールは廃止）
+<!-- unit: U2.2 | deps: U2.1 | scope: infra | tasks: T025-T033 | files: ~9 | automation: auto -->
 
 - [ ] T025 [P] Create `terraform/modules/secrets/` — SSM Parameter Store SecureString definitions per `infrastructure.md` §3.1: `/fumireply/review/meta/{webhook-verify-token,app-secret}`（**全テナント共通、page-access-token は DB 暗号化カラム化により廃止**）、`/fumireply/review/supabase/{url,anon-key,service-role-key,db-url}`、`/fumireply/review/anthropic/api-key`、`/fumireply/review/deletion-log/hash-salt`、**`/fumireply/master-encryption-key`**（マルチテナント用 AES-256 マスター鍵）。値は後から手動投入、Terraform は空 placeholder で `lifecycle.ignore_changes=[value]`
 - [ ] T026 [P] Create `terraform/modules/queue/` — SQS Standard Queue `fumireply-review-ai-draft-queue`（Visibility Timeout 90 秒、long polling 20 秒）+ DLQ `fumireply-review-ai-draft-dlq`（Retention 14 日）+ Redrive Policy（`maxReceiveCount=3`）per `infrastructure.md` §3.2
@@ -81,12 +83,14 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T031 [P] Create `terraform/modules/static-site/` — S3 bucket（private、OAC）+ CloudFront distribution with 2 origins（S3 / API Gateway）+ path pattern routing per `infrastructure.md` §3.7: `/api/*`、`/_serverFn/*`、`/inbox*`、`/threads/*` → **API Gateway**；それ以外（`/`、`/login`、`/privacy`、`/terms`、`/data-deletion`、`/data-deletion-status/*`、`/_build/*`、`/assets/*`）→ **S3** + ACM certificate (us-east-1) + Route53 A record
 - [ ] T032 [P] Create `terraform/modules/github-actions-oidc/` — IAM OIDC provider for GitHub + role for `terraform plan/apply` および 4 Lambda の update-function-code、S3 sync、CloudFront invalidation
 - [ ] T033 [P] Create `terraform/modules/observability/` — CloudWatch alarms per `infrastructure.md` §3.8: app-lambda Error > 1%、webhook-lambda Error > 0.5%、ai-worker DLQ ApproximateMessageVisible > 0、ai-worker Duration p95 > 30s、**keep-alive Errors >= 1（即時、DataPointsToAlarm=1）**、**keep-alive Invocations < 1 in 36h** + SNS topic + email subscription
+<!-- unit: U2.3 | deps: U2.2 | scope: infra | tasks: T034-T037 | files: ~4 | automation: manual -->
 - [ ] T034 Create `terraform/envs/review/{main.tf,variables.tf,providers.tf,backend.tf}` — wire all modules (secrets, queue, app-lambda, webhook-lambda, ai-worker-lambda, keep-alive-lambda, static-site, github-actions-oidc, observability); `backend.tf` は bootstrap の S3 backend を参照
 - [ ] T035 Bootstrap state backend: `cd terraform/bootstrap && terraform init && terraform apply`（local state、一度だけ）— 既に T019/T020 で完了済みなら確認のみ
 - [ ] T036 **SSM 値投入** per `quickstart.md` §2.6: 上記の SSM Parameter（Meta、Supabase、Anthropic、deletion salt）を CLI で実値投入
 - [ ] T037 Apply review environment: `cd terraform/envs/review && terraform init && terraform plan && terraform apply`; outputs（4 Lambda ARN、API GW URL、CloudFront domain、SQS URL/ARN）を確認
 
 ### Database schema (Supabase 接続)
+<!-- unit: U2.4 | deps: U2.1 | scope: backend | tasks: T038-T044 | files: ~6 | automation: auto -->
 
 - [ ] T038 [P] Install DB deps in `app/`: `drizzle-orm`, `postgres`, `drizzle-kit`, `zod`, `@supabase/supabase-js`
 - [ ] T039 Create `app/src/server/db/schema.ts` — **6 entities** per `data-model.md`: **`tenants`（id/slug/name/plan/stripe_customer_id/status）**、`connectedPages` (with **`tenant_id`**, **`page_access_token_encrypted bytea`**), `conversations` (with `tenant_id`), `messages` (with `tenant_id`, `sent_by_auth_uid`), `aiDrafts` (with `tenant_id`), `deletionLog` (with `tenant_id`); include all indexes（tenant_id を含む複合 index）
@@ -97,6 +101,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T044 Apply migration to Supabase: `DATABASE_URL=$(aws ssm get-parameter ...) npx drizzle-kit migrate`; seed を実行して `connectedPages` 1 行が存在することを確認
 
 ### Core shared services（auth / token / messenger / supabase）
+<!-- unit: U2.5 | deps: U2.4 | scope: backend | tasks: T045-T053 | files: ~14 | automation: auto -->
 
 - [ ] T045 [P] Create `app/src/server/env.ts` — zod schema validating required env vars (`DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `META_APP_SECRET_SSM_KEY`, `WEBHOOK_VERIFY_TOKEN_SSM_KEY`, `ANTHROPIC_API_KEY_SSM_KEY`, `AWS_REGION`)
 - [ ] T046 [P] Create `app/src/server/services/ssm.ts` — generic `getSsmParameter(name, ttl=300)` using `@aws-sdk/client-ssm` `GetParameter` with `WithDecryption: true`; module-level in-memory cache。共通 SSM 取得ヘルパ。Meta App Secret、Anthropic API キー、Supabase URL/keys、master encryption key、deletion-log salt 等で共通利用
@@ -113,6 +118,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T053 [P] Create `app/src/server/services/anthropic.ts` — Anthropic API 呼び出しヘルパ（実体は ai-worker から import するためエクスポート用）。`generateDraft({ history, latestMessageBody })` returns `{ ok: true, body, model, inputTokens, outputTokens, latencyMs } | { ok: false, error }` per `contracts/ai-draft.md`; `@anthropic-ai/sdk` 使用、prompt caching 有効、retry/backoff 実装
 
 ### Supabase Auth テストユーザー作成
+<!-- unit: U2.6 | deps: U2.4 | scope: infra | tasks: T054 | files: 0 | automation: manual -->
 
 - [ ] T054 Run Supabase Admin API user creation per `quickstart.md` §3.1 — `operator@malbek.co.jp` and `reviewer@malbek.co.jp` を作成、パスワードを SSM `/fumireply/review/supabase/{operator,reviewer}-password` に保管
 
@@ -127,6 +133,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 **Independent Test**: `reviewer@malbek.co.jp` でログイン → テスト FB アカウントから Messenger 送信 → 30 秒以内に inbox に表示
 
 ### Webhook 受信 Lambda（FR-001〜004, FR-017、FR-022〜FR-024 の起動）
+<!-- unit: U3.1 | deps: U2.5 | scope: backend | tasks: T055-T061 | files: ~5 | automation: auto -->
 
 - [ ] T055 [P] [US1] Create `webhook/package.json` — minimal deps: `@aws-sdk/client-sqs`, `@aws-sdk/client-ssm`, `postgres`, `drizzle-orm`, `zod`; engines node 24
 - [ ] T056 [P] [US1] Create `webhook/tsconfig.json` + `webhook/vitest.config.ts`
@@ -139,6 +146,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T061 [US1] Update `terraform/modules/webhook-lambda/` — Lambda の zip 成果物が `webhook/dist/` を指すようデプロイパイプラインで参照、API Gateway integration が `/api/webhook` を確実にルーティング（`/api/*` のうち `/api/webhook` のみこの Lambda、それ以外は app-lambda という設定）
 
 ### Login（FR-009, FR-010, FR-011）— Supabase Auth
+<!-- unit: U3.2 | deps: U2.5 | scope: frontend | tasks: T062-T067 | files: ~6 | automation: auto -->
 
 - [ ] T062 [P] [US1] Create `app/src/routes/(auth)/login/-lib/login.fn.ts` — `loginFn` serverFn per `contracts/admin-api.md`: `supabase.auth.signInWithPassword({ email, password })` → Cookie set (`sb-access-token`, `sb-refresh-token`, HttpOnly, Secure, SameSite=Lax); error mapping (`AuthError invalid_grant` → `invalid_credentials`)
 - [ ] T063 [P] [US1] Create `app/src/routes/(auth)/login/-components/LoginForm.tsx` — controlled form (email, password); 成功時 `/inbox` へ navigate
@@ -148,6 +156,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T067 [P] [US1] Create `app/src/server/fns/logout.test.ts` — unit with mocked Supabase client
 
 ### Inbox（FR-002）
+<!-- unit: U3.3 | deps: U2.5 | scope: frontend | tasks: T068-T071 | files: ~4 | automation: auto -->
 
 - [ ] T068 [US1] Create `app/src/routes/(app)/inbox/-lib/list-conversations.fn.ts` — `listConversationsFn` serverFn: auth middleware → query `conversations` order by `last_message_at DESC` + latest message body preview (100 文字) + `within_24h_window` calc
 - [ ] T069 [P] [US1] Create `app/src/routes/(app)/inbox/-components/InboxList.tsx` — list UI 参考 `mock/inbox-screens.jsx`; **除外**: VIP タグ、AI 分類カテゴリ、顧客管理、優先度（spec.md L181-191 Assumptions 遵守）; 含む: 顧客名（PSID フォールバック）、最終メッセージ preview、unread バッジ、24h 窓ステータス
@@ -165,6 +174,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 **Independent Test**: inbox から会話クリック → 60 秒以内に AI 下書き表示 → そのまま or 編集して送信成功 → テスト FB アカウントの Messenger で受信確認
 
 ### AI Worker Lambda（FR-022〜FR-026）
+<!-- unit: U4.1 | deps: U2.5 | scope: backend | tasks: T072-T076 | files: ~5 | automation: auto -->
 
 - [ ] T072 [P] [US2] Create `ai-worker/package.json` — minimal deps: `@anthropic-ai/sdk`, `@aws-sdk/client-ssm`, `postgres`, `drizzle-orm`, `zod`
 - [ ] T073 [P] [US2] Create `ai-worker/tsconfig.json` + `ai-worker/vitest.config.ts`
@@ -182,6 +192,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T076 [P] [US2] Create `ai-worker/src/handler.test.ts` — integration: Anthropic API を MSW モック → ai_drafts UPDATE 成功 / 401 失敗 / 429 リトライ / 5xx リトライ / sticker スキップ / 直近会話履歴の prompt 組み立て確認。**FR-026（AI 自動送信禁止 / Human-in-the-Loop 必須）の否定検証**: テスト中に Meta Send API クライアントが**一切呼ばれていないこと**を assert（`expect(metaSendApiMock).toHaveBeenCalledTimes(0)`）。Worker は `ai_drafts` への保存しか行わず、送信は管理画面の人間操作のみであることをテストレベルで担保する
 
 ### Thread 表示 + AI 下書き UI（FR-022〜FR-024、FR-005）
+<!-- unit: U4.2 | deps: U3.3,U4.1 | scope: frontend | tasks: T077-T085 | files: ~9 | automation: auto -->
 
 - [ ] T077 [US2] Create `app/src/routes/(app)/threads/$id/-lib/get-conversation.fn.ts` — `getConversationFn` per `contracts/admin-api.md`: auth → `conversations` + `messages` (時系列) LEFT JOIN `ai_drafts`、最新 inbound に紐づく ready draft を `latest_draft` として返却 → `UPDATE conversations SET unread_count = 0`
 - [ ] T078 [US2] Create `app/src/routes/(app)/threads/$id/-lib/send-reply.fn.ts` — `sendReplyFn` per `contracts/admin-api.md`: auth → tenantId 取得 → **`withTenant(tenantId, async tx => ...)` 内で**：24h window check → `connected_pages.page_access_token_encrypted` を取得 → `crypto.decryptToken` で復号 → INSERT `messages` (`tenant_id`, `send_status='pending'`, `sent_by_auth_uid=user.id`) → `sendMessengerReply({ pageAccessToken, ... })` → UPDATE 結果; 5 秒以内に決着
@@ -194,12 +205,14 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T085 [P] [US2] Create `app/src/test/routes/(app)/threads/$id/index.test.tsx` — integration: メッセージ表示順、unread リセット、`latest_draft.status='ready'` で ReplyForm に初期値、`pending` でバナー表示、`failed` で空入力、24h 超過で送信無効化
 
 ### FR-018 Page Access Token 警告
+<!-- unit: U4.3 | deps: U3.3 | scope: frontend | tasks: T086-T088 | files: ~3 | automation: auto -->
 
 - [ ] T086 [P] [US2] Create `app/src/server/fns/page-status.fn.ts` — `getPageStatusFn` per `contracts/admin-api.md`: 直近の `messages.send_error='token_expired'` から受動判定（`/me?fields=id,name` の能動チェックは廃止）。5 分サーバーキャッシュ
 - [ ] T087 [P] [US2] Create `app/src/routes/(app)/-components/TokenStatusBanner.tsx` — 5 分ごとに `getPageStatusFn` ポーリング (useEffect + setInterval); `token_valid === false` で赤バナー表示
 - [ ] T088 [US2] Update `app/src/routes/(app)/__root.tsx` (or layout) に `TokenStatusBanner` をマウント
 
 ### 統合テスト + E2E
+<!-- unit: U4.4 | deps: U3.1,U4.1,U4.2 | scope: backend | tasks: T089-T093 | files: ~5 | automation: auto -->
 
 - [ ] T089 [P] [US2] Create `app/tests/integration/send-reply.test.ts` — full flow against test DB + MSW Meta API: ログイン → inbox 取得 → threads/$id 取得 → sendReply → DB に outbound メッセージ `sent` で記録
 - [ ] T090 [P] [US2] Create `app/tests/integration/ai-draft-worker.test.ts` — Worker handler を SQS event で起動 → MSW Anthropic mock → `ai_drafts.status='ready'` で UPDATE される
@@ -217,16 +230,25 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 
 **Independent Test**: 各 URL を外部ブラウザから直接開き、HTTPS 有効 + 必須記載事項（取得データ、保存期間、Anthropic 提供、削除窓口、連絡先）を確認
 
+### 公開ページ (静的)
+<!-- unit: U5.1 | deps: U2.5 | scope: frontend | tasks: T094-T098 | files: ~5 | automation: auto -->
+
 - [ ] T094 [P] [US3] Create `app/src/routes/(public)/index.tsx` — 会社情報ページ (FR-015)
 - [ ] T095 [P] [US3] Create `app/src/routes/(public)/privacy.tsx` — プライバシーポリシー: 取得項目 (Messenger メッセージ本文、PSID、ページ ID)、利用目的、保存期間、**第三者提供（Anthropic）**、削除窓口、連絡先 (FR-012)
 - [ ] T096 [P] [US3] Create `app/src/routes/(public)/terms.tsx` — 利用規約 (FR-013)
 - [ ] T097 [P] [US3] Create `app/src/routes/(public)/data-deletion.tsx` — データ削除手順ページ + Meta コールバック動作説明 + ai_drafts も削除対象である旨 (FR-014)
 - [ ] T098 [US3] Configure SSG prerender: update `app/vite.config.ts` / TanStack Start config to mark `(public)/*` routes as `prerender: true`; `npm run build` 成果物に静的 HTML が出力されること確認
+### データ削除コールバック
+<!-- unit: U5.2 | deps: U2.4 | scope: backend | tasks: T099-T103 | files: ~5 | automation: auto -->
+
 - [ ] T099 [P] [US3] Create `app/src/routes/api/data-deletion/-lib/delete-user-data.ts` — transaction: `conversations` where `customer_psid = $psid` → DELETE `messages` (CASCADE で `ai_drafts` も削除) → DELETE `conversations` → INSERT `deletion_log` with `psid_hash = sha256(salt || psid)` + random `confirmation_code`
 - [ ] T100 [P] [US3] Create `app/src/routes/api/data-deletion/-lib/delete-user-data.test.ts` — integration: fixture PSID 削除 → messages/conversations/ai_drafts 消える、deletion_log 行追加
 - [ ] T101 [US3] Create `app/src/routes/api/data-deletion/index.ts` — POST handler per `contracts/data-deletion-callback.md`: signed_request HMAC verify → user_id 抽出 → `delete-user-data` 実行 → JSON 返却
 - [ ] T102 [P] [US3] Create `app/src/test/routes/api/data-deletion/index.test.ts` — integration: valid signed_request → 200 + JSON、invalid → 400
 - [ ] T103 [US3] Create `app/src/routes/(public)/data-deletion-status/$code.tsx` — SSR route: `deletion_log` から code で検索、「Deleted」or「Not found」のみ
+### デプロイパイプライン
+<!-- unit: U5.3 | deps: U2.3,U3.1,U4.1 | scope: infra | tasks: T104 | files: ~1 | automation: auto -->
+
 - [ ] T104 Create `.github/workflows/deploy-app.yml` — on merge to main: build (app, webhook, ai-worker, keep-alive) → upload SSG output + CSR login + assets to S3 → CloudFront invalidation → 4 Lambda zip → `aws lambda update-function-code` × 4 per `infrastructure.md` §6.2
 
 **Checkpoint US3**: 4 公開 URL が独自ドメイン HTTPS で配信、データ削除コールバックが ai_drafts も含めて削除、CloudFront ルーティングが正
@@ -239,6 +261,9 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 
 **Independent Test**: 動画を第三者に見せて「どの画面/操作/権限/価値」+「AI 下書きと人間の承認の関係」が明示できているか確認
 
+### Screencast 制作
+<!-- unit: U6.1 | deps: U3.2,U3.3,U4.2 | scope: docs | tasks: T105-T108 | files: ~2 | automation: manual -->
+
 - [ ] T105 [P] [US4] Create `docs/review-submission/screencast-script.md` — 撮影台本 per R-007: シーン 1 ログイン、2 inbox、3 スレッド開く + AI 下書き表示、4 編集して送信（送信ボタン押下を強調）、各シーンで権限名と「AI generates a draft only — humans always click Send」を字幕表示するタイミング明記
 - [ ] T106 [P] [US4] Create `docs/review-submission/reviewer-credentials.md` — レビュワー認証情報 + テスト FB ページ手順 (FR-010, FR-021)
 - [ ] T107 [US4] Record screencast: review 環境に対し実動作でログイン→inbox→スレッド→AI 下書き表示→編集→送信のフルパスを画面収録
@@ -250,6 +275,9 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 
 **Goal**: AI 下書きを主機能として記述しつつ Phase 2 機能拡張が同一権限スコープで読み取れる Use Case 説明文 (FR-020, SC-007)
 
+### Use Case 説明文
+<!-- unit: U7.1 | deps: U2.5 | scope: docs | tasks: T109-T110 | files: ~1 | automation: manual -->
+
 - [ ] T109 [P] [US5] Create `docs/review-submission/use-case-description.md` — 英語 per R-008 テンプレート: AI-assisted reply drafting を主機能、Anthropic 第三者提供を明記、Human-in-the-Loop 明示、Phase 2 機能 (AI 自動分類, 顧客管理, 商品管理, Slack 通知, Instagram DM) を同一スコープで記述
 - [ ] T110 [US5] Third-party review of `use-case-description.md`、指摘を反映
 
@@ -259,7 +287,13 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 
 **Purpose**: 審査提出直前の仕上げ。CloudWatch / deploy pipeline / ドキュメント / 最終リハーサル。
 
+### keep-alive Lambda
+<!-- unit: U8.1 | deps: U2.3 | scope: backend | tasks: T111 | files: ~3 | automation: auto -->
+
 - [ ] T111 [P] Create `keep-alive/package.json` + `keep-alive/src/handler.ts` + `keep-alive/src/handler.test.ts` — Supabase Pooler に SELECT 1 を発行する Lambda (FR-027)。**指数バックオフ 3 回リトライ（500ms / 1.5s / 4.5s）**、3 回失敗時は SNS Publish で即時通知 + 構造化ログ `keepalive_critical` 出力 + throw（EventBridge 自動リトライへ）。テストは MSW 不要（postgres クライアントを mock）、リトライ動作・SNS Publish・throw 動作を unit テスト
+### 運用ランブック
+<!-- unit: U8.2 | deps: U2.5 | scope: docs | tasks: T112 | files: ~1 | automation: manual -->
+
 - [ ] T112 [P] Create `docs/operations/audit-runbook.md` — 審査期間中の監視手順 + 障害時のリカバリ手順を網羅:
   - Supabase keep-alive 失敗時の対応（手動 Resume + EventBridge Rule 確認 + 通知系統再点検）
   - ai-worker DLQ 監視と再投入手順
@@ -275,8 +309,14 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
     5. インシデント記録に紛失原因 + 影響テナント + 復旧時刻を残す
     6. 鍵バックアップ運用の見直し（Phase 2 で AWS KMS 移行 + 多鍵運用 + バージョン管理を検討）
   - **🚨 マスター鍵ローテーション運用（紛失予防）の手順骨子**: Phase 2 で正式整備するが MVP では「マスター鍵を SSM から外部に出さない」「Terraform state にも書かない」「`audit-runbook.md` の物理コピーを安全な場所に控える（運用者しかアクセスできない暗号化ストレージ）」だけは明記
+### CloudWatch alarms + apply pipeline
+<!-- unit: U8.3 | deps: U2.2 | scope: infra | tasks: T113-T114 | files: ~1 | automation: manual -->
+
 - [ ] T113 [P] Enable CloudWatch alarms in `terraform/envs/review/main.tf` — `terraform apply`
 - [ ] T114 [P] Create `.github/workflows/terraform-apply.yml` — on merge to main, paths `terraform/**`: manual approval gate → `terraform apply` via OIDC role
+### テスト FB ページ + スモークテスト + SLA 検証
+<!-- unit: U8.4 | deps: U5.3,U4.4 | scope: infra | tasks: T115-T122 | files: 0 | automation: manual -->
+
 - [ ] T115 [P] **Create test Facebook page** in Meta Business Manager (FR-021)。**🚨 推奨着手タイミング：Phase 5 末尾（Sprint 5 中）まで**に完了させる。T100 / T117 / T120 等の手動スモークテストとレビュワー検証が本タスクをブロッカとして必要とするため、Phase 8 着手時点ではすでに完了している状態を作る：operator アカウントがページ管理者権限、Messenger 受信を有効化、Webhook 購読、short-lived Page Access Token を取得 → seed スクリプトの環境変数として `META_PAGE_ID` / `META_PAGE_NAME` / `META_PAGE_ACCESS_TOKEN` を実値に差し替え → `npm run db:seed:review` 再実行（マスター鍵で暗号化されて `connected_pages` に保存される）
 - [ ] T116 Verify Page Access Token は長期トークン化 per `quickstart.md` §2.4（**T115 完了後**）→ 取得した長期トークンで再度 seed スクリプトを実行し AES-256-GCM 暗号化して `connected_pages.page_access_token_encrypted` を更新
 - [ ] T117 Manual smoke test (FR-001〜008, FR-022〜FR-026)（**T115 + T116 完了後**）: テスト FB アカウントから Messenger 送信 → 30 秒以内に inbox 反映 (SC-003) → スレッド開く → 60 秒以内に AI 下書き表示 (SC-008) → 編集して送信 → 5 秒以内に Messenger 受信 (SC-004); 失敗ケースも再現（トークン失効、24h 超過、Anthropic API キー失効）
@@ -286,6 +326,9 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T121 [P] **Verify FR-027 Supabase keep-alive**: EventBridge Rule + keep-alive Lambda の Invocations を CloudWatch Metrics で確認、**過去 24 時間に 1 回 + 過去 7 日で 7 回**の起動実績を確認。失敗注入テスト（postgres URL を一時的に壊す）→ 内部リトライ → SNS 通知到達まで End-to-End 検証
 - [ ] T121a [P] **Verify RLS テナント分離**：staging で 2 つ目の tenant（`acme`）を一時的に作成 → Malbek の reviewer JWT で acme の messages を SELECT しても 0 行が返ること、`SET LOCAL app.tenant_id = '<acme-uuid>'` を Malbek 接続でセットしても他テナントの page_access_token を decrypt できないこと、を integration / E2E で確認 → 確認後 acme tenant を削除
 - [ ] T122 Verify 公開 4 URL: `curl -I https://<domain>/`, `/privacy`, `/terms`, `/data-deletion`, `/data-deletion-status/test` がすべて HTTPS + 200 (SC-006)
+### 24/7 稼働確認 + 申請提出
+<!-- unit: U8.5 | deps: U8.4 | scope: docs | tasks: T123-T125 | files: ~1 | automation: manual -->
+
 - [ ] T123 Verify 24/7 稼働（審査期間全体の累積観測）: 審査提出日から結果通知日まで、CloudWatch メトリクス/ログを日次で記録し、管理画面・Webhook・公開ページ群の累積稼働率が 99.5% 以上であることを `audit-runbook.md` に集計 (FR-016, SC-005)
 - [ ] T124 Update `specs/001-mvp-app-review/quickstart.md` §6「審査提出前チェックリスト」 — 全項目をチェック済みに更新
 - [ ] T125 Submit Meta App Review: App Dashboard フォームで Webhook Callback URL + Privacy + Terms + Data Deletion + 管理画面 URL + screencast + use case description + reviewer credentials を全項目入力、`pages_messaging` / `pages_manage_metadata` / `pages_read_engagement` をリクエスト、submit
