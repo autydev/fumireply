@@ -68,8 +68,8 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 ### Supabase + 外部サービスのセットアップ
 <!-- unit: U2.1 | deps: none | scope: infra | tasks: T023,T024 | files: 0 | automation: manual -->
 
-- [ ] T023 [P] **Create Supabase project** (Tokyo region, Free plan): プロジェクト URL、publishable key (`sb_publishable_...`)、secret key (`sb_secret_...`)、Pooler 接続文字列（Transaction mode、port 6543）を控える。`quickstart.md` §2.5 参照
-- [ ] T024 [P] **Create Anthropic API account + key**: Anthropic Console で API キー発行、最低 $5 クレジット入金、`quickstart.md` §0 前提を満たす
+- [x] T023 [P] **Create Supabase project** (Tokyo region, Free plan): プロジェクト URL、publishable key (`sb_publishable_...`)、secret key (`sb_secret_...`)、Pooler 接続文字列（Transaction mode、port 6543）を控える。`quickstart.md` §2.5 参照
+- [x] T024 [P] **Create Anthropic API account + key**: Anthropic Console で API キー発行、最低 $5 クレジット入金、`quickstart.md` §0 前提を満たす
 
 ### Terraform modules（各モジュール並行可、VPC/RDS/Cognito モジュールは廃止）
 <!-- unit: U2.2 | deps: U2.1 | scope: infra | tasks: T025-T033 | files: ~9 | automation: auto -->
