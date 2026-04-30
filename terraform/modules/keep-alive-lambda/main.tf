@@ -19,6 +19,10 @@ terraform {
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
+locals {
+  function_name = coalesce(var.function_name_override, "${var.name_prefix}-keep-alive")
+}
+
 ###############################################################################
 # IAM role
 ###############################################################################
@@ -77,7 +81,7 @@ resource "aws_iam_role_policy" "keep_alive_lambda" {
 ###############################################################################
 
 resource "aws_cloudwatch_log_group" "keep_alive_lambda" {
-  name              = "/aws/lambda/${var.name_prefix}-keep-alive"
+  name              = "/aws/lambda/${local.function_name}"
   retention_in_days = 365
   tags              = var.tags
 }
@@ -87,7 +91,7 @@ resource "aws_cloudwatch_log_group" "keep_alive_lambda" {
 ###############################################################################
 
 resource "aws_lambda_function" "keep_alive" {
-  function_name = "${var.name_prefix}-keep-alive"
+  function_name = local.function_name
   role          = aws_iam_role.keep_alive_lambda.arn
   runtime       = "nodejs24.x"
   handler       = "dist/handler.handler"
@@ -134,7 +138,7 @@ resource "aws_lambda_function_event_invoke_config" "keep_alive" {
 ###############################################################################
 
 resource "aws_cloudwatch_event_rule" "keep_alive" {
-  name                = "${var.name_prefix}-keep-alive-schedule"
+  name                = "${local.function_name}-schedule"
   description         = "Trigger keep-alive Lambda once per day to prevent Supabase free-plan pause"
   schedule_expression = "rate(1 day)"
   tags                = var.tags

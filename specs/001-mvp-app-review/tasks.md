@@ -84,7 +84,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T032 [P] Create `terraform/modules/github-actions-oidc/` — IAM OIDC provider for GitHub + role for `terraform plan/apply` および 4 Lambda の update-function-code、S3 sync、CloudFront invalidation
 - [ ] T033 [P] Create `terraform/modules/observability/` — CloudWatch alarms per `infrastructure.md` §3.8: app-lambda Error > 1%、webhook-lambda Error > 0.5%、ai-worker DLQ ApproximateMessageVisible > 0、ai-worker Duration p95 > 30s、**keep-alive Errors >= 1（即時、DataPointsToAlarm=1）**、**keep-alive Invocations < 1 in 36h** + SNS topic + email subscription
 <!-- unit: U2.3 | deps: U2.2 | scope: infra | tasks: T034-T037 | files: ~4 | automation: manual -->
-- [ ] T034 Create `terraform/envs/review/{main.tf,variables.tf,providers.tf,backend.tf}` — wire all modules (secrets, queue, app-lambda, webhook-lambda, ai-worker-lambda, keep-alive-lambda, static-site, github-actions-oidc, observability); `backend.tf` は bootstrap の S3 backend を参照
+- [ ] T034 Create `terraform/envs/review/{main.tf,variables.tf,providers.tf,backend.tf}` — wire all modules (secrets, queue, app-lambda, webhook-lambda, ai-worker-lambda, keep-alive-lambda, static-site, github-actions-oidc, observability); `backend.tf` は bootstrap の S3 backend を参照。**循環依存の解消**：observability ↔ keep-alive-lambda は keep-alive 関数名を local 値で固定し、両モジュールに同じ literal を渡す（`locals { keep_alive_function_name = "${var.name_prefix}-keep-alive" }` → `module.keep_alive_lambda { function_name_override = local.keep_alive_function_name; sns_topic_arn = module.observability.sns_topic_arn }` + `module.observability { keep_alive_lambda_function_name = local.keep_alive_function_name }`）
 - [ ] T035 Bootstrap state backend: `cd terraform/bootstrap && terraform init && terraform apply`（local state、一度だけ）— 既に T019/T020 で完了済みなら確認のみ
 - [ ] T036 **SSM 値投入** per `quickstart.md` §2.6: 上記の SSM Parameter（Meta、Supabase、Anthropic、deletion salt）を CLI で実値投入
 - [ ] T037 Apply review environment: `cd terraform/envs/review && terraform init && terraform plan && terraform apply`; outputs（4 Lambda ARN、API GW URL、CloudFront domain、SQS URL/ARN）を確認
@@ -312,8 +312,8 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 ### CloudWatch alarms + apply pipeline
 <!-- unit: U8.3 | deps: U2.2 | scope: infra | tasks: T113-T114 | files: ~1 | automation: manual -->
 
-- [ ] T113 [P] Enable CloudWatch alarms in `terraform/envs/review/main.tf` — `terraform apply`
-- [ ] T114 [P] Create `.github/workflows/terraform-apply.yml` — on merge to main, paths `terraform/**`: manual approval gate → `terraform apply` via OIDC role
+- [ ] T113 [P] Enable CloudWatch alarms in `terraform/envs/review/main.tf` — `terraform apply`（**MVP はローカル実行**）
+- [ ] ~~T114~~ **Phase 2 以降に延期**：MVP は `terraform apply` をローカル実行で運用する（運用者の AWS 認証情報を使用、`audit-runbook.md` に手順記載）。理由：CI で apply するために必要な広範な作成権限（Lambda/IAM/SNS/SQS/S3/CloudFront/ACM/Route53/EventBridge の `Create*`/`Update*`）を `github-actions-oidc` モジュールに付与すると attack surface が大きくなり、MVP の頻度（数回〜十数回）に対して ROI が低い。`deploy-app.yml`（T104）は operational 権限のみで完結するため影響なし。`terraform-plan.yml` は既に `vars.AWS_PLAN_ROLE_ARN` で gating 済みのため、MVP では未設定のまま fmt/validate のみ実行する
 ### テスト FB ページ + スモークテスト + SLA 検証
 <!-- unit: U8.4 | deps: U5.3,U4.4 | scope: infra | tasks: T115-T122 | files: 0 | automation: manual -->
 

@@ -61,9 +61,9 @@ resource "aws_ssm_parameter" "supabase_url" {
   tags = var.tags
 }
 
-resource "aws_ssm_parameter" "supabase_anon_key" {
-  name        = "${local.review_prefix}/supabase/anon-key"
-  description = "Supabase anon key for client-side Auth"
+resource "aws_ssm_parameter" "supabase_publishable_key" {
+  name        = "${local.review_prefix}/supabase/publishable-key"
+  description = "Supabase publishable key (sb_publishable_..., RLS-aware client auth)"
   type        = "SecureString"
   value       = "placeholder"
 
@@ -74,9 +74,9 @@ resource "aws_ssm_parameter" "supabase_anon_key" {
   tags = var.tags
 }
 
-resource "aws_ssm_parameter" "supabase_service_role_key" {
-  name        = "${local.review_prefix}/supabase/service-role-key"
-  description = "Supabase service role key for admin operations (RLS bypass)"
+resource "aws_ssm_parameter" "supabase_secret_key" {
+  name        = "${local.review_prefix}/supabase/secret-key"
+  description = "Supabase secret key (sb_secret_..., service_role / BYPASSRLS for admin operations)"
   type        = "SecureString"
   value       = "placeholder"
 

@@ -8,6 +8,11 @@ output "api_gateway_id" {
   value       = aws_apigatewayv2_api.app.id
 }
 
+output "api_gateway_execution_arn" {
+  description = "Execution ARN of the HTTP API (passed to webhook-lambda for cross-module Lambda permission)"
+  value       = aws_apigatewayv2_api.app.execution_arn
+}
+
 output "lambda_function_arn" {
   description = "ARN of the app Lambda function"
   value       = aws_lambda_function.app.arn
