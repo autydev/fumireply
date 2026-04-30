@@ -16,9 +16,9 @@ terraform {
 }
 
 resource "aws_sqs_queue" "ai_draft_dlq" {
-  name                       = "${var.name_prefix}-ai-draft-dlq"
-  message_retention_seconds  = 1209600 # 14 days
-  receive_wait_time_seconds  = 20
+  name                      = "${var.name_prefix}-ai-draft-dlq"
+  message_retention_seconds = 1209600 # 14 days
+  receive_wait_time_seconds = 20
 
   tags = var.tags
 }

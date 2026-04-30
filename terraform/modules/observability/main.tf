@@ -222,7 +222,7 @@ resource "aws_cloudwatch_metric_alarm" "keep_alive_not_invoked" {
   alarm_description   = "keep-alive Lambda has not been invoked in 36 hours — EventBridge schedule may be broken"
   comparison_operator = "LessThanThreshold"
   threshold           = 1
-  evaluation_periods  = 3   # 3 × 43200s = 36 h window
+  evaluation_periods  = 3 # 3 × 43200s = 36 h window
   datapoints_to_alarm = 3
   namespace           = "AWS/Lambda"
   metric_name         = "Invocations"
