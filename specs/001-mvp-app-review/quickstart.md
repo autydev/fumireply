@@ -35,7 +35,6 @@ SUPABASE_ANON_KEY=<anon-key>
 DATABASE_URL=postgres://postgres.<project>:<password>@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres
 ANTHROPIC_API_KEY=<your-api-key>
 META_APP_SECRET=dummy-for-local
-META_PAGE_ACCESS_TOKEN=dummy-for-local
 META_WEBHOOK_VERIFY_TOKEN=dummy-for-local
 EOF
 
@@ -260,9 +259,9 @@ curl -X POST "${SUPABASE_URL}/auth/v1/admin/users" \
 aws ssm put-parameter \
   --name "/fumireply/review/supabase/reviewer-password" \
   --type SecureString --value "$REVIEWER_PASSWORD" --overwrite
-
-echo "Reviewer password for Meta submission: $REVIEWER_PASSWORD"
 ```
+
+上記実行後、レビュー提出で使う reviewer パスワードは SSM から必要時に取得し、標準出力には表示しない。
 
 **レビュワーアカウントのセキュリティ補償統制**:
 - 平常時は Supabase ダッシュボードで `banned_until` を未来日に設定して無効化

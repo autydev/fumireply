@@ -47,7 +47,7 @@ timingSafeEqual(expected, received)
 4. 該当会話の `messages` を DELETE（→ `ai_drafts` も `ON DELETE CASCADE` で連鎖削除される）
 5. `conversations` を DELETE
 6. `confirmation_code` を生成（UUID v4 → 先頭 16 文字）
-7. `deletion_log` テーブルに記録（監査用、`deletion_log(id, psid_hash, deleted_at, confirmation_code)`、`psid_hash = sha256(salt || psid)`）
+7. `deletion_log` テーブルに記録（監査用、`deletion_log(id, tenant_id, psid_hash, deleted_at, confirmation_code)`、`psid_hash = sha256(salt || psid)`）
 8. レスポンス JSON を返す
 
 ### Response
@@ -103,6 +103,7 @@ If you have questions, please contact: <support email>
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `uuid` | PK |
+| `tenant_id` | `uuid` | NOT NULL（削除実行時の所属テナント） |
 | `psid_hash` | `varchar(64)` | NOT NULL（SHA-256 ハッシュ、平文 PSID は保存しない）|
 | `confirmation_code` | `varchar(32)` | UNIQUE NOT NULL |
 | `deleted_at` | `timestamptz` | NOT NULL DEFAULT `now()` |

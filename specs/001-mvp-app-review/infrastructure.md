@@ -399,8 +399,8 @@ GitHub Actions 用の IAM OIDC Provider + Role。詳細は旧版と同じ（`ter
    └──────────────┘
 
    ┌──────────────────┐         ┌────────────────┐
-   │ keep-alive-      │←────────│ EventBridge    │
-   │ lambda           │ Trigger │ rate(6 days)   │
+  │ keep-alive-      │←────────│ EventBridge    │
+  │ lambda           │ Trigger │ rate(1 day)    │
    └──────────────────┘         └────────────────┘
 
    ┌──────────────┐
@@ -478,7 +478,7 @@ GitHub Actions:
 1. Bootstrap apply（State 管理リソース）
 2. Supabase プロジェクト作成（東京リージョン、無料プラン）→ DB URL / anon key / service role key を取得
 3. `secrets` モジュール apply → SSM パラメータ定義作成
-4. CLI で SSM に実値を手動投入（Meta App Secret、Page Access Token、Supabase URL/Keys、Anthropic API Key）
+4. CLI で SSM に実値を手動投入（Meta App Secret、Supabase URL/Keys、Anthropic API Key、master encryption key）
 5. `envs/review` を全モジュール apply
 6. Supabase ダッシュボードでテストユーザー作成（`operator@malbek.co.jp` / `reviewer@malbek.co.jp`）
 7. 初回 Lambda デプロイ（GitHub Actions or 手動）

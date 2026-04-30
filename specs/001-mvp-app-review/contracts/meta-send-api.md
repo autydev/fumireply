@@ -15,7 +15,7 @@
 
 | Param | Value | Source |
 |-------|-------|--------|
-| `access_token` | `<Page Access Token>` | SSM Parameter Store から取得（`connected_pages.page_access_token_ssm_key`）|
+| `access_token` | `<Page Access Token>` | `connected_pages.page_access_token_encrypted` を復号して取得 |
 
 ### Headers
 
@@ -90,7 +90,7 @@
 
 ## セキュリティ
 
-- Page Access Token は Lambda のメモリキャッシュ（SSM 呼び出しはコールドスタート時のみ）
+- Page Access Token は DB 暗号化カラム（`connected_pages.page_access_token_encrypted`）から復号して使用し、平文は永続化しない
 - ログには `access_token` を**絶対に出力しない**（構造化ログのフィールドから除外）
 - エラーレスポンスをそのままログ出力する際は `access_token` をマスクする
 

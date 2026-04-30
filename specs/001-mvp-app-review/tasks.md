@@ -98,7 +98,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 
 ### Core shared services（auth / token / messenger / supabase）
 
-- [ ] T045 [P] Create `app/src/server/env.ts` — zod schema validating required env vars (`DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `META_APP_SECRET_SSM_KEY`, `META_PAGE_TOKEN_SSM_KEY`, `WEBHOOK_VERIFY_TOKEN_SSM_KEY`, `ANTHROPIC_API_KEY_SSM_KEY`, `AWS_REGION`)
+- [ ] T045 [P] Create `app/src/server/env.ts` — zod schema validating required env vars (`DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `META_APP_SECRET_SSM_KEY`, `WEBHOOK_VERIFY_TOKEN_SSM_KEY`, `ANTHROPIC_API_KEY_SSM_KEY`, `AWS_REGION`)
 - [ ] T046 [P] Create `app/src/server/services/ssm.ts` — generic `getSsmParameter(name, ttl=300)` using `@aws-sdk/client-ssm` `GetParameter` with `WithDecryption: true`; module-level in-memory cache。共通 SSM 取得ヘルパ。Meta App Secret、Anthropic API キー、Supabase URL/keys、master encryption key、deletion-log salt 等で共通利用
 - [ ] T047 [P] Create `app/src/server/services/ssm.test.ts` — mock SSM client: cache hit/miss、decryption、TTL 切れ
 - [ ] T047a [P] Create `app/src/server/services/crypto.ts` — `encryptToken(plaintext, masterKey) → Buffer` + `decryptToken(blob, masterKey) → string` (AES-256-GCM、形式 `iv(12B)||tag(16B)||ciphertext`) per `data-model.md`「Page Access Token の暗号化」節 + `getMasterKey()` でマスター鍵を SSM から取得しキャッシュ + `getPageAccessTokenForTenant(tenantId)` (RLS 有効なクエリで `connected_pages.page_access_token_encrypted` を取得 → 復号)
@@ -264,7 +264,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T113 [P] Enable CloudWatch alarms in `terraform/envs/review/main.tf` — `terraform apply`
 - [ ] T114 [P] Create `.github/workflows/terraform-apply.yml` — on merge to main, paths `terraform/**`: manual approval gate → `terraform apply` via OIDC role
 - [ ] T115 [P] **Create test Facebook page** in Meta Business Manager: operator アカウントがページ管理者権限、Messenger 受信を有効化、Webhook 購読、short-lived Page Access Token を取得 → `terraform/envs/review/terraform.tfvars` の `page_id` / `page_name` を実値に置換 → `npm run db:seed:review` 再実行（FR-021）
-- [ ] T116 Verify Page Access Token は長期トークン化 per `quickstart.md` §2.4（**T115 完了後**）→ SSM `/fumireply/review/meta/page-access-token` に格納
+- [ ] T116 Verify Page Access Token は長期トークン化 per `quickstart.md` §2.4（**T115 完了後**）→ `db:seed:review` または運用手順で AES-256-GCM 暗号化して `connected_pages.page_access_token_encrypted` を更新
 - [ ] T117 Manual smoke test (FR-001〜008, FR-022〜FR-026): テスト FB アカウントから Messenger 送信 → 30 秒以内に inbox 反映 (SC-003) → スレッド開く → 60 秒以内に AI 下書き表示 (SC-008) → 編集して送信 → 5 秒以内に Messenger 受信 (SC-004); 失敗ケースも再現（トークン失効、24h 超過、Anthropic API キー失効）
 - [ ] T118 [P] **Verify FR-017 Webhook 20-second SLA** via CloudWatch Logs Insights 直近 48 時間: webhook-lambda の duration p95 < 2000ms / p99 < 5000ms / max < 20000ms。違反時は Phase 2 で Provisioned Concurrency 検討
 - [ ] T119 [P] **Verify SC-002 login → inbox p95 < 10 seconds**: reviewer で 5 回ログイン測定、p95 を `audit-runbook.md` に記録
@@ -272,7 +272,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T121 [P] **Verify FR-027 Supabase keep-alive**: EventBridge Rule + keep-alive Lambda の Invocations を CloudWatch Metrics で確認、**過去 24 時間に 1 回 + 過去 7 日で 7 回**の起動実績を確認。失敗注入テスト（postgres URL を一時的に壊す）→ 内部リトライ → SNS 通知到達まで End-to-End 検証
 - [ ] T121a [P] **Verify RLS テナント分離**：staging で 2 つ目の tenant（`acme`）を一時的に作成 → Malbek の reviewer JWT で acme の messages を SELECT しても 0 行が返ること、`SET LOCAL app.tenant_id = '<acme-uuid>'` を Malbek 接続でセットしても他テナントの page_access_token を decrypt できないこと、を integration / E2E で確認 → 確認後 acme tenant を削除
 - [ ] T122 Verify 公開 4 URL: `curl -I https://<domain>/`, `/privacy`, `/terms`, `/data-deletion`, `/data-deletion-status/test` がすべて HTTPS + 200 (SC-006)
-- [ ] T123 Verify 24/7 稼働 (48 時間連続観測): CloudWatch で 4 Lambda + Supabase keep-alive にエラーなく稼働 (FR-016, SC-005)
+- [ ] T123 Verify 24/7 稼働（審査期間全体の累積観測）: 審査提出日から結果通知日まで、CloudWatch メトリクス/ログを日次で記録し、管理画面・Webhook・公開ページ群の累積稼働率が 99.5% 以上であることを `audit-runbook.md` に集計 (FR-016, SC-005)
 - [ ] T124 Update `specs/001-mvp-app-review/quickstart.md` §6「審査提出前チェックリスト」 — 全項目をチェック済みに更新
 - [ ] T125 Submit Meta App Review: App Dashboard フォームで Webhook Callback URL + Privacy + Terms + Data Deletion + 管理画面 URL + screencast + use case description + reviewer credentials を全項目入力、`pages_messaging` / `pages_manage_metadata` / `pages_read_engagement` をリクエスト、submit
 
