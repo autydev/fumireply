@@ -44,10 +44,10 @@ timingSafeEqual(expected, received)
 1. `signed_request` を署名検証
 2. payload から `user_id`（PSID）を抽出
 3. `conversations.customer_psid = <PSID>` の行を検索
-4. 該当会話の `messages` を DELETE
+4. 該当会話の `messages` を DELETE（→ `ai_drafts` も `ON DELETE CASCADE` で連鎖削除される）
 5. `conversations` を DELETE
 6. `confirmation_code` を生成（UUID v4 → 先頭 16 文字）
-7. `deletion_log` テーブルに記録（監査用、本 MVP では簡略化：`deletion_log(id, psid, deleted_at, confirmation_code)`）
+7. `deletion_log` テーブルに記録（監査用、`deletion_log(id, psid_hash, deleted_at, confirmation_code)`、`psid_hash = sha256(salt || psid)`）
 8. レスポンス JSON を返す
 
 ### Response
@@ -124,7 +124,7 @@ psid_hash = SHA-256(salt || psid_raw)
 1. `signed_request` を署名検証
 2. payload から PSID（平文）を抽出
 3. `conversations.customer_psid = <PSID>` の行を検索（**平文のまま検索**、messages / conversations は平文 PSID で保持中）
-4. 該当 conversation.id に紐づく `messages` を DELETE
+4. 該当 conversation.id に紐づく `messages` を DELETE（**`ai_drafts` も CASCADE で連鎖削除される**）
 5. `conversations` を DELETE
 6. `psid_hash = SHA-256(salt || PSID)` を計算
 7. `deletion_log` に INSERT（平文 PSID は**ここで破棄**、ハッシュのみ保存）
