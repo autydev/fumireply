@@ -420,9 +420,9 @@ Copilot 特性:
 
 10.7 次ラウンド前に Copilot 再レビュー到着を待つ (push 後すぐ判定すると取りこぼす):
 
-    # 最大 10 分、5 分間隔 (計 2 回) で「自分の最終 push 以降の Copilot コメント」をポーリング
+    # 最大 20 分、5 分間隔 (計 4 回) で「自分の最終 push 以降の Copilot コメント」をポーリング
     LAST_PUSH_AT=$(git log -1 --format=%cI)
-    for i in $(seq 1 2); do
+    for i in $(seq 1 4); do
       NEW_COUNT=$(gh api "repos/autydev/fumireply/pulls/$PR_NUM/comments" \
         --jq "[.[] | select((.user.login==\"github-copilot[bot]\" or .user.login==\"copilot-pull-request-reviewer[bot]\" or .user.login==\"Copilot\") and .created_at > \"$LAST_PUSH_AT\")] | length")
       NEW_REVIEW=$(gh api "repos/autydev/fumireply/pulls/$PR_NUM/reviews" \
@@ -434,7 +434,7 @@ Copilot 特性:
       fi
       sleep 300
     done
-    # 10 分待って新規 Copilot コメントが無ければループ終了条件 1 へ進む
+    # 20 分待って新規 Copilot コメントが無ければループ終了条件 1 へ進む
 
 ループ終了条件:
 1. 全 resolve 済み + 新規未対応コメントなし
