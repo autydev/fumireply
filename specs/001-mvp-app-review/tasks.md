@@ -179,7 +179,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
   - 成功時 `withTenant` 内で `ai_drafts` UPDATE (`status='ready'`, `body`, `model`, tokens, `latency_ms`)
   - 失敗時 `withTenant` 内で `ai_drafts` UPDATE (`status='failed'`, `error`); SQS は ACK（throw しない）
   - SDK 例外時のみ throw → SQS が再配信
-- [ ] T076 [P] [US2] Create `ai-worker/src/handler.test.ts` — integration: Anthropic API を MSW モック → ai_drafts UPDATE 成功 / 401 失敗 / 429 リトライ / 5xx リトライ / sticker スキップ / 直近会話履歴の prompt 組み立て確認
+- [ ] T076 [P] [US2] Create `ai-worker/src/handler.test.ts` — integration: Anthropic API を MSW モック → ai_drafts UPDATE 成功 / 401 失敗 / 429 リトライ / 5xx リトライ / sticker スキップ / 直近会話履歴の prompt 組み立て確認。**FR-026（AI 自動送信禁止 / Human-in-the-Loop 必須）の否定検証**: テスト中に Meta Send API クライアントが**一切呼ばれていないこと**を assert（`expect(metaSendApiMock).toHaveBeenCalledTimes(0)`）。Worker は `ai_drafts` への保存しか行わず、送信は管理画面の人間操作のみであることをテストレベルで担保する
 
 ### Thread 表示 + AI 下書き UI（FR-022〜FR-024、FR-005）
 
@@ -260,12 +260,26 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 **Purpose**: 審査提出直前の仕上げ。CloudWatch / deploy pipeline / ドキュメント / 最終リハーサル。
 
 - [ ] T111 [P] Create `keep-alive/package.json` + `keep-alive/src/handler.ts` + `keep-alive/src/handler.test.ts` — Supabase Pooler に SELECT 1 を発行する Lambda (FR-027)。**指数バックオフ 3 回リトライ（500ms / 1.5s / 4.5s）**、3 回失敗時は SNS Publish で即時通知 + 構造化ログ `keepalive_critical` 出力 + throw（EventBridge 自動リトライへ）。テストは MSW 不要（postgres クライアントを mock）、リトライ動作・SNS Publish・throw 動作を unit テスト
-- [ ] T112 [P] Create `docs/operations/audit-runbook.md` — 審査期間中の監視手順: Supabase keep-alive 確認、ai-worker DLQ 対応、CloudWatch アラーム対応、deletion_log の 3 年超過分の手動 cleanup SQL、Page Access Token 延命手順、Supabase reviewer 無効化/有効化手順
+- [ ] T112 [P] Create `docs/operations/audit-runbook.md` — 審査期間中の監視手順 + 障害時のリカバリ手順を網羅:
+  - Supabase keep-alive 失敗時の対応（手動 Resume + EventBridge Rule 確認 + 通知系統再点検）
+  - ai-worker DLQ 監視と再投入手順
+  - CloudWatch アラーム（app/webhook/ai-worker Errors、keep-alive Errors / Invocations なし）の対応フロー
+  - deletion_log の 3 年超過分の手動 cleanup SQL
+  - Page Access Token 失効時の長期トークン再取得 → 暗号化 → DB UPDATE 手順
+  - Supabase reviewer 無効化/有効化 + パスワードローテーション手順
+  - **🚨 マスター暗号化鍵（`/fumireply/master-encryption-key`）紛失時の復旧手順**（必須）:
+    1. SSM に新しいマスター鍵を生成 → 投入（`openssl rand -hex 32`）
+    2. **全テナントの Page Access Token は復号不能になる**（旧鍵紛失のため）
+    3. 各テナントの運用者に連絡し、Meta Business Manager から長期 Page Access Token を再取得依頼
+    4. 取得したトークンを seed スクリプト（または管理画面の手動 UPDATE）で新鍵により暗号化して `connected_pages.page_access_token_encrypted` に上書き
+    5. インシデント記録に紛失原因 + 影響テナント + 復旧時刻を残す
+    6. 鍵バックアップ運用の見直し（Phase 2 で AWS KMS 移行 + 多鍵運用 + バージョン管理を検討）
+  - **🚨 マスター鍵ローテーション運用（紛失予防）の手順骨子**: Phase 2 で正式整備するが MVP では「マスター鍵を SSM から外部に出さない」「Terraform state にも書かない」「`audit-runbook.md` の物理コピーを安全な場所に控える（運用者しかアクセスできない暗号化ストレージ）」だけは明記
 - [ ] T113 [P] Enable CloudWatch alarms in `terraform/envs/review/main.tf` — `terraform apply`
 - [ ] T114 [P] Create `.github/workflows/terraform-apply.yml` — on merge to main, paths `terraform/**`: manual approval gate → `terraform apply` via OIDC role
-- [ ] T115 [P] **Create test Facebook page** in Meta Business Manager: operator アカウントがページ管理者権限、Messenger 受信を有効化、Webhook 購読、short-lived Page Access Token を取得 → `terraform/envs/review/terraform.tfvars` の `page_id` / `page_name` を実値に置換 → `npm run db:seed:review` 再実行（FR-021）
-- [ ] T116 Verify Page Access Token は長期トークン化 per `quickstart.md` §2.4（**T115 完了後**）→ `db:seed:review` または運用手順で AES-256-GCM 暗号化して `connected_pages.page_access_token_encrypted` を更新
-- [ ] T117 Manual smoke test (FR-001〜008, FR-022〜FR-026): テスト FB アカウントから Messenger 送信 → 30 秒以内に inbox 反映 (SC-003) → スレッド開く → 60 秒以内に AI 下書き表示 (SC-008) → 編集して送信 → 5 秒以内に Messenger 受信 (SC-004); 失敗ケースも再現（トークン失効、24h 超過、Anthropic API キー失効）
+- [ ] T115 [P] **Create test Facebook page** in Meta Business Manager (FR-021)。**🚨 推奨着手タイミング：Phase 5 末尾（Sprint 5 中）まで**に完了させる。T100 / T117 / T120 等の手動スモークテストとレビュワー検証が本タスクをブロッカとして必要とするため、Phase 8 着手時点ではすでに完了している状態を作る：operator アカウントがページ管理者権限、Messenger 受信を有効化、Webhook 購読、short-lived Page Access Token を取得 → seed スクリプトの環境変数として `META_PAGE_ID` / `META_PAGE_NAME` / `META_PAGE_ACCESS_TOKEN` を実値に差し替え → `npm run db:seed:review` 再実行（マスター鍵で暗号化されて `connected_pages` に保存される）
+- [ ] T116 Verify Page Access Token は長期トークン化 per `quickstart.md` §2.4（**T115 完了後**）→ 取得した長期トークンで再度 seed スクリプトを実行し AES-256-GCM 暗号化して `connected_pages.page_access_token_encrypted` を更新
+- [ ] T117 Manual smoke test (FR-001〜008, FR-022〜FR-026)（**T115 + T116 完了後**）: テスト FB アカウントから Messenger 送信 → 30 秒以内に inbox 反映 (SC-003) → スレッド開く → 60 秒以内に AI 下書き表示 (SC-008) → 編集して送信 → 5 秒以内に Messenger 受信 (SC-004); 失敗ケースも再現（トークン失効、24h 超過、Anthropic API キー失効）
 - [ ] T118 [P] **Verify FR-017 Webhook 20-second SLA** via CloudWatch Logs Insights 直近 48 時間: webhook-lambda の duration p95 < 2000ms / p99 < 5000ms / max < 20000ms。違反時は Phase 2 で Provisioned Concurrency 検討
 - [ ] T119 [P] **Verify SC-002 login → inbox p95 < 10 seconds**: reviewer で 5 回ログイン測定、p95 を `audit-runbook.md` に記録
 - [ ] T120 [P] **Verify SC-008 AI 下書き p95 < 60 seconds**: 10 件のテストメッセージで「webhook 受信 → ai_drafts.status='ready'」までのレイテンシを CloudWatch Logs / DB タイムスタンプ差分で測定、p95 を `audit-runbook.md` に記録
@@ -368,7 +382,7 @@ T099 + T100: -lib 内で別ファイル、並行可
 | Sprint 2 | Infrastructure + 公開ページ + Supabase Auth | Phase 2 (T023〜T054) + Phase 5 先行 (T094〜T097) |
 | Sprint 3 | US1 + US2 着手 + E2E | Phase 3 (T055〜T071) + Phase 4 着手 (T072〜T076) |
 | Sprint 4 | US2 完結 + screencast ドラフト | Phase 4 完結 (T077〜T093) + Phase 6 ドラフト (T105〜T106) |
-| Sprint 5 | screencast 撮影 + Use Case + data deletion | Phase 5 完結 (T098〜T104) + Phase 6 (T107〜T108) + Phase 7 (T109〜T110) |
+| Sprint 5 | screencast 撮影 + Use Case + data deletion + **テスト FB ページ準備（T115）** | Phase 5 完結 (T098〜T104) + Phase 6 (T107〜T108) + Phase 7 (T109〜T110) + **T115 前倒し**（Phase 8 のスモークテストブロッカ解消のため）|
 | Sprint 6 | 提出リハーサル | Phase 8 (T111〜T125、T125 が最終 submit) |
 
 ---
