@@ -53,7 +53,7 @@ AI 自動分類 / Instagram DM / Slack 通知 / 顧客管理 / 商品管理は M
 
 **Target Platform**: AWS Lambda + API Gateway（HTTP API）+ S3/CloudFront（静的生成ページ配信）+ SQS + EventBridge。DB は Supabase（東京リージョン、AWS 外）。Anthropic API は外部 HTTPS。独自ドメイン配下に CloudFront 経由で配信。
 
-**Project Type**: Web application — TanStack Start モノリス 1 本 + 補助 Lambda 2 本（Webhook 受信、AI 下書き Worker、keep-alive）。ルート単位で**レンダリング戦略を使い分ける**（詳細は R-010 参照）：
+**Project Type**: Web application — TanStack Start モノリス 1 本 + 補助 Lambda 3 本（Webhook 受信、AI 下書き Worker、keep-alive）。ルート単位で**レンダリング戦略を使い分ける**（詳細は R-010 参照）：
 
 | ルート | モード | ホスティング | 理由 |
 |--------|--------|--------------|------|

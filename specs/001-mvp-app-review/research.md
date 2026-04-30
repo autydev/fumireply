@@ -88,16 +88,17 @@ design v2 の技術選定に対して、「MVP 審査通過 + AI 下書き生成
 
 ## R-005: Page Access Token の長期化と保管
 
-- **決定**: 短期トークン → 長期ユーザートークン → 長期 Page Access Token の 2 段階交換で取得し、**AWS SSM Parameter Store の `SecureString`** に保管する。Lambda 実行時に SSM から取得しメモリキャッシュする。
+- **決定**: 短期トークン → 長期ユーザートークン → 長期 Page Access Token の 2 段階交換で取得し、**`connected_pages.page_access_token_encrypted` カラムに AES-256-GCM 暗号化して保存する**（R-015 によるマルチテナント化に伴う改訂）。マスター鍵 1 本のみを **SSM Parameter Store の `SecureString`** (`/fumireply/master-encryption-key`) に保管。Lambda 実行時にマスター鍵を SSM から取得しメモリキャッシュ → DB から読んだ暗号化トークンを復号して使用。
 - **根拠**:
   - 開発用の短期 Page Access Token（約 60 分有効）では審査中に失効する。長期 Page Access Token は失効しない（アプリ停止・ユーザーパスワード変更等を除く）。
-  - SSM Parameter Store は無料枠内で使え、IAM で Lambda にアクセス許可を付与するだけでよい。
+  - **マルチテナント前提（R-015）**：トークンを SSM パラメータとしてテナント別に持つと、新規テナントごとに admin が SSM 操作する必要があり SaaS のセルフサインアップに耐えない。アプリが暗号化して DB に保存する方式ならテナント数に依存せずスケールする。
+  - マスター鍵 1 本だけなら SSM 管理対象も 1 つ。Lambda 起動時のキャッシュも単純。
   - Secrets Manager は自動ローテーション機能が売りだが Meta トークンは自動ローテーション非対応、コストも発生（$0.40/secret/月）。MVP では SSM が機能十分。
-- **取得手順**（手動運用）:
+- **取得手順**（MVP は手動、Phase 2 でセルフサインアップ画面に組み込み）:
   1. Facebook for Developers で短期トークンを生成
   2. Graph API Explorer で `fb_exchange_token` を叩いて長期ユーザートークンに変換
   3. `GET /me/accounts` で該当ページの長期 Page Access Token を取得
-  4. SSM に `/fumireply/review/meta/page-access-token` として格納
+  4. seed スクリプトに環境変数として渡す → SSM マスター鍵を取得 → AES-256-GCM 暗号化 → `connected_pages.page_access_token_encrypted` に INSERT（`quickstart.md` §3.1）
 - **Graph API バージョン**: `v19.0` に固定する（`contracts/meta-send-api.md` の `graph.facebook.com/v19.0/me/messages`、`quickstart.md` の `fb_exchange_token` 呼び出しと一致）。
 
 ---
