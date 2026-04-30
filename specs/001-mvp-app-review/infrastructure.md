@@ -121,8 +121,8 @@ tags = {
 | `/fumireply/review/meta/app-secret` | SecureString | Meta App Secret（Webhook 署名検証用、Data Deletion 署名検証用）。**全テナント共通**（単一 Meta App 配下） |
 | `/fumireply/review/meta/webhook-verify-token` | SecureString | Webhook 購読時の verify_token。**全テナント共通** |
 | `/fumireply/review/supabase/url` | SecureString | Supabase プロジェクト URL（例: `https://xxxx.supabase.co`）|
-| `/fumireply/review/supabase/anon-key` | SecureString | Supabase Auth クライアント用 anon key |
-| `/fumireply/review/supabase/service-role-key` | SecureString | Supabase Admin 操作用 service role key（migration / webhook の page_id → tenant_id 解決時のみ使用、RLS バイパス）|
+| `/fumireply/review/supabase/publishable-key` | SecureString | Supabase クライアント用 publishable key（`sb_publishable_...`、旧 anon key の後継）|
+| `/fumireply/review/supabase/secret-key` | SecureString | Supabase Admin 操作用 secret key（`sb_secret_...`、旧 service role key の後継。migration / webhook の page_id → tenant_id 解決時のみ使用、RLS バイパス）|
 | `/fumireply/review/supabase/db-url` | SecureString | Supabase Pooler 接続文字列（Transaction mode、port 6543）|
 | `/fumireply/review/anthropic/api-key` | SecureString | Anthropic API キー（Worker Lambda 用）|
 | `/fumireply/review/deletion-log/hash-salt` | SecureString | `deletion_log.psid_hash` の計算に使う 32 バイトランダム salt |
@@ -476,7 +476,7 @@ GitHub Actions:
 詳細は [`quickstart.md`](./quickstart.md)。要点：
 
 1. Bootstrap apply（State 管理リソース）
-2. Supabase プロジェクト作成（東京リージョン、無料プラン）→ DB URL / anon key / service role key を取得
+2. Supabase プロジェクト作成（東京リージョン、無料プラン）→ DB URL / publishable key (`sb_publishable_...`) / secret key (`sb_secret_...`) を取得
 3. `secrets` モジュール apply → SSM パラメータ定義作成
 4. CLI で SSM に実値を手動投入（Meta App Secret、Supabase URL/Keys、Anthropic API Key、master encryption key）
 5. `envs/review` を全モジュール apply

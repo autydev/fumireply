@@ -28,10 +28,10 @@
 # 依存インストール
 cd app && npm install
 
-# .env.local 作成（Supabase URL / anon key / DB URL を自分の Supabase プロジェクトから貼る）
+# .env.local 作成（Supabase URL / publishable key / DB URL を自分の Supabase プロジェクトから貼る）
 cat > .env.local <<EOF
 SUPABASE_URL=https://<project>.supabase.co
-SUPABASE_ANON_KEY=<anon-key>
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_<...>
 DATABASE_URL=postgres://postgres.<project>:<password>@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres
 ANTHROPIC_API_KEY=<your-api-key>
 META_APP_SECRET=dummy-for-local
@@ -100,7 +100,7 @@ curl -s "https://graph.facebook.com/v19.0/me/accounts?access_token=${LONG_USER_T
 1. https://supabase.com/dashboard で新規プロジェクト作成
 2. リージョン：**Northeast Asia (Tokyo)**
 3. プラン：**Free**（MVP）
-4. プロジェクト URL（`https://<project>.supabase.co`）、anon key、service role key を控える
+4. **API Keys**（Project Settings → API Keys → "Publishable and secret API keys" タブ）から **publishable key** (`sb_publishable_...`) と **secret key** (`sb_secret_...`) を控える。プロジェクト URL（`https://<project>.supabase.co`）も Settings → Data API から控える
 5. **Pooler 接続文字列**（Settings → Database → Connection Pooling → Transaction mode）を控える：
    ```
    postgres://postgres.<project>:<password>@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres
@@ -126,12 +126,12 @@ aws ssm put-parameter \
   --type "SecureString" --value "https://<project>.supabase.co"
 
 aws ssm put-parameter \
-  --name "/fumireply/review/supabase/anon-key" \
-  --type "SecureString" --value "<SUPABASE_ANON_KEY>"
+  --name "/fumireply/review/supabase/publishable-key" \
+  --type "SecureString" --value "<SUPABASE_PUBLISHABLE_KEY>"
 
 aws ssm put-parameter \
-  --name "/fumireply/review/supabase/service-role-key" \
-  --type "SecureString" --value "<SUPABASE_SERVICE_ROLE_KEY>"
+  --name "/fumireply/review/supabase/secret-key" \
+  --type "SecureString" --value "<SUPABASE_SECRET_KEY>"
 
 aws ssm put-parameter \
   --name "/fumireply/review/supabase/db-url" \
@@ -218,7 +218,7 @@ Terraform で AWS リソースが作られ、tenant が seed された後、Supa
 
 ```bash
 SUPABASE_URL=$(aws ssm get-parameter --name /fumireply/review/supabase/url --with-decryption --query 'Parameter.Value' --output text)
-SUPABASE_SERVICE_KEY=$(aws ssm get-parameter --name /fumireply/review/supabase/service-role-key --with-decryption --query 'Parameter.Value' --output text)
+SUPABASE_SECRET_KEY=$(aws ssm get-parameter --name /fumireply/review/supabase/secret-key --with-decryption --query 'Parameter.Value' --output text)
 
 # 直前に seed した Malbek tenant の UUID を取得
 TENANT_ID=$(psql "$DATABASE_URL" -tA -c "SELECT id FROM tenants WHERE slug = 'malbek';")
@@ -227,8 +227,8 @@ TENANT_ID=$(psql "$DATABASE_URL" -tA -c "SELECT id FROM tenants WHERE slug = 'ma
 OP_PASSWORD=$(openssl rand -base64 24)
 
 curl -X POST "${SUPABASE_URL}/auth/v1/admin/users" \
-  -H "apikey: ${SUPABASE_SERVICE_KEY}" \
-  -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}" \
+  -H "apikey: ${SUPABASE_SECRET_KEY}" \
+  -H "Authorization: Bearer ${SUPABASE_SECRET_KEY}" \
   -H "Content-Type: application/json" \
   -d "{
     \"email\": \"operator@malbek.co.jp\",
@@ -246,8 +246,8 @@ aws ssm put-parameter \
 REVIEWER_PASSWORD=$(openssl rand -base64 24)
 
 curl -X POST "${SUPABASE_URL}/auth/v1/admin/users" \
-  -H "apikey: ${SUPABASE_SERVICE_KEY}" \
-  -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}" \
+  -H "apikey: ${SUPABASE_SECRET_KEY}" \
+  -H "Authorization: Bearer ${SUPABASE_SECRET_KEY}" \
   -H "Content-Type: application/json" \
   -d "{
     \"email\": \"reviewer@malbek.co.jp\",

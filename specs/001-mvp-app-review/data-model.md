@@ -58,7 +58,7 @@ SaaS のテナント（契約事業者）。MVP では 1 行（Malbek）。Phase
 - INDEX (`tenant_id`)
 
 **RLS**: ON。ポリシー：`tenant_id = current_setting('app.tenant_id')::uuid`。
-- 例外：webhook-lambda は `page_id` から `tenant_id` を解決する**前**に検索が必要なため、service role key で接続して RLS をバイパスする。検索後は解決した `tenant_id` を `app.tenant_id` にセットして以降の操作に進む。
+- 例外：webhook-lambda は `page_id` から `tenant_id` を解決する**前**に検索が必要なため、secret key（`sb_secret_...`、`service_role` 権限で BYPASSRLS）で接続して RLS をバイパスする。検索後は解決した `tenant_id` を `app.tenant_id` にセットして以降の操作に進む。
 
 **設計意図**:
 - **暗号化カラム化の理由**：旧方針（SSM パス `/fumireply/<tenant>/page-access-token`）では tenant 増加時に SSM 操作が必要で、SaaS のセルフサインアップに耐えない。アプリが暗号化して DB に書き込む方式なら、tenant 数に依存せずスケールする。

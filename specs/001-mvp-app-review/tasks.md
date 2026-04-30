@@ -68,13 +68,13 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 ### Supabase + 外部サービスのセットアップ
 <!-- unit: U2.1 | deps: none | scope: infra | tasks: T023,T024 | files: 0 | automation: manual -->
 
-- [ ] T023 [P] **Create Supabase project** (Tokyo region, Free plan): プロジェクト URL、anon key、service role key、Pooler 接続文字列（Transaction mode、port 6543）を控える。`quickstart.md` §2.5 参照
+- [ ] T023 [P] **Create Supabase project** (Tokyo region, Free plan): プロジェクト URL、publishable key (`sb_publishable_...`)、secret key (`sb_secret_...`)、Pooler 接続文字列（Transaction mode、port 6543）を控える。`quickstart.md` §2.5 参照
 - [ ] T024 [P] **Create Anthropic API account + key**: Anthropic Console で API キー発行、最低 $5 クレジット入金、`quickstart.md` §0 前提を満たす
 
 ### Terraform modules（各モジュール並行可、VPC/RDS/Cognito モジュールは廃止）
 <!-- unit: U2.2 | deps: U2.1 | scope: infra | tasks: T025-T033 | files: ~9 | automation: auto -->
 
-- [ ] T025 [P] Create `terraform/modules/secrets/` — SSM Parameter Store SecureString definitions per `infrastructure.md` §3.1: `/fumireply/review/meta/{webhook-verify-token,app-secret}`（**全テナント共通、page-access-token は DB 暗号化カラム化により廃止**）、`/fumireply/review/supabase/{url,anon-key,service-role-key,db-url}`、`/fumireply/review/anthropic/api-key`、`/fumireply/review/deletion-log/hash-salt`、**`/fumireply/master-encryption-key`**（マルチテナント用 AES-256 マスター鍵）。値は後から手動投入、Terraform は空 placeholder で `lifecycle.ignore_changes=[value]`
+- [ ] T025 [P] Create `terraform/modules/secrets/` — SSM Parameter Store SecureString definitions per `infrastructure.md` §3.1: `/fumireply/review/meta/{webhook-verify-token,app-secret}`（**全テナント共通、page-access-token は DB 暗号化カラム化により廃止**）、`/fumireply/review/supabase/{url,publishable-key,secret-key,db-url}`、`/fumireply/review/anthropic/api-key`、`/fumireply/review/deletion-log/hash-salt`、**`/fumireply/master-encryption-key`**（マルチテナント用 AES-256 マスター鍵）。値は後から手動投入、Terraform は空 placeholder で `lifecycle.ignore_changes=[value]`
 - [ ] T026 [P] Create `terraform/modules/queue/` — SQS Standard Queue `fumireply-review-ai-draft-queue`（Visibility Timeout 90 秒、long polling 20 秒）+ DLQ `fumireply-review-ai-draft-dlq`（Retention 14 日）+ Redrive Policy（`maxReceiveCount=3`）per `infrastructure.md` §3.2
 - [ ] T027 [P] Create `terraform/modules/app-lambda/` — TanStack Start SSR Lambda（`nodejs24.x`、Memory 1024MB、Timeout 30 秒、**VPC 外**、Lambda Web Adapter Layer attach）+ IAM Role（SSM Get、CloudWatch Logs、**VPC 関連権限なし**）+ API Gateway HTTP API + `$default` route → Lambda integration、環境変数 `AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap`、`PORT=8080`、`SSM_PATH_PREFIX=/fumireply/review/`
 - [ ] T028 [P] Create `terraform/modules/webhook-lambda/` — Webhook 受信 Lambda（`nodejs24.x`、Memory 512MB、Timeout 10 秒、VPC 外）+ IAM Role（SSM Get、SQS SendMessage 限定 ARN、CloudWatch Logs）+ API Gateway Route `GET/POST /api/webhook` → このLambda integration（`app-lambda` の API Gateway を共有）
@@ -103,7 +103,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 ### Core shared services（auth / token / messenger / supabase）
 <!-- unit: U2.5 | deps: U2.4 | scope: backend | tasks: T045-T053 | files: ~14 | automation: auto -->
 
-- [ ] T045 [P] Create `app/src/server/env.ts` — zod schema validating required env vars (`DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `META_APP_SECRET_SSM_KEY`, `WEBHOOK_VERIFY_TOKEN_SSM_KEY`, `ANTHROPIC_API_KEY_SSM_KEY`, `AWS_REGION`)
+- [ ] T045 [P] Create `app/src/server/env.ts` — zod schema validating required env vars (`DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `META_APP_SECRET_SSM_KEY`, `WEBHOOK_VERIFY_TOKEN_SSM_KEY`, `ANTHROPIC_API_KEY_SSM_KEY`, `AWS_REGION`)
 - [ ] T046 [P] Create `app/src/server/services/ssm.ts` — generic `getSsmParameter(name, ttl=300)` using `@aws-sdk/client-ssm` `GetParameter` with `WithDecryption: true`; module-level in-memory cache。共通 SSM 取得ヘルパ。Meta App Secret、Anthropic API キー、Supabase URL/keys、master encryption key、deletion-log salt 等で共通利用
 - [ ] T047 [P] Create `app/src/server/services/ssm.test.ts` — mock SSM client: cache hit/miss、decryption、TTL 切れ
 - [ ] T047a [P] Create `app/src/server/services/crypto.ts` — `encryptToken(plaintext, masterKey) → Buffer` + `decryptToken(blob, masterKey) → string` (AES-256-GCM、形式 `iv(12B)||tag(16B)||ciphertext`) per `data-model.md`「Page Access Token の暗号化」節 + `getMasterKey()` でマスター鍵を SSM から取得しキャッシュ + `getPageAccessTokenForTenant(tenantId)` (RLS 有効なクエリで `connected_pages.page_access_token_encrypted` を取得 → 復号)
@@ -112,7 +112,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - [ ] T047d [P] Create `app/src/server/db/with-tenant.test.ts` — integration: 別 tenant の行が SELECT で見えないこと、INSERT で `tenant_id` が WITH CHECK で強制されること、`SET LOCAL` 未設定の素のクエリで 0 行返ること
 - [ ] T048 [P] Create `app/src/server/services/messenger.ts` — `sendMessengerReply({ pageAccessToken, recipientPsid, messageText })`: global `fetch`、`AbortSignal.timeout(5000)`、指数バックオフ (3 回, base 500ms) per `contracts/meta-send-api.md`; 返却型 `{ ok: true, messageId } | { ok: false, error: 'token_expired' | 'outside_window' | ... }`。**トークンは引数で受け取り**（呼び出し側が tenant ごとに復号した値を渡す）
 - [ ] T049 [P] Create `app/src/server/services/messenger.test.ts` — MSW で Meta Send API モック
-- [ ] T050 [P] Create `app/src/server/services/auth.ts` — `createClient(SUPABASE_URL, SUPABASE_ANON_KEY)` singleton + helper `verifyAccessToken(token)` (内部で `supabase.auth.getUser`) + `refreshSession(refreshToken)` (内部で `supabase.auth.refreshSession`)
+- [ ] T050 [P] Create `app/src/server/services/auth.ts` — `createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)` singleton + helper `verifyAccessToken(token)` (内部で `supabase.auth.getUser`) + `refreshSession(refreshToken)` (内部で `supabase.auth.refreshSession`)
 - [ ] T051 [P] Create `app/src/server/services/auth.test.ts` — Supabase Auth API を MSW でモック: getUser 成功、access_token 期限切れ → refresh 成功 / 失敗分岐
 - [ ] T052 Create `app/src/server/middleware/auth-middleware.ts` — serverFn middleware per `contracts/admin-api.md` 「認証 + テナント解決ミドルウェア」: read `sb-access-token` cookie → `verifyAccessToken` → tenant_id 抽出 → **`tenants WHERE id = $tenant_id AND status = 'active'` で確認**（service role 接続、見つからなければ `/login?error=tenant_suspended` リダイレクト）→ on auth fail call `refreshSession` and reset cookies → on refresh fail redirect `/login?returnTo=...`; expose `{ user: { id, email, tenantId, role } }`
 - [ ] T053 [P] Create `app/src/server/services/anthropic.ts` — Anthropic API 呼び出しヘルパ（実体は ai-worker から import するためエクスポート用）。`generateDraft({ history, latestMessageBody })` returns `{ ok: true, body, model, inputTokens, outputTokens, latencyMs } | { ok: false, error }` per `contracts/ai-draft.md`; `@anthropic-ai/sdk` 使用、prompt caching 有効、retry/backoff 実装
