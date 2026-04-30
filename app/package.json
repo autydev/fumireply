@@ -21,11 +21,13 @@
     "db:seed:review": "tsx src/server/db/seed/review.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
     "@aws-sdk/client-ssm": "^3.1039.0",
     "@supabase/supabase-js": "^2.105.1",
     "@tanstack/react-router": "^1.168.23",
     "@tanstack/react-start": "^1.167.42",
     "drizzle-orm": "^0.45.2",
+    "msw": "^2.14.2",
     "postgres": "^3.4.9",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
