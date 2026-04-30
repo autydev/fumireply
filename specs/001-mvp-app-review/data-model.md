@@ -371,7 +371,7 @@ erDiagram
   AI_DRAFTS {
     uuid id PK
     uuid tenant_id FK
-    uuid message_id FK_UK
+    uuid message_id FK
     varchar status
     varchar model
   }
@@ -386,7 +386,7 @@ erDiagram
 
   SUPABASE_AUTH_USER {
     uuid id PK
-    uuid tenant_id LOGICAL
+    uuid tenant_id
     varchar email
   }
 
