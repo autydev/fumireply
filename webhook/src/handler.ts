@@ -92,17 +92,10 @@ async function processMessagingEvent(
         tenantId,
         pageId: pageUuid,
         customerPsid: psid,
-        lastInboundAt: new Date(ts),
-        lastMessageAt: new Date(ts),
-        unreadCount: 1,
       })
       .onConflictDoUpdate({
         target: [conversations.pageId, conversations.customerPsid],
-        set: {
-          lastInboundAt: new Date(ts),
-          lastMessageAt: new Date(ts),
-          unreadCount: sql`${conversations.unreadCount} + 1`,
-        },
+        set: { customerPsid: sql`excluded.customer_psid` },
       })
       .returning({ id: conversations.id })
 
@@ -124,6 +117,15 @@ async function processMessagingEvent(
 
     const newMsg = inserted[0]
     if (!newMsg) return null
+
+    await tx
+      .update(conversations)
+      .set({
+        lastInboundAt: new Date(ts),
+        lastMessageAt: new Date(ts),
+        unreadCount: sql`${conversations.unreadCount} + 1`,
+      })
+      .where(eq(conversations.id, conv.id))
 
     if (messageType !== 'text') return null
 
@@ -225,5 +227,11 @@ export const handler = async (
 ): Promise<APIGatewayProxyStructuredResultV2> => {
   const method = event.requestContext.http.method
   if (method === 'GET') return handleGet(event)
-  return handlePost(event)
+  if (method === 'POST') return handlePost(event)
+
+  return {
+    statusCode: 405,
+    headers: { Allow: 'GET, POST' },
+    body: 'Method Not Allowed',
+  }
 }

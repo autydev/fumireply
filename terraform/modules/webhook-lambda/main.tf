@@ -47,12 +47,9 @@ resource "aws_iam_role" "webhook_lambda" {
 
 data "aws_iam_policy_document" "webhook_lambda_policy" {
   statement {
-    sid     = "SSMRead"
-    actions = ["ssm:GetParameter"]
-    resources = [
-      "${local.ssm_arn_prefix}/*",
-      "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/fumireply/master-encryption-key",
-    ]
+    sid       = "SSMRead"
+    actions   = ["ssm:GetParameter"]
+    resources = ["${local.ssm_arn_prefix}/*"]
   }
 
   statement {
