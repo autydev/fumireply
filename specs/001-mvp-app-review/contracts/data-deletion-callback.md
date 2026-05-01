@@ -1,6 +1,6 @@
 # Contract: Meta Data Deletion Callback
 
-**Endpoint**: `POST /api/data-deletion`, `GET /api/data-deletion/status/:code`
+**Endpoint**: `POST /api/data-deletion`, `GET /data-deletion-status/:code`
 **Spec reference**: FR-012, FR-014
 **External spec**: https://developers.facebook.com/docs/development/create-an-app/app-dashboard/data-deletion-callback
 
@@ -54,7 +54,7 @@ timingSafeEqual(expected, received)
 
 ```json
 {
-  "url": "https://<domain>/api/data-deletion/status/<confirmation_code>",
+  "url": "https://<domain>/data-deletion-status/<confirmation_code>",
   "confirmation_code": "<confirmation_code>"
 }
 ```
@@ -67,13 +67,13 @@ timingSafeEqual(expected, received)
 
 ---
 
-## GET `/api/data-deletion/status/:code` — Status Check
+## GET `/data-deletion-status/:code` — Status Check
 
 削除状況の確認 URL。ユーザーまたは Meta が削除の完了を確認する。
 
 ### Request
 
-- Path: `/api/data-deletion/status/<confirmation_code>`
+- Path: `/data-deletion-status/<confirmation_code>`
 - No auth required（公開）
 
 ### Response
@@ -132,7 +132,7 @@ psid_hash = SHA-256(salt || psid_raw)
    - `psid_hash = SHA-256(salt || PSID)` を計算
    - `deletion_log` に INSERT（平文 PSID は破棄、ハッシュのみ保存。tenant_id も記録）
 5. `confirmation_code`（テナント横断で UNIQUE）を生成し Meta に返す
-6. status エンドポイントは service role で `confirmation_code` 直引き、Deleted 文言のみ返す（テナント情報を露出させない）
+6. status エンドポイント (`GET /data-deletion-status/:code`) は service role で `confirmation_code` 直引き、Deleted 文言のみ返す（テナント情報を露出させない）
 
 **status endpoint のセキュリティ考慮**: 現状通り認証なしで `Deleted` 文言のみを返す。`confirmation_code` が漏洩しても、漏洩先からは PSID は逆引き不可能（UUID ベースでハッシュとの関連もない）。
 
