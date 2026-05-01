@@ -4,8 +4,13 @@ import { eq } from 'drizzle-orm'
 import { dbAdmin } from '~/server/db/client'
 import { deletionLog } from '~/server/db/schema'
 
+const CONFIRMATION_CODE_PATTERN = /^[0-9a-fA-F]{32}$/
+
 const getDeletionStatus = createServerFn({ method: 'GET' })
-  .inputValidator((code: string) => code)
+  .inputValidator((code: string) => {
+    if (!CONFIRMATION_CODE_PATTERN.test(code)) throw notFound()
+    return code
+  })
   .handler(async ({ data: code }) => {
     // Service role bypasses RLS — status endpoint is public and tenant-agnostic
     const rows = await dbAdmin

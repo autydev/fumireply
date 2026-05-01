@@ -3,9 +3,15 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm'
 import { deleteUserData } from './-lib/delete-user-data'
 
+const SSM_PARAMETER_TIMEOUT_MS = 3_000
+
 async function getSsmParameter(name: string): Promise<string> {
-  const client = new SSMClient({ region: process.env.AWS_REGION ?? 'ap-northeast-1' })
-  const result = await client.send(new GetParameterCommand({ Name: name, WithDecryption: true }))
+  const region = process.env.AWS_REGION?.trim() || 'ap-northeast-1'
+  const client = new SSMClient({ region })
+  const result = await client.send(
+    new GetParameterCommand({ Name: name, WithDecryption: true }),
+    { abortSignal: AbortSignal.timeout(SSM_PARAMETER_TIMEOUT_MS) },
+  )
   if (!result.Parameter?.Value) throw new Error(`SSM parameter not found: ${name}`)
   return result.Parameter.Value
 }

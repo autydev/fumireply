@@ -72,10 +72,9 @@ describe('deleteUserData', () => {
     // withTenant should have run one transaction
     expect(mockDbTransaction).toHaveBeenCalledTimes(1)
 
-    // SET LOCAL should have been called
-    expect(mockExecute).toHaveBeenCalledWith(
-      expect.objectContaining({ queryChunks: expect.any(Array) }),
-    )
+    // SET LOCAL should have been called once
+    expect(mockExecute).toHaveBeenCalledTimes(1)
+    expect(mockExecute).toHaveBeenCalledWith(expect.anything())
 
     // conversations DELETE
     expect(mockDelete).toHaveBeenCalledWith(expect.anything())
