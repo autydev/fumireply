@@ -13,8 +13,8 @@ export default defineConfig({
     tanstackStart({
       prerender: {
         enabled: true,
-        filter: ({ path }) =>
-          ['/', '/privacy', '/terms', '/data-deletion'].includes(path),
+        filter: ({ path: routePath }) =>
+          ['/', '/privacy', '/terms', '/data-deletion'].includes(routePath),
       },
     }),
     viteReact(),
