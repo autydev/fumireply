@@ -38,9 +38,10 @@ vi.mock('../../../webhook/src/services/ssm', () => ({
 
 vi.mock('../../../webhook/src/db/client', () => ({
   db: {},
-  dbAdmin: {
-    select: () => ({ from: () => ({ where: mockDbAdminWhere }) }),
-  },
+  getDbAdmin: () =>
+    Promise.resolve({
+      select: () => ({ from: () => ({ where: mockDbAdminWhere }) }),
+    }),
 }))
 
 vi.mock('../../../webhook/src/db/with-tenant', () => ({
