@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const APP_URL = process.env.APP_URL ?? 'http://localhost:3000'
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
@@ -8,7 +10,7 @@ export default defineConfig({
   workers: 1,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
-    baseURL: process.env.APP_URL ?? 'http://localhost:8080',
+    baseURL: APP_URL,
     trace: 'on-first-retry',
   },
   projects: [
@@ -21,7 +23,7 @@ export default defineConfig({
     ? undefined
     : {
         command: 'npm run dev',
-        url: 'http://localhost:3000',
+        url: APP_URL,
         reuseExistingServer: !process.env.CI,
         timeout: 60_000,
       },
