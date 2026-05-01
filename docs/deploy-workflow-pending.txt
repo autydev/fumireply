@@ -1,15 +1,22 @@
-This placeholder exists because creating or updating workflow files requires the GitHub `workflow`
-token scope. Claude Code and other OAuth/App-based automation tools do not have this scope, so the
-actual `.github/workflows/deploy-app.yml` cannot be committed via automation. A normal manual
-commit/push by an operator with the `workflow` scope is still possible.
+This is a temporary placeholder because creating or updating workflow files requires the GitHub
+`workflow` token scope. Claude Code and other OAuth/App-based automation tools do not have this
+scope, so the actual `.github/workflows/deploy-app.yml` cannot be committed via automation. A normal
+manual commit/push by an operator with the `workflow` scope is still possible.
 
-ACTION REQUIRED: An operator with the `workflow` token scope should commit
-`.github/workflows/deploy-app.yml` directly to this branch (claude/U5.3-deploy-app-yml)
-so the workflow file is included in the PR diff, can be reviewed, and is merged through the PR.
+MERGE BLOCKER: This file must not remain in `main`.
 
-Do not apply the workflow by manually committing it directly to main outside this PR.
+ACTION REQUIRED:
+1. An operator with the `workflow` token scope must commit
+   `.github/workflows/deploy-app.yml` directly to this branch (claude/U5.3-deploy-app-yml) so the
+   workflow file is included in the PR diff, can be reviewed, and is merged through the PR.
+2. In that same commit, the operator must delete this placeholder file
+   (docs/deploy-workflow-pending.txt).
+3. If the workflow file cannot be included in this PR, this PR must not be merged to `main`
+   while this placeholder file exists. Keep it as draft or continue the work on a separate branch.
 
-The full YAML content to commit is in the PR body (#17).
+Do not apply the workflow by manually committing it directly to `main` outside this PR.
 
-Once the operator adds the workflow file to this branch, this placeholder file (docs/deploy-workflow-pending.txt)
-should be removed in the same commit.
+The YAML content for `.github/workflows/deploy-app.yml` is in the PR body under the
+"手動追加手順" section: https://github.com/autydev/fumireply/pull/17
+
+If this file is still present, the workflow addition is incomplete and the PR is not ready to merge.
