@@ -1,7 +1,15 @@
-This file is intentionally left as a placeholder commit so the branch has reviewable content.
+This placeholder exists because creating or updating workflow files requires the GitHub `workflow`
+token scope. Claude Code and other OAuth/App-based automation tools do not have this scope, so the
+actual `.github/workflows/deploy-app.yml` cannot be committed via automation. A normal manual
+commit/push by an operator with the `workflow` scope is still possible.
 
-The actual implementation (.github/workflows/deploy-app.yml) is documented in the PR body.
-It cannot be pushed directly because GitHub requires the `workflow` token scope.
+ACTION REQUIRED: An operator with the `workflow` token scope should commit
+`.github/workflows/deploy-app.yml` directly to this branch (claude/U5.3-deploy-app-yml)
+so the workflow file is included in the PR diff, can be reviewed, and is merged through the PR.
 
-To apply: copy the YAML from the PR body and commit it manually to main as
-  .github/workflows/deploy-app.yml
+Do not apply the workflow by manually committing it directly to main outside this PR.
+
+The full YAML content to commit is in the PR body (#17).
+
+Once the operator adds the workflow file to this branch, this placeholder file (docs/deploy-workflow-pending.txt)
+should be removed in the same commit.
