@@ -22,17 +22,25 @@ describe('withTenant', () => {
     const capturedSetCalls: string[] = []
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const fakeTx = {
-        execute: async (stmt: { sql?: string; queryChunks?: Array<{ value?: string[] }> }) => {
-          // Capture the SQL template to verify tenant_id is set
+        execute: async (stmt: unknown) => {
+          // Drizzle's sql template stores literal SQL in `queryChunks` and
+          // bound parameters via `Param` instances; serializing with the
+          // default replacer captures both, which is enough to assert that
+          // `app.tenant_id` is being set with the supplied tenantId.
           capturedSetCalls.push(JSON.stringify(stmt))
         },
       }
       return fn(fakeTx)
     })
 
-    await withTenant('tenant-uuid-123', async () => 'result')
+    const tenantId = '00000000-0000-0000-0000-000000000123'
+    await withTenant(tenantId, async () => 'result')
     expect(mockTransaction).toHaveBeenCalledTimes(1)
-    expect(capturedSetCalls.length).toBeGreaterThan(0)
+    expect(capturedSetCalls.length).toBe(1)
+    const captured = capturedSetCalls[0]
+    expect(captured).toContain('app.tenant_id')
+    expect(captured).toContain('set_config')
+    expect(captured).toContain(tenantId)
   })
 
   it('returns the value from fn', async () => {

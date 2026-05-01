@@ -18,7 +18,7 @@ const { getSsmParameter } = await import('./ssm')
 const { encryptToken, decryptToken, getMasterKey, clearMasterKeyCache } = await import('./crypto')
 
 const TEST_MASTER_KEY = randomBytes(32)
-const TEST_MASTER_KEY_HEX = TEST_MASTER_KEY.toString('hex')
+const TEST_MASTER_KEY_B64 = TEST_MASTER_KEY.toString('base64')
 
 describe('encryptToken / decryptToken', () => {
   it('round-trips plaintext correctly', () => {
@@ -60,16 +60,22 @@ describe('getMasterKey', () => {
   })
 
   it('fetches from SSM and returns Buffer', async () => {
-    vi.mocked(getSsmParameter).mockResolvedValueOnce(TEST_MASTER_KEY_HEX)
+    vi.mocked(getSsmParameter).mockResolvedValueOnce(TEST_MASTER_KEY_B64)
     const key = await getMasterKey()
     expect(key).toBeInstanceOf(Buffer)
     expect(key.length).toBe(32)
   })
 
   it('caches the master key (SSM called only once)', async () => {
-    vi.mocked(getSsmParameter).mockResolvedValueOnce(TEST_MASTER_KEY_HEX)
+    vi.mocked(getSsmParameter).mockResolvedValueOnce(TEST_MASTER_KEY_B64)
     await getMasterKey()
     await getMasterKey()
     expect(getSsmParameter).toHaveBeenCalledTimes(1)
+  })
+
+  it('throws when SSM value decodes to wrong length', async () => {
+    const tooShort = Buffer.alloc(16).toString('base64')
+    vi.mocked(getSsmParameter).mockResolvedValueOnce(tooShort)
+    await expect(getMasterKey()).rejects.toThrow('Invalid master key length')
   })
 })

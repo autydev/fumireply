@@ -55,8 +55,16 @@ export async function sendMessengerReply(params: {
     }
 
     if (response.ok) {
-      const data = (await response.json()) as { message_id?: string; recipient_id?: string }
-      return { ok: true, messageId: data.message_id ?? '' }
+      let data: { message_id?: string; recipient_id?: string }
+      try {
+        data = (await response.json()) as { message_id?: string; recipient_id?: string }
+      } catch {
+        return { ok: false, error: 'meta_server_error' }
+      }
+      if (typeof data.message_id !== 'string' || data.message_id.length === 0) {
+        return { ok: false, error: 'meta_server_error' }
+      }
+      return { ok: true, messageId: data.message_id }
     }
 
     // 5xx: retry

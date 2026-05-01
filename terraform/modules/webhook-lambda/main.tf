@@ -93,7 +93,7 @@ resource "aws_cloudwatch_log_group" "webhook_lambda" {
 resource "aws_lambda_function" "webhook" {
   function_name = "${var.name_prefix}-webhook"
   role          = aws_iam_role.webhook_lambda.arn
-  runtime       = "nodejs24.x"
+  runtime       = "nodejs22.x"
   handler       = "handler.handler"
   memory_size   = 512
   timeout       = 10
@@ -103,10 +103,8 @@ resource "aws_lambda_function" "webhook" {
 
   environment {
     variables = {
-      SSM_PATH_PREFIX           = var.ssm_path_prefix
-      SQS_QUEUE_URL             = var.sqs_queue_url
-      DATABASE_URL              = var.database_url
-      DATABASE_URL_SERVICE_ROLE = var.database_url_service_role
+      SSM_PATH_PREFIX = var.ssm_path_prefix
+      SQS_QUEUE_URL   = var.sqs_queue_url
     }
   }
 

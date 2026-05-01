@@ -7,15 +7,27 @@ import { eq } from 'drizzle-orm'
 const MASTER_KEY_SSM_PATH = '/fumireply/master-encryption-key'
 const IV_LENGTH = 12
 const AUTH_TAG_LENGTH = 16
+const MASTER_KEY_LENGTH = 32
 const ALGORITHM = 'aes-256-gcm'
 
 let masterKeyCache: Buffer | null = null
 
+function decodeMasterKey(encoded: string): Buffer {
+  const masterKey = Buffer.from(encoded.trim(), 'base64')
+  if (masterKey.length !== MASTER_KEY_LENGTH) {
+    throw new Error(
+      `Invalid master key length: expected ${MASTER_KEY_LENGTH} bytes, got ${masterKey.length}`,
+    )
+  }
+  return masterKey
+}
+
 export async function getMasterKey(): Promise<Buffer> {
   if (masterKeyCache) return masterKeyCache
-  const hex = await getSsmParameter(MASTER_KEY_SSM_PATH)
-  masterKeyCache = Buffer.from(hex, 'hex')
-  return masterKeyCache
+  const encoded = await getSsmParameter(MASTER_KEY_SSM_PATH)
+  const masterKey = decodeMasterKey(encoded)
+  masterKeyCache = masterKey
+  return masterKey
 }
 
 export function clearMasterKeyCache(): void {

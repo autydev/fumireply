@@ -25,8 +25,6 @@ vi.mock('./env', () => ({
     SSM_PATH_PREFIX: '/fumireply/test',
     SQS_QUEUE_URL: 'https://sqs.ap-northeast-1.amazonaws.com/123/test-queue',
     AWS_REGION: 'ap-northeast-1',
-    DATABASE_URL: 'postgres://test',
-    DATABASE_URL_SERVICE_ROLE: 'postgres://test-admin',
   },
 }))
 
@@ -35,10 +33,10 @@ vi.mock('./services/ssm', () => ({
 }))
 
 vi.mock('./db/client', () => ({
-  db: {},
-  dbAdmin: {
+  getDb: async () => ({}),
+  getDbAdmin: async () => ({
     select: () => ({ from: () => ({ where: mockDbAdminWhere }) }),
-  },
+  }),
 }))
 
 vi.mock('./db/with-tenant', () => ({

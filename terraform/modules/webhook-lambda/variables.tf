@@ -14,18 +14,6 @@ variable "ssm_path_prefix" {
   type        = string
 }
 
-variable "database_url" {
-  description = "PostgreSQL connection URL (anon role, Transaction Pooler)"
-  type        = string
-  sensitive   = true
-}
-
-variable "database_url_service_role" {
-  description = "PostgreSQL connection URL (service role, bypasses RLS)"
-  type        = string
-  sensitive   = true
-}
-
 variable "sqs_queue_arn" {
   description = "ARN of the AI draft SQS queue for SendMessage permission"
   type        = string

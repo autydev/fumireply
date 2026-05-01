@@ -1,12 +1,20 @@
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js'
 
+const AUTH_REQUEST_TIMEOUT_MS = 5000
+
 let supabaseInstance: SupabaseClient | null = null
+
+const fetchWithTimeout: typeof fetch = (input, init) => {
+  const signal = AbortSignal.timeout(AUTH_REQUEST_TIMEOUT_MS)
+  return fetch(input, { ...init, signal })
+}
 
 export function getSupabaseClient(): SupabaseClient {
   if (!supabaseInstance) {
     supabaseInstance = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_PUBLISHABLE_KEY!,
+      { global: { fetch: fetchWithTimeout } },
     )
   }
   return supabaseInstance

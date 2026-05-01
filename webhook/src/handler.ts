@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from '
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs'
 import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { dbAdmin } from './db/client'
+import { getDbAdmin } from './db/client'
 import { withTenant } from './db/with-tenant'
 import { aiDrafts, connectedPages, conversations, messages } from './db/schema'
 import { getSsmParameter } from './services/ssm'
@@ -190,6 +190,7 @@ async function handlePost(
   for (const entry of payload.entry) {
     const pageId = entry.id
 
+    const dbAdmin = await getDbAdmin()
     const rows = await dbAdmin
       .select({ tenantId: connectedPages.tenantId, id: connectedPages.id })
       .from(connectedPages)
