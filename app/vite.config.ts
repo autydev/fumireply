@@ -10,7 +10,13 @@ export default defineConfig({
     },
   },
   plugins: [
-    tanstackStart(),
+    tanstackStart({
+      prerender: {
+        enabled: true,
+        filter: ({ path }) =>
+          ['/', '/privacy', '/terms', '/data-deletion'].includes(path),
+      },
+    }),
     viteReact(),
   ],
 })
