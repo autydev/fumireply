@@ -1,9 +1,10 @@
+import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { renderRoute } from '~/test/file-route-utils'
 import { Route } from '~/routes/(public)/terms'
 
-const TermsPage = Route.options.component as () => JSX.Element
+const TermsPage = Route.options.component as () => ReactNode
 
 describe('(public)/terms route', () => {
   it('renders the terms of service heading', async () => {

@@ -1,9 +1,10 @@
+import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { renderRoute } from '~/test/file-route-utils'
 import { Route } from '~/routes/(public)/data-deletion'
 
-const DataDeletionPage = Route.options.component as () => JSX.Element
+const DataDeletionPage = Route.options.component as () => ReactNode
 
 describe('(public)/data-deletion route', () => {
   it('renders the data deletion heading', async () => {

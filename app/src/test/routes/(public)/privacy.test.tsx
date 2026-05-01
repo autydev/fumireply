@@ -1,9 +1,10 @@
+import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { renderRoute } from '~/test/file-route-utils'
 import { Route } from '~/routes/(public)/privacy'
 
-const PrivacyPage = Route.options.component as () => JSX.Element
+const PrivacyPage = Route.options.component as () => ReactNode
 
 describe('(public)/privacy route', () => {
   it('renders the privacy policy heading', async () => {
