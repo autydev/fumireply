@@ -1,0 +1,171 @@
+name: Deploy App
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never cancel an in-progress deployment — partial updates break infra.
+concurrency:
+  group: deploy-app
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-1
+  # Naming convention: <name_prefix>-<suffix>. Must match terraform/envs/review/main.tf locals.
+  NAME_PREFIX: fumireply-review
+
+jobs:
+  deploy:
+    name: Build + Deploy (4 Lambda + S3 + CloudFront)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # required for OIDC role assumption
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: |
+            app/package-lock.json
+            webhook/package-lock.json
+            ai-worker/package-lock.json
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ─── Build ────────────────────────────────────────────────────────────
+
+      - name: Install + build app
+        working-directory: app
+        run: npm ci && npm run build
+
+      - name: Install + build webhook
+        working-directory: webhook
+        run: npm ci && npm run build
+
+      - name: Install + build ai-worker
+        working-directory: ai-worker
+        run: npm ci && npm run build
+
+      - name: Install + build keep-alive
+        if: ${{ hashFiles('keep-alive/package.json') != '' }}
+        working-directory: keep-alive
+        run: npm ci && npm run build
+
+      # ─── Package Lambda zips ──────────────────────────────────────────────
+
+      - name: Package app Lambda zip
+        run: |
+          # Lambda Web Adapter entry point: run.sh starts the TanStack Start HTTP server.
+          # LWA ($AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap) proxies API Gateway events
+          # to the HTTP server listening on $PORT (8080).
+          printf '#!/bin/bash\nexec node index.mjs\n' > app/.output/server/run.sh
+          chmod +x app/.output/server/run.sh
+          # Zip from inside .output/server/ so all files land at zip root.
+          (cd app/.output/server && zip -r ../../../app-lambda.zip .)
+
+      - name: Package webhook Lambda zip
+        run: (cd webhook/dist && zip -j ../../webhook-lambda.zip handler.js)
+
+      - name: Package ai-worker Lambda zip
+        run: (cd ai-worker/dist && zip -j ../../ai-worker-lambda.zip handler.js)
+
+      - name: Package keep-alive Lambda zip
+        if: ${{ hashFiles('keep-alive/package.json') != '' }}
+        run: (cd keep-alive/dist && zip -j ../../keep-alive-lambda.zip handler.js)
+
+      # ─── Resolve resource names ───────────────────────────────────────────
+
+      - name: Resolve AWS resource names
+        run: |
+          # Prefer explicit vars; fall back to naming convention.
+          echo "LAMBDA_BUCKET=${LAMBDA_BUCKET:-${NAME_PREFIX}-lambda-artifacts}" >> "$GITHUB_ENV"
+          echo "STATIC_BUCKET=${STATIC_BUCKET:-${NAME_PREFIX}-static}"           >> "$GITHUB_ENV"
+          echo "APP_FN=${APP_FN:-${NAME_PREFIX}-app}"                            >> "$GITHUB_ENV"
+          echo "WEBHOOK_FN=${WEBHOOK_FN:-${NAME_PREFIX}-webhook}"                >> "$GITHUB_ENV"
+          echo "AI_WORKER_FN=${AI_WORKER_FN:-${NAME_PREFIX}-ai-worker}"          >> "$GITHUB_ENV"
+          echo "KEEP_ALIVE_FN=${KEEP_ALIVE_FN:-${NAME_PREFIX}-keep-alive}"       >> "$GITHUB_ENV"
+        env:
+          LAMBDA_BUCKET:    ${{ vars.LAMBDA_S3_BUCKET }}
+          STATIC_BUCKET:    ${{ vars.STATIC_S3_BUCKET }}
+          APP_FN:           ${{ vars.APP_LAMBDA_FUNCTION_NAME }}
+          WEBHOOK_FN:       ${{ vars.WEBHOOK_LAMBDA_FUNCTION_NAME }}
+          AI_WORKER_FN:     ${{ vars.AI_WORKER_LAMBDA_FUNCTION_NAME }}
+          KEEP_ALIVE_FN:    ${{ vars.KEEP_ALIVE_LAMBDA_FUNCTION_NAME }}
+
+      # ─── Upload Lambda packages to S3 ─────────────────────────────────────
+
+      - name: Upload Lambda packages to S3
+        run: |
+          aws s3 cp app-lambda.zip       "s3://${LAMBDA_BUCKET}/app-lambda.zip"       --no-cli-pager
+          aws s3 cp webhook-lambda.zip   "s3://${LAMBDA_BUCKET}/webhook-lambda.zip"   --no-cli-pager
+          aws s3 cp ai-worker-lambda.zip "s3://${LAMBDA_BUCKET}/ai-worker-lambda.zip" --no-cli-pager
+          if [ -f keep-alive-lambda.zip ]; then
+            aws s3 cp keep-alive-lambda.zip "s3://${LAMBDA_BUCKET}/keep-alive-lambda.zip" --no-cli-pager
+          fi
+
+      # ─── Update Lambda function code ──────────────────────────────────────
+
+      - name: Update Lambda function code
+        run: |
+          aws lambda update-function-code \
+            --function-name "${APP_FN}" \
+            --s3-bucket "${LAMBDA_BUCKET}" \
+            --s3-key app-lambda.zip \
+            --no-cli-pager
+
+          aws lambda update-function-code \
+            --function-name "${WEBHOOK_FN}" \
+            --s3-bucket "${LAMBDA_BUCKET}" \
+            --s3-key webhook-lambda.zip \
+            --no-cli-pager
+
+          aws lambda update-function-code \
+            --function-name "${AI_WORKER_FN}" \
+            --s3-bucket "${LAMBDA_BUCKET}" \
+            --s3-key ai-worker-lambda.zip \
+            --no-cli-pager
+
+          if [ -f keep-alive-lambda.zip ]; then
+            aws lambda update-function-code \
+              --function-name "${KEEP_ALIVE_FN}" \
+              --s3-bucket "${LAMBDA_BUCKET}" \
+              --s3-key keep-alive-lambda.zip \
+              --no-cli-pager
+          fi
+
+      # ─── Sync static assets to S3 ─────────────────────────────────────────
+
+      - name: Sync hashed assets (immutable cache)
+        # Hashed filenames under /_build/ are content-addressed, so long TTL is safe.
+        run: |
+          aws s3 sync app/.output/public/_build/ "s3://${STATIC_BUCKET}/_build/" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --delete \
+            --no-cli-pager
+
+      - name: Sync HTML and other assets (short-term cache)
+        # Excludes /_build/ so the immutable assets synced above are not removed by --delete.
+        run: |
+          aws s3 sync app/.output/public/ "s3://${STATIC_BUCKET}/" \
+            --exclude "_build/*" \
+            --cache-control "public, max-age=300" \
+            --delete \
+            --no-cli-pager
+
+      # ─── CloudFront invalidation ──────────────────────────────────────────
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/*" \
+            --no-cli-pager
