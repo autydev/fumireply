@@ -25,21 +25,17 @@ function CompanyPage() {
             </tr>
             <tr>
               <th scope="row" style={thStyle}>所在地</th>
-              <td style={tdStyle}>〒150-0001 東京都渋谷区神宮前1-1-1</td>
-            </tr>
-            <tr>
-              <th scope="row" style={thStyle}>電話番号</th>
-              <td style={tdStyle}>03-6000-0000</td>
+              <td style={tdStyle}>〒503-2425 岐阜県揖斐郡池田町六之井1691-4</td>
             </tr>
             <tr>
               <th scope="row" style={thStyle}>メールアドレス</th>
               <td style={tdStyle}>
-                <a href="mailto:operator@malbek.co.jp">operator@malbek.co.jp</a>
+                <a href="mailto:info@malbek.co.jp">info@malbek.co.jp</a>
               </td>
             </tr>
             <tr>
               <th scope="row" style={thStyle}>事業内容</th>
-              <td style={tdStyle}>Messenger を活用した顧客サポート支援サービスの提供</td>
+              <td style={tdStyle}>越境 EC および EC 支援ツールの開発</td>
             </tr>
           </tbody>
         </table>

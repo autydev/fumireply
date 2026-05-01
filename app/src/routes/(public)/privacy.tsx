@@ -79,10 +79,10 @@ function PrivacyPage() {
         <h2>6. お問い合わせ先</h2>
         <address style={{ fontStyle: 'normal' }}>
           <p>株式会社Malbek プライバシー担当</p>
-          <p>〒150-0001 東京都渋谷区神宮前1-1-1</p>
+          <p>〒503-2425 岐阜県揖斐郡池田町六之井1691-4</p>
           <p>
             メール:{' '}
-            <a href="mailto:operator@malbek.co.jp">operator@malbek.co.jp</a>
+            <a href="mailto:info@malbek.co.jp">info@malbek.co.jp</a>
           </p>
         </address>
       </section>

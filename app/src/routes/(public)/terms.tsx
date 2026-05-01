@@ -84,7 +84,7 @@ function TermsPage() {
         <h2>第7条（準拠法・管轄裁判所）</h2>
         <p>
           本規約の解釈にあたっては、日本法を準拠法とします。
-          本サービスに関して紛争が生じた場合には、東京地方裁判所を専属的合意管轄とします。
+          本サービスに関して紛争が生じた場合には、岐阜地方裁判所を専属的合意管轄とします。
         </p>
       </section>
 
@@ -92,10 +92,10 @@ function TermsPage() {
         <h2>第8条（お問い合わせ）</h2>
         <address style={{ fontStyle: 'normal' }}>
           <p>株式会社Malbek</p>
-          <p>〒150-0001 東京都渋谷区神宮前1-1-1</p>
+          <p>〒503-2425 岐阜県揖斐郡池田町六之井1691-4</p>
           <p>
             メール:{' '}
-            <a href="mailto:operator@malbek.co.jp">operator@malbek.co.jp</a>
+            <a href="mailto:info@malbek.co.jp">info@malbek.co.jp</a>
           </p>
         </address>
       </section>
