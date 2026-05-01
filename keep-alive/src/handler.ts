@@ -2,9 +2,8 @@ import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm'
 import { PublishCommand, SNSClient } from '@aws-sdk/client-sns'
 import postgres from 'postgres'
 
-const SSM_PATH_PREFIX = process.env.SSM_PATH_PREFIX ?? '/fumireply/review/'
-const DB_URL_SSM_KEY = `${SSM_PATH_PREFIX}supabase/db-url`
-const SNS_TOPIC_ARN = process.env.SNS_TOPIC_ARN ?? ''
+const SSM_PATH_PREFIX = (process.env.SSM_PATH_PREFIX ?? '/fumireply/review/').replace(/\/$/, '')
+const DB_URL_SSM_KEY = `${SSM_PATH_PREFIX}/supabase/db-url`
 const RETRY_DELAYS_MS = [500, 1500, 4500]
 
 interface SsmCache {
@@ -65,7 +64,7 @@ export async function runKeepalive(
   const connectAndPing =
     opts.connectAndPing ??
     (async (dbUrl: string) => {
-      const sql = postgres(dbUrl, { max: 1 })
+      const sql = postgres(dbUrl, { max: 1, prepare: false })
       try {
         await sql`SELECT 1`
       } finally {
@@ -97,7 +96,21 @@ export async function runKeepalive(
     }),
   )
 
-  await publishSns(SNS_TOPIC_ARN, 'Supabase keep-alive 失敗。手動で Supabase ダッシュボードを確認してください')
+  const snsTopicArn = process.env.SNS_TOPIC_ARN ?? ''
+  if (snsTopicArn) {
+    try {
+      await publishSns(snsTopicArn, 'Supabase keep-alive 失敗。手動で Supabase ダッシュボードを確認してください')
+    } catch (publishError) {
+      console.error(
+        JSON.stringify({
+          level: 'ERROR',
+          event: 'keepalive_sns_publish_failed',
+          message: 'Failed to publish keep-alive alert to SNS',
+          error: publishError instanceof Error ? publishError.message : String(publishError),
+        }),
+      )
+    }
+  }
 
   throw lastError
 }

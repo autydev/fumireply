@@ -15,8 +15,11 @@ async function runWithMocks() {
   })
 }
 
+const TEST_SNS_ARN = 'arn:aws:sns:ap-northeast-1:123456789012:test-topic'
+
 beforeEach(() => {
   vi.useFakeTimers()
+  process.env.SNS_TOPIC_ARN = TEST_SNS_ARN
   mockGetSsmParam.mockResolvedValue(DB_URL)
   mockPublishSns.mockResolvedValue(undefined)
   mockConnectAndPing.mockResolvedValue(undefined)
@@ -25,6 +28,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers()
   vi.clearAllMocks()
+  delete process.env.SNS_TOPIC_ARN
 })
 
 describe('keep-alive handler', () => {
@@ -76,7 +80,7 @@ describe('keep-alive handler', () => {
 
     expect(mockPublishSns).toHaveBeenCalledTimes(1)
     expect(mockPublishSns).toHaveBeenCalledWith(
-      expect.any(String),
+      TEST_SNS_ARN,
       expect.stringContaining('Supabase keep-alive 失敗'),
     )
   })
