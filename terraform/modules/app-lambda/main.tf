@@ -92,7 +92,7 @@ resource "aws_cloudwatch_log_group" "app_lambda" {
 resource "aws_lambda_function" "app" {
   function_name = "${var.name_prefix}-app"
   role          = aws_iam_role.app_lambda.arn
-  runtime       = "nodejs24.x"
+  runtime       = "nodejs22.x"
   handler       = "run.sh"
   memory_size   = 1024
   timeout       = 30

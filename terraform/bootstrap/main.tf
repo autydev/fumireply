@@ -36,12 +36,6 @@ variable "state_bucket_name" {
   default     = "malbek-terraform-state"
 }
 
-variable "lock_table_name" {
-  description = "DynamoDB table name for state locking"
-  type        = string
-  default     = "malbek-terraform-locks"
-}
-
 ###############################################################################
 # KMS key for state encryption
 ###############################################################################
@@ -106,21 +100,3 @@ resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
   }
 }
 
-###############################################################################
-# DynamoDB table for state locking
-###############################################################################
-
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = var.lock_table_name
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-
-  point_in_time_recovery {
-    enabled = true
-  }
-}

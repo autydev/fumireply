@@ -96,7 +96,7 @@ resource "aws_cloudwatch_log_group" "ai_worker_lambda" {
 resource "aws_lambda_function" "ai_worker" {
   function_name = "${var.name_prefix}-ai-worker"
   role          = aws_iam_role.ai_worker_lambda.arn
-  runtime       = "nodejs24.x"
+  runtime       = "nodejs22.x"
   handler       = "dist/handler.handler"
   memory_size   = 512
   timeout       = 60

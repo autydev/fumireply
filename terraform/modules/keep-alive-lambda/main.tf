@@ -93,7 +93,7 @@ resource "aws_cloudwatch_log_group" "keep_alive_lambda" {
 resource "aws_lambda_function" "keep_alive" {
   function_name = local.function_name
   role          = aws_iam_role.keep_alive_lambda.arn
-  runtime       = "nodejs24.x"
+  runtime       = "nodejs22.x"
   handler       = "dist/handler.handler"
   memory_size   = 256
   timeout       = 30
