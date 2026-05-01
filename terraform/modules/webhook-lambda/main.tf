@@ -4,6 +4,7 @@
 # Meta Webhook receiver Lambda + GET/POST /api/webhook routes on the shared
 # API Gateway created by the app-lambda module.
 # No Lambda Web Adapter — receives API Gateway HTTP API proxy events directly.
+# Build: `cd webhook && npm run build` produces dist/handler.js (CJS bundle).
 ###############################################################################
 
 terraform {
@@ -46,12 +47,9 @@ resource "aws_iam_role" "webhook_lambda" {
 
 data "aws_iam_policy_document" "webhook_lambda_policy" {
   statement {
-    sid     = "SSMRead"
-    actions = ["ssm:GetParameter"]
-    resources = [
-      "${local.ssm_arn_prefix}/*",
-      "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/fumireply/master-encryption-key",
-    ]
+    sid       = "SSMRead"
+    actions   = ["ssm:GetParameter"]
+    resources = ["${local.ssm_arn_prefix}/*"]
   }
 
   statement {
@@ -96,7 +94,7 @@ resource "aws_lambda_function" "webhook" {
   function_name = "${var.name_prefix}-webhook"
   role          = aws_iam_role.webhook_lambda.arn
   runtime       = "nodejs22.x"
-  handler       = "dist/handler.handler"
+  handler       = "handler.handler"
   memory_size   = 512
   timeout       = 10
 
@@ -117,6 +115,7 @@ resource "aws_lambda_function" "webhook" {
 
 ###############################################################################
 # API Gateway routes (injected into the shared HTTP API)
+# Only /api/webhook is handled here; all other /api/* routes go to app-lambda.
 ###############################################################################
 
 resource "aws_apigatewayv2_integration" "webhook_lambda" {

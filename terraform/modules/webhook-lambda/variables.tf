@@ -40,6 +40,6 @@ variable "lambda_package_s3_bucket" {
 }
 
 variable "lambda_package_s3_key" {
-  description = "S3 key of the Lambda deployment package zip"
+  description = "S3 key of the Lambda deployment package zip (built from webhook/dist/)"
   type        = string
 }

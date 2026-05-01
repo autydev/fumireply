@@ -89,7 +89,20 @@ resource "aws_ssm_parameter" "supabase_secret_key" {
 
 resource "aws_ssm_parameter" "supabase_db_url" {
   name        = "${local.review_prefix}/supabase/db-url"
-  description = "Supabase Pooler connection string (Transaction mode, port 6543)"
+  description = "Supabase Pooler connection string (anon role, Transaction mode, port 6543)"
+  type        = "SecureString"
+  value       = "placeholder"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+
+  tags = var.tags
+}
+
+resource "aws_ssm_parameter" "supabase_db_url_service_role" {
+  name        = "${local.review_prefix}/supabase/db-url-service-role"
+  description = "Supabase Pooler connection string (service role, bypasses RLS, Transaction mode, port 6543)"
   type        = "SecureString"
   value       = "placeholder"
 
