@@ -1,17 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { eq, sql } from 'drizzle-orm'
-import { db, dbAdmin } from '~/server/db/client'
+import { and, eq, inArray } from 'drizzle-orm'
+import { dbAdmin } from '~/server/db/client'
 import { conversations, deletionLog } from '~/server/db/schema'
-
-type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
-
-// Uses anon-role db client so the tenant_isolation RLS policy is enforced.
-async function withTenant<T>(tenantId: string, fn: (tx: DbTx) => Promise<T>): Promise<T> {
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`)
-    return fn(tx)
-  })
-}
 
 export interface DeleteUserDataResult {
   confirmationCode: string
@@ -34,30 +24,28 @@ export async function deleteUserData(
     .from(conversations)
     .where(eq(conversations.customerPsid, psid))
 
-  // One confirmation_code per deletion request (tenant-agnostic).
   const confirmationCode = randomUUID().replace(/-/g, '')
   const psidHash = createHash('sha256').update(hashSalt + psid).digest('hex')
 
-  const firstTenantId = tenantRows[0]?.tenantId
-
-  for (const { tenantId } of tenantRows) {
-    await withTenant(tenantId, async (tx) => {
-      // ON DELETE CASCADE propagates: conversations → messages → ai_drafts.
-      await tx.delete(conversations).where(eq(conversations.customerPsid, psid))
-    })
+  if (tenantRows.length === 0) {
+    return { confirmationCode }
   }
 
-  // Insert the audit row only after ALL deletes succeed so the log reflects
-  // a completed deletion rather than a partial one.
-  if (firstTenantId) {
-    await withTenant(firstTenantId, async (tx) => {
-      await tx.insert(deletionLog).values({
-        tenantId: firstTenantId,
-        psidHash,
-        confirmationCode,
-      })
+  const tenantIds = tenantRows.map(({ tenantId }) => tenantId)
+
+  // Single atomic service-role transaction: delete across all matching tenants
+  // and insert the audit row together — eliminates partial-deletion risk.
+  await dbAdmin.transaction(async (tx) => {
+    await tx
+      .delete(conversations)
+      .where(and(inArray(conversations.tenantId, tenantIds), eq(conversations.customerPsid, psid)))
+
+    await tx.insert(deletionLog).values({
+      tenantId: tenantIds[0],
+      psidHash,
+      confirmationCode,
     })
-  }
+  })
 
   return { confirmationCode }
 }

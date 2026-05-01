@@ -4,11 +4,10 @@ import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm'
 import { deleteUserData } from './-lib/delete-user-data'
 
 const SSM_PARAMETER_TIMEOUT_MS = 3_000
+const ssmClient = new SSMClient({ region: process.env.AWS_REGION?.trim() || 'ap-northeast-1' })
 
 async function getSsmParameter(name: string): Promise<string> {
-  const region = process.env.AWS_REGION?.trim() || 'ap-northeast-1'
-  const client = new SSMClient({ region })
-  const result = await client.send(
+  const result = await ssmClient.send(
     new GetParameterCommand({ Name: name, WithDecryption: true }),
     { abortSignal: AbortSignal.timeout(SSM_PARAMETER_TIMEOUT_MS) },
   )
@@ -34,14 +33,17 @@ function verifySignedRequest(
   const sigPart = signedRequest.slice(0, dotIdx)
   const payloadPart = signedRequest.slice(dotIdx + 1)
 
-  let payload: { algorithm?: string; user_id?: string }
+  let parsed: unknown
   try {
-    payload = JSON.parse(base64urlDecode(payloadPart).toString('utf8')) as typeof payload
+    parsed = JSON.parse(base64urlDecode(payloadPart).toString('utf8'))
   } catch {
     return { valid: false }
   }
 
-  if (payload.algorithm !== 'HMAC-SHA256') return { valid: false }
+  if (typeof parsed !== 'object' || parsed === null) return { valid: false }
+  const payload = parsed as Record<string, unknown>
+
+  if (payload['algorithm'] !== 'HMAC-SHA256') return { valid: false }
 
   const expected = createHmac('sha256', appSecret).update(payloadPart).digest()
   const received = base64urlDecode(sigPart)
@@ -49,9 +51,9 @@ function verifySignedRequest(
   if (expected.length !== received.length) return { valid: false }
   if (!timingSafeEqual(expected, received)) return { valid: false }
 
-  if (!payload.user_id) return { valid: false }
+  if (typeof payload['user_id'] !== 'string' || !payload['user_id']) return { valid: false }
 
-  return { valid: true, userId: payload.user_id }
+  return { valid: true, userId: payload['user_id'] }
 }
 
 // Exported for unit testing

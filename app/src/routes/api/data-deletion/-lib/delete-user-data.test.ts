@@ -9,29 +9,26 @@ const mockInsert = vi.fn(() => ({ values: mockInsertValues }))
 const mockDeleteWhere = vi.fn().mockResolvedValue([])
 const mockDelete = vi.fn(() => ({ where: mockDeleteWhere }))
 
-const mockExecute = vi.fn().mockResolvedValue(undefined)
-
-// tx passed into withTenant's fn() — anon-role client mock
+// tx passed into dbAdmin.transaction
 const tx = {
-  execute: mockExecute,
   delete: mockDelete,
   insert: mockInsert,
 }
 
-// db.transaction calls fn(tx) and returns its result
-const mockDbTransaction = vi.fn((fn: (t: typeof tx) => Promise<unknown>) => fn(tx))
-
-const mockDb = { transaction: mockDbTransaction }
+// dbAdmin.transaction calls fn(tx) and returns its result
+const mockAdminTransaction = vi.fn((fn: (t: typeof tx) => Promise<unknown>) => fn(tx))
 
 // dbAdmin.selectDistinct().from().where() chain
 const mockAdminWhere = vi.fn().mockResolvedValue([])
 const mockAdminFrom = vi.fn(() => ({ where: mockAdminWhere }))
 const mockAdminSelectDistinct = vi.fn(() => ({ from: mockAdminFrom }))
 
-const mockDbAdmin = { selectDistinct: mockAdminSelectDistinct }
+const mockDbAdmin = {
+  selectDistinct: mockAdminSelectDistinct,
+  transaction: mockAdminTransaction,
+}
 
 vi.mock('~/server/db/client', () => ({
-  db: mockDb,
   dbAdmin: mockDbAdmin,
 }))
 
@@ -46,11 +43,10 @@ const TEST_TENANT_ID = '11111111-1111-1111-1111-111111111111'
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockDbTransaction.mockImplementation((fn: (t: typeof tx) => Promise<unknown>) => fn(tx))
+  mockAdminTransaction.mockImplementation((fn: (t: typeof tx) => Promise<unknown>) => fn(tx))
   mockAdminWhere.mockResolvedValue([])
   mockDeleteWhere.mockResolvedValue([])
   mockInsertValues.mockResolvedValue([])
-  mockExecute.mockResolvedValue(undefined)
 })
 
 describe('deleteUserData', () => {
@@ -61,20 +57,16 @@ describe('deleteUserData', () => {
 
     expect(result.confirmationCode).toHaveLength(32)
     // No transaction should be started — no tenants found
-    expect(mockDbTransaction).not.toHaveBeenCalled()
+    expect(mockAdminTransaction).not.toHaveBeenCalled()
   })
 
-  it('deletes conversations and inserts deletion_log for each matching tenant', async () => {
+  it('deletes conversations and inserts deletion_log in a single atomic transaction', async () => {
     mockAdminWhere.mockResolvedValueOnce([{ tenantId: TEST_TENANT_ID }])
 
     const result = await deleteUserData(TEST_PSID, HASH_SALT)
 
-    // withTenant runs twice: once for DELETE, once for INSERT (after all deletes succeed)
-    expect(mockDbTransaction).toHaveBeenCalledTimes(2)
-
-    // set_config called once per transaction
-    expect(mockExecute).toHaveBeenCalledTimes(2)
-    expect(mockExecute).toHaveBeenCalledWith(expect.anything())
+    // Single atomic service-role transaction
+    expect(mockAdminTransaction).toHaveBeenCalledTimes(1)
 
     // conversations DELETE
     expect(mockDelete).toHaveBeenCalledWith(expect.anything())
@@ -93,7 +85,7 @@ describe('deleteUserData', () => {
     expect(result.confirmationCode).toHaveLength(32)
   })
 
-  it('processes multiple tenants independently, inserting deletion_log only once', async () => {
+  it('processes multiple tenants in a single atomic transaction', async () => {
     const TENANT_B = '22222222-2222-2222-2222-222222222222'
     mockAdminWhere.mockResolvedValueOnce([
       { tenantId: TEST_TENANT_ID },
@@ -102,11 +94,11 @@ describe('deleteUserData', () => {
 
     const result = await deleteUserData(TEST_PSID, HASH_SALT)
 
-    // Two DELETE transactions (one per tenant) + one INSERT transaction = 3 total
-    expect(mockDbTransaction).toHaveBeenCalledTimes(3)
-    // Both tenants have their conversations deleted
-    expect(mockDeleteWhere).toHaveBeenCalledTimes(2)
-    // deletion_log INSERT runs once after all deletes succeed
+    // One transaction for all tenants — truly atomic
+    expect(mockAdminTransaction).toHaveBeenCalledTimes(1)
+    // Single DELETE with inArray filter covers all tenants
+    expect(mockDeleteWhere).toHaveBeenCalledTimes(1)
+    // Single deletion_log INSERT
     expect(mockInsertValues).toHaveBeenCalledTimes(1)
     expect(result.confirmationCode).toHaveLength(32)
   })
