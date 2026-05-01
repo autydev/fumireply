@@ -148,12 +148,12 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 ### Login（FR-009, FR-010, FR-011）— Supabase Auth
 <!-- unit: U3.2 | deps: U2.5 | scope: frontend | tasks: T062-T067 | files: ~6 | automation: auto -->
 
-- [ ] T062 [P] [US1] Create `app/src/routes/(auth)/login/-lib/login.fn.ts` — `loginFn` serverFn per `contracts/admin-api.md`: `supabase.auth.signInWithPassword({ email, password })` → Cookie set (`sb-access-token`, `sb-refresh-token`, HttpOnly, Secure, SameSite=Lax); error mapping (`AuthError invalid_grant` → `invalid_credentials`)
-- [ ] T063 [P] [US1] Create `app/src/routes/(auth)/login/-components/LoginForm.tsx` — controlled form (email, password); 成功時 `/inbox` へ navigate
-- [ ] T064 [US1] Create `app/src/routes/(auth)/login/index.tsx` — `createFileRoute` with `ssr: false`; `returnTo` クエリ対応
-- [ ] T065 [US1] Create `app/src/test/routes/(auth)/login/index.test.tsx` — integration with MSW Supabase Auth mock: 正常ログイン → Cookie set、invalid_credentials 表示
-- [ ] T066 [P] [US1] Create `app/src/server/fns/logout.fn.ts` — `logoutFn`: `supabase.auth.signOut()` + Cookie Max-Age=0
-- [ ] T067 [P] [US1] Create `app/src/server/fns/logout.test.ts` — unit with mocked Supabase client
+- [x] T062 [P] [US1] Create `app/src/routes/(auth)/login/-lib/login.fn.ts` — `loginFn` serverFn per `contracts/admin-api.md`: `supabase.auth.signInWithPassword({ email, password })` → Cookie set (`sb-access-token`, `sb-refresh-token`, HttpOnly, Secure, SameSite=Lax); error mapping (`AuthError invalid_grant` → `invalid_credentials`)
+- [x] T063 [P] [US1] Create `app/src/routes/(auth)/login/-components/LoginForm.tsx` — controlled form (email, password); 成功時 `/inbox` へ navigate
+- [x] T064 [US1] Create `app/src/routes/(auth)/login/index.tsx` — `createFileRoute` with `ssr: false`; `returnTo` クエリ対応
+- [x] T065 [US1] Create `app/src/test/routes/(auth)/login/index.test.tsx` — integration with MSW Supabase Auth mock: 正常ログイン → Cookie set、invalid_credentials 表示
+- [x] T066 [P] [US1] Create `app/src/server/fns/logout.fn.ts` — `logoutFn`: `supabase.auth.signOut()` + Cookie Max-Age=0
+- [x] T067 [P] [US1] Create `app/src/server/fns/logout.test.ts` — unit with mocked Supabase client
 
 ### Inbox（FR-002）
 <!-- unit: U3.3 | deps: U2.5 | scope: frontend | tasks: T068-T071 | files: ~4 | automation: auto -->
