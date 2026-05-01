@@ -442,3 +442,31 @@ T099 + T100: -lib 内で別ファイル、並行可
 - **Phase 2（審査通過後）の主要拡張**：セルフサインアップ + Stripe 課金（`/signup` 画面、tenant 作成 fn、Stripe Webhook Lambda、プラン管理）。これは MVP には含まないが、本 tasks.md の DB スキーマと middleware は最初から対応している
 - Phase 2+ 機能（AI 自動分類, Slack, Instagram, 顧客/商品管理）は本 tasks.md の範囲外。審査通過後に別 feature branch で追加。
 - 各タスク完了後に commit 推奨。
+
+---
+
+## 提出後 TODO: Playwright E2E 環境整備（2026-05-01 棚上げ）
+
+T092（`tests/e2e/review-flow.spec.ts`）と T093（`.github/workflows/e2e.yml`）は MVP 提出スコープから一旦外し、テストファイルは `test.describe.skip` でスキップ済み。テスト本体のロジックは資産として残す。
+
+### 棚上げ理由
+
+- ローカル/CI で実行するとログイン段階で fail する（`reviewer@example.com` が Supabase に存在しない）
+- T093 の `.github/workflows/e2e.yml` が未着手
+- `src/server/db/seed/review.ts` は tenant + connected_pages のみを seed しており、reviewer ユーザー / conversation / messages / ai_draft を投入していない
+- 申請提出に E2E は必須ではない（unit + integration + 手動 quickstart 確認でカバー）
+
+### 提出完了後の再開タスク
+
+- [ ] Create `app/src/server/db/seed/e2e.ts` — Supabase `auth.admin.createUser` で reviewer ユーザー作成（`app_metadata.tenant_id` / `app_metadata.role='reviewer'` 付与）+ tenant / connected_page / conversation / messages / ai_draft(status='ready') を投入
+- [ ] Add `npm run db:seed:e2e` script to `app/package.json`
+- [ ] Create `.github/workflows/e2e.yml` — postgres service container + Supabase ローカル起動 + e2e seed 実行 + `npx playwright install chromium` + `npm run test:e2e`
+- [ ] Remove `test.describe.skip(...)` in `app/tests/e2e/review-flow.spec.ts`（→ `test.describe(...)` に戻す）
+- [ ] ローカルで `npm run test:e2e` がフルパスすることを確認
+- [ ] tasks.md の T092 / T093 を `[x]` に更新
+
+### 関連変更（本ブランチでマージ済み）
+
+- `app/playwright.config.ts`: デフォルト `APP_URL` を `http://localhost:3000` → `http://localhost:5173`（Vite dev server のデフォルトポートに合わせた）
+- `.gitignore`: `test-results/` / `playwright-report/` を追加
+- `app/test-results/` を削除

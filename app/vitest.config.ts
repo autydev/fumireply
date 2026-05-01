@@ -7,6 +7,17 @@ export default defineConfig({
     alias: {
       '~': path.resolve(__dirname, './src'),
     },
+    // Deduplicate shared packages to ensure integration tests that import
+    // from sibling packages (webhook/, ai-worker/) use the same module instance
+    // as the test file itself, so vi.mock() intercepts correctly.
+    dedupe: [
+      '@anthropic-ai/sdk',
+      '@aws-sdk/client-sqs',
+      '@aws-sdk/client-ssm',
+      'drizzle-orm',
+      'postgres',
+      'zod',
+    ],
   },
   plugins: [viteReact()],
   test: {

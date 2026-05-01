@@ -15,7 +15,9 @@ export async function withTenant<T>(
 ): Promise<T> {
   const db = await getDb()
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL app.tenant_id = ${tenantId}::text`)
+    await tx.execute(
+      sql`SELECT set_config('app.tenant_id', (${tenantId}::uuid)::text, true)`,
+    )
     return fn(tx)
   })
 }
