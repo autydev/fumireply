@@ -185,7 +185,7 @@ describe('webhook handler — integration', () => {
       ],
     }
 
-    // Sticker: conversations INSERT but messages INSERT returns empty (ON CONFLICT DO NOTHING)
+    // Sticker: all DB inserts succeed, but no SQS enqueue because messageType !== 'text'
     mockWithTenant.mockImplementationOnce(
       async (_: string, fn: (tx: Record<string, unknown>) => Promise<unknown>) => {
         const mockTx = {
@@ -194,8 +194,8 @@ describe('webhook handler — integration', () => {
           onConflictDoUpdate: vi.fn().mockReturnThis(),
           onConflictDoNothing: vi.fn().mockReturnThis(),
           returning: vi.fn()
-            .mockResolvedValueOnce([{ id: NEW_MSG_UUID }]) // conversations
-            .mockResolvedValueOnce([{ id: NEW_MSG_UUID }]) // messages
+            .mockResolvedValueOnce([{ id: NEW_MSG_UUID }]) // conversations upsert
+            .mockResolvedValueOnce([{ id: NEW_MSG_UUID }]) // messages INSERT
             .mockResolvedValueOnce([]),                    // ai_drafts — empty (sticker → no draft)
           update: vi.fn().mockReturnThis(),
           set: vi.fn().mockReturnThis(),
@@ -208,7 +208,7 @@ describe('webhook handler — integration', () => {
     const result = await handler(makePostEvent(stickerPayload))
 
     expect(result.statusCode).toBe(200)
-    // Sticker does not enqueue to SQS (messageType !== 'text')
+    expect(mockWithTenant).toHaveBeenCalled()
     expect(sqsMock.commandCalls(SendMessageCommand)).toHaveLength(0)
   })
 
