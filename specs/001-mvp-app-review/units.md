@@ -40,7 +40,7 @@ Routine は `ready` の中から自動選定する。`manual` は Routine が選
 | U2.2 | T025–T033 | infra | U2.1 | ~9 | auto | Terraform modules 9 種（secrets/queue/4 lambda/static-site/oidc/observability）|
 | U2.3 | T034–T037 | infra | U2.2 | ~4 | manual | terraform envs/review wiring + bootstrap + SSM 値投入 + apply |
 | U2.4 | T038–T044 | backend | U2.1 | ~6 | auto | Drizzle schema (6 entities) + migration 生成 + RLS 0002_rls.sql + seed |
-| U2.5 | T045–T053 | backend | U2.4 | ~14 | auto | env / ssm / crypto / withTenant / messenger / auth / anthropic + 各テスト |
+| U2.5 | T045–T053, T047a–T047d | backend | U2.4 | ~14 | auto | env / ssm / crypto / withTenant / messenger / auth / anthropic + 各テスト |
 | U2.6 | T054 | infra | U2.4 | 0 | manual | Supabase Auth テストユーザー作成（operator/reviewer）|
 
 ## Phase 3: US1 Login + Inbox
