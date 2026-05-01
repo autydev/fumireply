@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20.19.0 || >=22.12.0"
+    "node": ">=24.0.0"
   },
   "scripts": {
     "dev": "vite dev",
@@ -21,6 +21,7 @@
     "db:seed:review": "tsx src/server/db/seed/review.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
     "@aws-sdk/client-ssm": "^3.1039.0",
     "@supabase/supabase-js": "^2.105.1",
     "@tanstack/react-router": "^1.168.23",
@@ -45,6 +46,7 @@
     "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",
     "jsdom": "^29.0.2",
+    "msw": "^2.14.2",
     "prettier": "^3.8.3",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
