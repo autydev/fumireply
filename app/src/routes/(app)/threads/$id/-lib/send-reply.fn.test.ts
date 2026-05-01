@@ -26,7 +26,7 @@ const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))
 afterEach(() => {
   server.resetHandlers()
-  vi.restoreAllMocks()
+  vi.clearAllMocks()
 })
 afterAll(() => server.close())
 

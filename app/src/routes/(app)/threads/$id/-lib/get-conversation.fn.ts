@@ -1,4 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
+import { notFound } from '@tanstack/react-router'
 import { and, asc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { authMiddleware } from '~/server/middleware/auth-middleware'
@@ -55,7 +56,7 @@ export const getConversationFn = createServerFn({ method: 'POST' })
 
       const conv = convRows[0]
       if (!conv) {
-        throw new Error('Conversation not found')
+        throw notFound()
       }
 
       // Reset unread_count atomically within the same transaction (RLS active)

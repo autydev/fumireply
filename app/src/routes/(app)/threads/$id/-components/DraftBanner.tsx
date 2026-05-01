@@ -46,6 +46,7 @@ export function DraftBanner({
 
       try {
         const result = await getDraftStatusFn({ data: { messageId } })
+        if (!isActiveRef.current) return  // guard: another tick already stopped polling
         if (result.status === 'ready') {
           stopPolling()
           if (result.body !== null) onReady(result.body)
