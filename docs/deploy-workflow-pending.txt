@@ -1,0 +1,2 @@
+U5.3 deploy-app.yml implementation — workflow file requires manual addition due to OAuth scope restriction.
+See PR description for full file content.
