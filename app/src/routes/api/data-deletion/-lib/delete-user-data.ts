@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { and, eq, inArray } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { dbAdmin } from '~/server/db/client'
 import { conversations, deletionLog } from '~/server/db/schema'
 
@@ -21,24 +21,19 @@ export async function deleteUserData(
   const confirmationCode = randomUUID().replace(/-/g, '')
   const psidHash = createHash('sha256').update(hashSalt + psid).digest('hex')
 
-  // Single atomic service-role transaction: tenant lookup, deletion, and
-  // audit insert all run within the same snapshot to prevent TOCTOU races.
+  // DELETE...RETURNING collapses tenant identification and deletion into a
+  // single statement, eliminating the TOCTOU window that a prior SELECT→DELETE
+  // pattern would have under READ COMMITTED isolation.
   await dbAdmin.transaction(async (tx) => {
-    const tenantRows = await tx
-      .selectDistinct({ tenantId: conversations.tenantId })
-      .from(conversations)
-      .where(eq(conversations.customerPsid, psid))
-
-    if (tenantRows.length === 0) return
-
-    const tenantIds = tenantRows.map(({ tenantId }) => tenantId)
-
-    await tx
+    const deleted = await tx
       .delete(conversations)
-      .where(and(inArray(conversations.tenantId, tenantIds), eq(conversations.customerPsid, psid)))
+      .where(eq(conversations.customerPsid, psid))
+      .returning({ tenantId: conversations.tenantId })
+
+    if (deleted.length === 0) return
 
     await tx.insert(deletionLog).values({
-      tenantId: tenantIds[0],
+      tenantId: deleted[0].tenantId,
       psidHash,
       confirmationCode,
     })

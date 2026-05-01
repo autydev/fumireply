@@ -6,17 +6,13 @@ import { createHash } from 'node:crypto'
 const mockInsertValues = vi.fn().mockResolvedValue([])
 const mockInsert = vi.fn(() => ({ values: mockInsertValues }))
 
-const mockDeleteWhere = vi.fn().mockResolvedValue([])
+// tx.delete().where().returning() chain
+const mockDeleteReturning = vi.fn().mockResolvedValue([])
+const mockDeleteWhere = vi.fn(() => ({ returning: mockDeleteReturning }))
 const mockDelete = vi.fn(() => ({ where: mockDeleteWhere }))
-
-// tx.selectDistinct().from().where() chain (now on tx, not dbAdmin)
-const mockAdminWhere = vi.fn().mockResolvedValue([])
-const mockAdminFrom = vi.fn(() => ({ where: mockAdminWhere }))
-const mockAdminSelectDistinct = vi.fn(() => ({ from: mockAdminFrom }))
 
 // tx passed into dbAdmin.transaction
 const tx = {
-  selectDistinct: mockAdminSelectDistinct,
   delete: mockDelete,
   insert: mockInsert,
 }
@@ -42,27 +38,25 @@ const TEST_TENANT_ID = '11111111-1111-1111-1111-111111111111'
 beforeEach(() => {
   vi.clearAllMocks()
   mockAdminTransaction.mockImplementation((fn: (t: typeof tx) => Promise<unknown>) => fn(tx))
-  mockAdminWhere.mockResolvedValue([])
-  mockDeleteWhere.mockResolvedValue([])
+  mockDeleteReturning.mockResolvedValue([])
   mockInsertValues.mockResolvedValue([])
 })
 
 describe('deleteUserData', () => {
   it('returns a 32-char confirmationCode even when PSID not found', async () => {
-    mockAdminWhere.mockResolvedValueOnce([])
+    mockDeleteReturning.mockResolvedValueOnce([])
 
     const result = await deleteUserData(TEST_PSID, HASH_SALT)
 
     expect(result.confirmationCode).toHaveLength(32)
-    // Transaction still runs — selectDistinct is now inside it
+    // Transaction still runs — DELETE is now the first and only lookup
     expect(mockAdminTransaction).toHaveBeenCalledTimes(1)
-    // But no delete or insert happens
-    expect(mockDeleteWhere).not.toHaveBeenCalled()
+    // But no insert happens when nothing was deleted
     expect(mockInsertValues).not.toHaveBeenCalled()
   })
 
   it('deletes conversations and inserts deletion_log in a single atomic transaction', async () => {
-    mockAdminWhere.mockResolvedValueOnce([{ tenantId: TEST_TENANT_ID }])
+    mockDeleteReturning.mockResolvedValueOnce([{ tenantId: TEST_TENANT_ID }])
 
     const result = await deleteUserData(TEST_PSID, HASH_SALT)
 
@@ -72,6 +66,7 @@ describe('deleteUserData', () => {
     // conversations DELETE
     expect(mockDelete).toHaveBeenCalledWith(expect.anything())
     expect(mockDeleteWhere).toHaveBeenCalledTimes(1)
+    expect(mockDeleteReturning).toHaveBeenCalledTimes(1)
 
     // deletion_log INSERT
     expect(mockInsert).toHaveBeenCalledWith(expect.anything())
@@ -88,7 +83,7 @@ describe('deleteUserData', () => {
 
   it('processes multiple tenants in a single atomic transaction', async () => {
     const TENANT_B = '22222222-2222-2222-2222-222222222222'
-    mockAdminWhere.mockResolvedValueOnce([
+    mockDeleteReturning.mockResolvedValueOnce([
       { tenantId: TEST_TENANT_ID },
       { tenantId: TENANT_B },
     ])
@@ -97,15 +92,15 @@ describe('deleteUserData', () => {
 
     // One transaction for all tenants — truly atomic
     expect(mockAdminTransaction).toHaveBeenCalledTimes(1)
-    // Single DELETE with inArray filter covers all tenants
-    expect(mockDeleteWhere).toHaveBeenCalledTimes(1)
+    // Single DELETE covers all tenants
+    expect(mockDeleteReturning).toHaveBeenCalledTimes(1)
     // Single deletion_log INSERT
     expect(mockInsertValues).toHaveBeenCalledTimes(1)
     expect(result.confirmationCode).toHaveLength(32)
   })
 
   it('computes psidHash as sha256(salt+psid)', async () => {
-    mockAdminWhere.mockResolvedValueOnce([{ tenantId: TEST_TENANT_ID }])
+    mockDeleteReturning.mockResolvedValueOnce([{ tenantId: TEST_TENANT_ID }])
 
     await deleteUserData(TEST_PSID, HASH_SALT)
 

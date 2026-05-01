@@ -4,15 +4,25 @@ import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm'
 import { deleteUserData } from './-lib/delete-user-data'
 
 const SSM_PARAMETER_TIMEOUT_MS = 3_000
+const SSM_PARAMETER_CACHE_TTL_MS = 5 * 60 * 1_000
 const ssmClient = new SSMClient({ region: process.env.AWS_REGION?.trim() || 'ap-northeast-1' })
 
+type SsmCacheEntry = { value: string; fetchedAt: number }
+const ssmParameterCache = new Map<string, SsmCacheEntry>()
+
 async function getSsmParameter(name: string): Promise<string> {
+  const now = Date.now()
+  const cached = ssmParameterCache.get(name)
+  if (cached && now - cached.fetchedAt < SSM_PARAMETER_CACHE_TTL_MS) return cached.value
+
   const result = await ssmClient.send(
     new GetParameterCommand({ Name: name, WithDecryption: true }),
     { abortSignal: AbortSignal.timeout(SSM_PARAMETER_TIMEOUT_MS) },
   )
   if (!result.Parameter?.Value) throw new Error(`SSM parameter not found: ${name}`)
-  return result.Parameter.Value
+  const value = result.Parameter.Value
+  ssmParameterCache.set(name, { value, fetchedAt: now })
+  return value
 }
 
 function base64urlDecode(str: string): Buffer {
