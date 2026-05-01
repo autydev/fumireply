@@ -409,6 +409,15 @@ Copilot 特性:
     git commit -m "fix: address review comments on PR #$PR_NUM (round N)"
     git push
 
+    # Copilot 再レビュー要求 (Auto-review on push が不安定なためのフォールバック)
+    # 既にアサイン済みでも確実に再トリガーするため remove → add
+    for SLUG in 'Copilot' 'copilot-pull-request-reviewer[bot]'; do
+      gh api -X DELETE "repos/autydev/fumireply/pulls/$PR_NUM/requested_reviewers" \
+        -f "reviewers[]=$SLUG" 2>/dev/null || true
+      gh api -X POST "repos/autydev/fumireply/pulls/$PR_NUM/requested_reviewers" \
+        -f "reviewers[]=$SLUG" 2>/dev/null && break
+    done
+
 10.4 全コメントに返信:
 - 修正したもの: `修正しました (commit: {short_sha})`
 - 修正不要: 簡潔に理由 (1-3 文)
