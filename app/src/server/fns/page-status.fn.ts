@@ -16,6 +16,13 @@ const CACHE_TTL_MS = 5 * 60 * 1000
 type CacheEntry = { data: PageStatus; expiresAt: number }
 const statusCache = new Map<string, CacheEntry>()
 
+function pruneCache(): void {
+  const now = Date.now()
+  for (const [key, entry] of statusCache) {
+    if (entry.expiresAt <= now) statusCache.delete(key)
+  }
+}
+
 export const getPageStatusFn = createServerFn({ method: 'POST' })
   .middleware([authMiddleware])
   .handler(async ({ context }): Promise<PageStatus> => {
@@ -32,35 +39,44 @@ export const getPageStatusFn = createServerFn({ method: 'POST' })
       const pages = await tx
         .select({ pageId: connectedPages.pageId, pageName: connectedPages.pageName })
         .from(connectedPages)
+        .where(eq(connectedPages.isActive, true))
+        .orderBy(desc(connectedPages.connectedAt))
         .limit(1)
 
+      // No connected page is not a token error — return valid to avoid false-positive banner
       if (pages.length === 0) {
         return {
           page_id: '',
           page_name: '',
-          token_valid: false,
+          token_valid: true,
           token_last_checked_at: checkedAt,
         } satisfies PageStatus
       }
 
       const { pageId, pageName } = pages[0]
 
-      // Passive check: if any outbound message recorded token_expired, the token is invalid
-      const expired = await tx
-        .select({ id: messages.id })
+      // Passive check: inspect most recent outbound message's send_error.
+      // Checking only the latest avoids false positives when the token was refreshed
+      // and subsequent sends succeeded after an earlier token_expired failure.
+      const recentOutbound = await tx
+        .select({ sendError: messages.sendError })
         .from(messages)
-        .where(eq(messages.sendError, 'token_expired'))
-        .orderBy(desc(messages.createdAt))
+        .where(eq(messages.direction, 'outbound'))
+        .orderBy(desc(messages.timestamp))
         .limit(1)
+
+      const tokenValid =
+        recentOutbound.length === 0 || recentOutbound[0].sendError !== 'token_expired'
 
       return {
         page_id: pageId,
         page_name: pageName,
-        token_valid: expired.length === 0,
+        token_valid: tokenValid,
         token_last_checked_at: checkedAt,
       } satisfies PageStatus
     })
 
+    pruneCache()
     statusCache.set(tenantId, { data: result, expiresAt: Date.now() + CACHE_TTL_MS })
     return result
   })
