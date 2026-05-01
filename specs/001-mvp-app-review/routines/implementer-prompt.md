@@ -114,14 +114,19 @@ Bash で実行:
         for part in tasks_raw.split(','):
             part = part.strip()
             rng = re.match(r'T(\d+)-T(\d+)$', part)
+            suf = re.match(r'T(\d+)([a-z])-T(\d+)([a-z])$', part)
             if rng:
                 for n in range(int(rng.group(1)), int(rng.group(2)) + 1):
                     task_ids.append(f'T{n:03d}')
+            elif suf and suf.group(1) == suf.group(3):
+                base = int(suf.group(1))
+                for c in range(ord(suf.group(2)), ord(suf.group(4)) + 1):
+                    task_ids.append(f'T{base:03d}{chr(c)}')
             else:
                 task_ids.append(part)
         units[uid] = {'deps': deps, 'scope': scope, 'tasks': task_ids, 'automation': automation}
 
-    done_tasks = set(re.findall(r'^- \[x\] (T\d+)', md, re.MULTILINE))
+    done_tasks = set(re.findall(r'^- \[x\] (T\d+[a-z]?)', md, re.MULTILINE))
     fm_done_units = {uid for uid, u in units.items() if all(t in done_tasks for t in u['tasks'])}
     git_done = set(open('/tmp/git_done_units.txt').read().split())
     pr_done = set(open('/tmp/pr_done_units.txt').read().split())
