@@ -22,6 +22,9 @@ export function DraftBanner({
   useEffect(() => {
     if (initialStatus !== 'pending') return
 
+    startTimeRef.current = Date.now()
+    isActiveRef.current = true
+
     const poll = async () => {
       if (!isActiveRef.current) return
 
@@ -35,7 +38,7 @@ export function DraftBanner({
         const result = await getDraftStatusFn({ data: { messageId } })
         if (result.status === 'ready') {
           isActiveRef.current = false
-          if (result.body) onReady(result.body)
+          if (result.body !== null) onReady(result.body)
           setVisible(false)
         } else if (result.status === 'failed') {
           isActiveRef.current = false

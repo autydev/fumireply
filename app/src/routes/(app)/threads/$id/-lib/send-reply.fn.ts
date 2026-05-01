@@ -102,7 +102,7 @@ export async function handleSendReply(
   if (sendResult.ok) {
     await tx
       .update(messages)
-      .set({ sendStatus: 'sent' })
+      .set({ sendStatus: 'sent', metaMessageId: sendResult.messageId })
       .where(eq(messages.id, inserted.id))
 
     await tx

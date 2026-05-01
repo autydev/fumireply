@@ -24,6 +24,7 @@ function ThreadPage() {
       <h1>{conversation.customer_name ?? conversation.customer_psid}</h1>
       <ThreadMessages messages={messages} />
       <ReplyForm
+        key={conversation.id}
         conversationId={conversation.id}
         conversation={conversation}
         latestDraft={latest_draft}
