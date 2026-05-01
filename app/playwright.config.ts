@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const APP_URL = process.env.APP_URL ?? 'http://localhost:3000'
+const APP_URL = process.env.APP_URL ?? 'http://localhost:5173'
 
 export default defineConfig({
   testDir: './tests/e2e',

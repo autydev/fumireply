@@ -15,7 +15,15 @@ import { test, expect } from '@playwright/test'
 const REVIEWER_EMAIL = process.env.E2E_REVIEWER_EMAIL ?? 'reviewer@example.com'
 const REVIEWER_PASSWORD = process.env.E2E_REVIEWER_PASSWORD ?? 'test-password'
 
-test.describe('reviewer flow', () => {
+// Temporarily skipped: E2E 環境（reviewer ユーザーの seed、conversation/draft 投入、
+// .github/workflows/e2e.yml）が未整備のためログインが通らない。
+// 再開時に必要なもの:
+//   - src/server/db/seed/e2e.ts: Supabase auth.admin.createUser で reviewer 作成
+//     （app_metadata に tenant_id / role='reviewer'）+ tenant / connected_page /
+//     conversation / messages / ai_draft(status='ready') を投入
+//   - .github/workflows/e2e.yml: postgres + Supabase ローカル + seed + npm run test:e2e
+//   - package.json に npm run db:seed:e2e スクリプト追加
+test.describe.skip('reviewer flow', () => {
   test('login → inbox → thread → AI draft → reply → success', async ({ page }) => {
     // 1. Login (LoginForm labels are English: "Email", "Password", "Login")
     await page.goto('/login')
