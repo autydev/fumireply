@@ -1,4 +1,4 @@
-import type { SQSEvent, SQSHandler } from 'aws-lambda'
+import type { SQSEvent, SQSHandler, SQSRecord } from 'aws-lambda'
 import Anthropic from '@anthropic-ai/sdk'
 import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -6,7 +6,7 @@ import { dbAdmin } from './db/client'
 import { withTenant } from './db/with-tenant'
 import { aiDrafts, messages } from './db/schema'
 import { getSsmParameter } from './services/ssm'
-import { SYSTEM_PROMPT, buildUserPrompt } from './prompt'
+import { buildUserPrompt, SYSTEM_PROMPT } from './prompt'
 
 const SQS_BODY_SCHEMA = z.object({
   messageId: z.string().uuid(),
@@ -15,13 +15,29 @@ const SQS_BODY_SCHEMA = z.object({
 const ANTHROPIC_API_KEY_SSM =
   process.env.ANTHROPIC_API_KEY_SSM_KEY ?? '/fumireply/review/anthropic/api-key'
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001'
+const ANTHROPIC_TIMEOUT_MS = 30_000
 const HISTORY_LIMIT = 5
 const RETRY_DELAYS_MS = [1000, 3000, 9000]
 
 interface ApiError {
   status?: number
-  message?: string
 }
+
+interface HistoryItem {
+  direction: string
+  body: string
+  messageType: string
+}
+
+type AiDraftUpdate =
+  | {
+      status: 'ready'
+      body: string
+      model: string
+      promptTokens: number
+      completionTokens: number
+    }
+  | { status: 'failed'; error: string }
 
 async function callAnthropicWithRetry(
   client: Anthropic,
@@ -44,14 +60,11 @@ async function callAnthropicWithRetry(
         messages: [{ role: 'user', content: userPrompt }],
       })
     } catch (err) {
-      const error = err as ApiError
-      const status = error.status
-
+      const status = (err as ApiError).status
       // Non-retryable 4xx (except 429)
       if (status !== undefined && status >= 400 && status < 500 && status !== 429) {
         throw err
       }
-
       lastError = err
       if (attempt < RETRY_DELAYS_MS.length) {
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]))
@@ -62,10 +75,8 @@ async function callAnthropicWithRetry(
   throw lastError
 }
 
-export const handler: SQSHandler = async (event: SQSEvent) => {
-  const record = event.Records[0]
-  if (!record) return
-
+async function processRecord(record: SQSRecord): Promise<void> {
+  // 1. Parse SQS message
   let messageId: string
   try {
     const parsed = SQS_BODY_SCHEMA.parse(JSON.parse(record.body))
@@ -75,7 +86,7 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
     return
   }
 
-  // Resolve tenant_id with service role (bypasses RLS)
+  // 2. Resolve tenant_id with service role (bypasses RLS)
   const rows = await dbAdmin
     .select({ tenantId: messages.tenantId })
     .from(messages)
@@ -88,8 +99,11 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
 
   const { tenantId } = rows[0]
 
+  // 3. Read message + history in a short RLS transaction, then release the connection
+  let history: HistoryItem[] = []
+  let skipped = false
+
   await withTenant(tenantId, async (tx) => {
-    // Get message details within RLS context
     const [msg] = await tx
       .select({
         body: messages.body,
@@ -101,10 +115,10 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
 
     if (!msg || msg.messageType !== 'text') {
       console.info({ event: 'skip_non_text', messageId, messageType: msg?.messageType })
+      skipped = true
       return
     }
 
-    // Get recent conversation history (last 5, chronological)
     const historyDesc = await tx
       .select({
         direction: messages.direction,
@@ -116,64 +130,70 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
       .orderBy(desc(messages.timestamp))
       .limit(HISTORY_LIMIT)
 
-    const history = historyDesc.reverse()
-    const userPrompt = buildUserPrompt(history)
+    history = historyDesc.reverse()
+  })
 
-    const apiKey = await getSsmParameter(ANTHROPIC_API_KEY_SSM)
-    const anthropic = new Anthropic({ apiKey })
+  if (skipped) return
 
-    const startMs = Date.now()
+  // 4. Call Anthropic OUTSIDE any DB transaction — no connection held during API latency
+  const userPrompt = buildUserPrompt(history)
+  const apiKey = await getSsmParameter(ANTHROPIC_API_KEY_SSM)
+  const anthropic = new Anthropic({ apiKey, timeout: ANTHROPIC_TIMEOUT_MS, maxRetries: 0 })
 
-    try {
-      const response = await callAnthropicWithRetry(anthropic, userPrompt)
-      const latencyMs = Date.now() - startMs
+  const startMs = Date.now()
+  let update: AiDraftUpdate
 
-      const draftBody = response.content[0]?.type === 'text' ? response.content[0].text : ''
+  try {
+    const response = await callAnthropicWithRetry(anthropic, userPrompt)
+
+    // Collect all text blocks; treat empty result as unexpected failure
+    const draftBody = response.content
+      .filter((b) => b.type === 'text')
+      .map((b) => (b.type === 'text' ? b.text : ''))
+      .join('')
+
+    if (!draftBody) {
+      update = { status: 'failed', error: 'unexpected_response_type' }
+    } else {
       const usage = response.usage as Anthropic.Usage & {
         cache_creation_input_tokens?: number
         cache_read_input_tokens?: number
       }
-      const promptTokens =
-        (usage.input_tokens ?? 0) +
-        (usage.cache_creation_input_tokens ?? 0) +
-        (usage.cache_read_input_tokens ?? 0)
-
-      await tx
-        .update(aiDrafts)
-        .set({
-          status: 'ready',
-          body: draftBody,
-          model: response.model,
-          promptTokens,
-          completionTokens: usage.output_tokens,
-          latencyMs,
-          updatedAt: new Date(),
-        })
-        .where(eq(aiDrafts.messageId, messageId))
-    } catch (err) {
-      const error = err as ApiError
-      const latencyMs = Date.now() - startMs
-
-      let errorCode = 'unknown_error'
-      if (error.status === 401) {
-        errorCode = 'auth_failed'
-      } else if (error.status === 400) {
-        errorCode = 'bad_request'
-      } else if (error.status === 429 || (error.status !== undefined && error.status >= 500)) {
-        errorCode = 'server_error'
+      update = {
+        status: 'ready',
+        body: draftBody,
+        model: response.model,
+        promptTokens:
+          (usage.input_tokens ?? 0) +
+          (usage.cache_creation_input_tokens ?? 0) +
+          (usage.cache_read_input_tokens ?? 0),
+        completionTokens: usage.output_tokens,
       }
-
-      console.error({ event: 'anthropic_error', messageId, status: error.status, error: errorCode })
-
-      await tx
-        .update(aiDrafts)
-        .set({
-          status: 'failed',
-          error: errorCode,
-          latencyMs,
-          updatedAt: new Date(),
-        })
-        .where(eq(aiDrafts.messageId, messageId))
     }
+  } catch (err) {
+    const status = (err as ApiError).status
+    let error = 'unknown_error'
+    if (status === 401) error = 'auth_failed'
+    else if (status === 400) error = 'bad_request'
+    else if (status === 429 || (status !== undefined && status >= 500)) error = 'server_error'
+
+    console.error({ event: 'anthropic_error', messageId, status, error })
+    update = { status: 'failed', error }
+  }
+
+  const latencyMs = Date.now() - startMs
+
+  // 5. Write ai_drafts result in a separate transaction
+  await withTenant(tenantId, async (tx) => {
+    await tx
+      .update(aiDrafts)
+      .set({ ...update, latencyMs, updatedAt: new Date() })
+      .where(eq(aiDrafts.messageId, messageId))
   })
+}
+
+export const handler: SQSHandler = async (event: SQSEvent) => {
+  for (const record of event.Records) {
+    await processRecord(record)
+  }
 }

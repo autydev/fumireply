@@ -42,27 +42,24 @@ const { handler } = await import('./handler')
 
 // --- helpers ---
 
-function makeSqsEvent(body: unknown): SQSEvent {
-  return {
-    Records: [
-      {
-        messageId: 'sqs-msg-1',
-        receiptHandle: 'handle-1',
-        body: JSON.stringify(body),
-        attributes: {
-          ApproximateReceiveCount: '1',
-          SentTimestamp: '1735689600000',
-          SenderId: 'sender',
-          ApproximateFirstReceiveTimestamp: '1735689600000',
-        },
-        messageAttributes: {},
-        md5OfBody: 'md5',
-        eventSource: 'aws:sqs',
-        eventSourceARN: 'arn:aws:sqs:ap-northeast-1:123:queue',
-        awsRegion: 'ap-northeast-1',
-      },
-    ],
-  }
+function makeSqsEvent(body: unknown, count = 1): SQSEvent {
+  const makeRecord = (i: number) => ({
+    messageId: `sqs-msg-${i}`,
+    receiptHandle: `handle-${i}`,
+    body: JSON.stringify(body),
+    attributes: {
+      ApproximateReceiveCount: '1',
+      SentTimestamp: '1735689600000',
+      SenderId: 'sender',
+      ApproximateFirstReceiveTimestamp: '1735689600000',
+    },
+    messageAttributes: {},
+    md5OfBody: 'md5',
+    eventSource: 'aws:sqs',
+    eventSourceARN: 'arn:aws:sqs:ap-northeast-1:123:queue',
+    awsRegion: 'ap-northeast-1',
+  })
+  return { Records: Array.from({ length: count }, (_, i) => makeRecord(i + 1)) }
 }
 
 function makeAnthropicResponse(overrides: Partial<Record<string, unknown>> = {}) {
@@ -89,36 +86,26 @@ function makeApiError(status: number, message = 'API error'): Error & { status: 
   return err
 }
 
-// Build mock tx for use inside withTenant
-function buildMockTx({
+// Build read transaction mock (first withTenant call: get message + history)
+function buildReadTx({
   messageResult = [
-    {
-      body: 'Do you have Charizard?',
-      messageType: 'text',
-      conversationId: CONVERSATION_ID,
-    },
+    { body: 'Do you have Charizard?', messageType: 'text', conversationId: CONVERSATION_ID },
   ],
-  historyResult = [
-    { direction: 'inbound', body: 'Do you have Charizard?', messageType: 'text' },
-  ],
-  updateWhere = vi.fn().mockResolvedValue({ rowCount: 1 }),
+  historyResult = [{ direction: 'inbound', body: 'Do you have Charizard?', messageType: 'text' }],
 }: {
   messageResult?: Array<{ body: string; messageType: string; conversationId: string }>
   historyResult?: Array<{ direction: string; body: string; messageType: string }>
-  updateWhere?: ReturnType<typeof vi.fn>
 } = {}) {
   let selectCallCount = 0
 
-  const mockTx = {
+  return {
     select: vi.fn(() => ({
       from: vi.fn(() => ({
         where: vi.fn(() => {
           selectCallCount++
           if (selectCallCount === 1) {
-            // First select: get message details
             return Promise.resolve(messageResult)
           }
-          // Second select: get conversation history
           return {
             orderBy: vi.fn(() => ({
               limit: vi.fn(() => Promise.resolve(historyResult)),
@@ -127,13 +114,19 @@ function buildMockTx({
         }),
       })),
     })),
+  }
+}
+
+// Build write transaction mock (second withTenant call: update ai_drafts)
+function buildWriteTx() {
+  const updateWhere = vi.fn().mockResolvedValue({ rowCount: 1 })
+  const mockTx = {
     update: vi.fn(() => ({
       set: vi.fn(() => ({
         where: updateWhere,
       })),
     })),
   }
-
   return { mockTx, updateWhere }
 }
 
@@ -149,7 +142,7 @@ afterEach(() => {
 
 describe('handler — SQS parse', () => {
   it('skips processing on invalid JSON body', async () => {
-    const event = makeSqsEvent('not-valid-json')
+    const event = makeSqsEvent({})
     event.Records[0].body = 'not-valid-json'
     await handler(event, {} as never, () => {})
     expect(mockDbAdminWhere).not.toHaveBeenCalled()
@@ -171,18 +164,22 @@ describe('handler — message not found', () => {
 
 describe('handler — normal text message', () => {
   it('calls Anthropic and updates ai_drafts with ready status', async () => {
-    const { mockTx, updateWhere } = buildMockTx()
-    mockWithTenant.mockImplementation(async (_tenantId: string, fn: (tx: unknown) => unknown) => {
-      return fn(mockTx)
-    })
+    const readTx = buildReadTx()
+    const { mockTx: writeTx, updateWhere } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
     mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
 
     await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
 
-    expect(mockWithTenant).toHaveBeenCalledWith(TENANT_ID, expect.any(Function))
+    expect(mockWithTenant).toHaveBeenCalledTimes(2)
+    expect(mockWithTenant).toHaveBeenNthCalledWith(1, TENANT_ID, expect.any(Function))
+    expect(mockWithTenant).toHaveBeenNthCalledWith(2, TENANT_ID, expect.any(Function))
     expect(mockAnthropicCreate).toHaveBeenCalledOnce()
     expect(updateWhere).toHaveBeenCalledOnce()
-    const setCall = mockTx.update.mock.results[0].value.set.mock.calls[0][0]
+
+    const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
     expect(setCall.status).toBe('ready')
     expect(setCall.body).toBe('Test reply draft.')
     expect(setCall.model).toBe('claude-haiku-4-5-20251001')
@@ -191,17 +188,36 @@ describe('handler — normal text message', () => {
     expect(setCall.completionTokens).toBe(20)
   })
 
+  it('processes all records in a multi-record SQS event', async () => {
+    const readTx1 = buildReadTx()
+    const { mockTx: writeTx1 } = buildWriteTx()
+    const readTx2 = buildReadTx()
+    const { mockTx: writeTx2 } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx1))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx1))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx2))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx2))
+    mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
+    mockDbAdminWhere.mockResolvedValue([{ tenantId: TENANT_ID }])
+
+    await handler(makeSqsEvent({ messageId: MESSAGE_ID }, 2), {} as never, () => {})
+
+    expect(mockAnthropicCreate).toHaveBeenCalledTimes(2)
+    expect(mockWithTenant).toHaveBeenCalledTimes(4)
+  })
+
   it('does NOT call Meta Send API (FR-026 Human-in-the-Loop)', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
-    const { mockTx } = buildMockTx()
-    mockWithTenant.mockImplementation(async (_tenantId: string, fn: (tx: unknown) => unknown) => {
-      return fn(mockTx)
-    })
+    const readTx = buildReadTx()
+    const { mockTx: writeTx } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
     mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
 
     await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
 
-    // fetch must not be called with Meta graph API domain
     const metaCalls = fetchSpy.mock.calls.filter((args) =>
       String(args[0]).includes('graph.facebook.com'),
     )
@@ -212,62 +228,65 @@ describe('handler — normal text message', () => {
 
 describe('handler — non-text message (sticker)', () => {
   it('skips Anthropic call for sticker message_type', async () => {
-    const { mockTx } = buildMockTx({
+    const readTx = buildReadTx({
       messageResult: [{ body: '', messageType: 'sticker', conversationId: CONVERSATION_ID }],
     })
-    mockWithTenant.mockImplementation(async (_tenantId: string, fn: (tx: unknown) => unknown) => {
-      return fn(mockTx)
-    })
+    mockWithTenant.mockImplementationOnce(
+      async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx),
+    )
 
     await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
 
     expect(mockAnthropicCreate).not.toHaveBeenCalled()
+    expect(mockWithTenant).toHaveBeenCalledTimes(1) // only read tx, no write tx
   })
 })
 
 describe('handler — Anthropic API errors', () => {
   it('updates ai_drafts with auth_failed on 401', async () => {
-    const { mockTx, updateWhere } = buildMockTx()
-    mockWithTenant.mockImplementation(async (_tenantId: string, fn: (tx: unknown) => unknown) => {
-      return fn(mockTx)
-    })
+    const readTx = buildReadTx()
+    const { mockTx: writeTx, updateWhere } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
     mockAnthropicCreate.mockRejectedValue(makeApiError(401, 'Unauthorized'))
 
     await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
 
     expect(updateWhere).toHaveBeenCalledOnce()
-    const setCall = mockTx.update.mock.results[0].value.set.mock.calls[0][0]
+    const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
     expect(setCall.status).toBe('failed')
     expect(setCall.error).toBe('auth_failed')
   })
 
   it('retries on 429 and succeeds on second attempt', async () => {
     vi.useFakeTimers()
-    const { mockTx, updateWhere } = buildMockTx()
-    mockWithTenant.mockImplementation(async (_tenantId: string, fn: (tx: unknown) => unknown) => {
-      return fn(mockTx)
-    })
+    const readTx = buildReadTx()
+    const { mockTx: writeTx, updateWhere } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
     mockAnthropicCreate
       .mockRejectedValueOnce(makeApiError(429, 'Rate limited'))
       .mockResolvedValue(makeAnthropicResponse())
 
     const handlerPromise = handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
-    // Advance past first retry delay (1000ms)
     await vi.runAllTimersAsync()
     await handlerPromise
 
     expect(mockAnthropicCreate).toHaveBeenCalledTimes(2)
-    const setCall = mockTx.update.mock.results[0].value.set.mock.calls[0][0]
+    const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
     expect(setCall.status).toBe('ready')
     vi.useRealTimers()
   })
 
   it('updates ai_drafts with server_error after 3 consecutive 503 failures', async () => {
     vi.useFakeTimers()
-    const { mockTx, updateWhere } = buildMockTx()
-    mockWithTenant.mockImplementation(async (_tenantId: string, fn: (tx: unknown) => unknown) => {
-      return fn(mockTx)
-    })
+    const readTx = buildReadTx()
+    const { mockTx: writeTx, updateWhere } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
     mockAnthropicCreate.mockRejectedValue(makeApiError(503, 'Service Unavailable'))
 
     const handlerPromise = handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
@@ -277,10 +296,28 @@ describe('handler — Anthropic API errors', () => {
     // 4 attempts: 1 initial + 3 retries
     expect(mockAnthropicCreate).toHaveBeenCalledTimes(4)
     expect(updateWhere).toHaveBeenCalledOnce()
-    const setCall = mockTx.update.mock.results[0].value.set.mock.calls[0][0]
+    const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
     expect(setCall.status).toBe('failed')
     expect(setCall.error).toBe('server_error')
     vi.useRealTimers()
+  })
+
+  it('updates ai_drafts with unexpected_response_type when content has no text blocks', async () => {
+    const readTx = buildReadTx()
+    const { mockTx: writeTx, updateWhere } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
+    mockAnthropicCreate.mockResolvedValue(
+      makeAnthropicResponse({ content: [{ type: 'tool_use', id: 'x', name: 'y', input: {} }] }),
+    )
+
+    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
+
+    expect(updateWhere).toHaveBeenCalledOnce()
+    const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
+    expect(setCall.status).toBe('failed')
+    expect(setCall.error).toBe('unexpected_response_type')
   })
 })
 
@@ -291,10 +328,11 @@ describe('handler — prompt building', () => {
       { direction: 'outbound', body: 'Hello!', messageType: 'text' },
       { direction: 'inbound', body: 'Do you have Charizard?', messageType: 'text' },
     ]
-    const { mockTx } = buildMockTx({ historyResult: history })
-    mockWithTenant.mockImplementation(async (_tenantId: string, fn: (tx: unknown) => unknown) => {
-      return fn(mockTx)
-    })
+    const readTx = buildReadTx({ historyResult: history })
+    const { mockTx: writeTx } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
     mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
 
     await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
