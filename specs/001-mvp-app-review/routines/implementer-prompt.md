@@ -323,14 +323,22 @@ PR 本文:
     PR_NUM=$(gh pr view --json number --jq '.number')
 
 ═══════════════════════════════════════════════════════════════════
-# Step 8.5: label 設定
+# Step 8.5: label 設定 + Copilot レビュー要求
 ═══════════════════════════════════════════════════════════════════
 
-Reviewer は GitHub Copilot Code Review が自動アサインするため設定不要。`ready-for-review` ラベルのみ付与:
+`ready-for-review` ラベル付与:
 
     gh label create ready-for-review --color 0e8a16 \
       --description "Routine 実装完了、人間レビュー待ち" 2>/dev/null || true
     gh pr edit $PR_NUM --add-label ready-for-review
+
+Copilot レビュー要求 (Auto-assign が不安定なため明示要求):
+
+    # Copilot slug はリポジトリにより異なるので両方トライ
+    for SLUG in 'Copilot' 'copilot-pull-request-reviewer[bot]'; do
+      gh api -X POST "repos/autydev/fumireply/pulls/$PR_NUM/requested_reviewers" \
+        -f "reviewers[]=$SLUG" 2>/dev/null && break
+    done
 
 ═══════════════════════════════════════════════════════════════════
 # Step 9: タスク状態の表現
