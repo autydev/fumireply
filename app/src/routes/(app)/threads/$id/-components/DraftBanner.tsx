@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getDraftStatusFn } from '../-lib/get-draft-status.fn'
-import type { DraftStatus } from '../-lib/get-draft-status.fn'
 
 const POLL_INTERVAL_MS = 3000
 const MAX_POLL_MS = 60_000
@@ -16,26 +15,34 @@ export function DraftBanner({
   initialStatus: 'pending' | 'ready' | 'failed'
   onReady: (body: string) => void
 }) {
+  const [visible, setVisible] = useState(initialStatus === 'pending')
   const startTimeRef = useRef(Date.now())
-  const statusRef = useRef(initialStatus)
+  const isActiveRef = useRef(initialStatus === 'pending')
 
   useEffect(() => {
     if (initialStatus !== 'pending') return
 
     const poll = async () => {
-      if (statusRef.current !== 'pending') return
-      if (Date.now() - startTimeRef.current > MAX_POLL_MS) return
+      if (!isActiveRef.current) return
 
-      let result: DraftStatus
-      try {
-        result = await getDraftStatusFn({ data: { messageId } })
-      } catch {
+      if (Date.now() - startTimeRef.current > MAX_POLL_MS) {
+        isActiveRef.current = false
+        setVisible(false)
         return
       }
 
-      statusRef.current = result.status
-      if (result.status === 'ready' && result.body) {
-        onReady(result.body)
+      try {
+        const result = await getDraftStatusFn({ data: { messageId } })
+        if (result.status === 'ready') {
+          isActiveRef.current = false
+          if (result.body) onReady(result.body)
+          setVisible(false)
+        } else if (result.status === 'failed') {
+          isActiveRef.current = false
+          setVisible(false)
+        }
+      } catch {
+        // silent — keep polling
       }
     }
 
@@ -43,10 +50,13 @@ export function DraftBanner({
       void poll()
     }, POLL_INTERVAL_MS)
 
-    return () => clearInterval(id)
+    return () => {
+      clearInterval(id)
+      isActiveRef.current = false
+    }
   }, [messageId, initialStatus, onReady])
 
-  if (initialStatus !== 'pending') return null
+  if (!visible) return null
 
   return (
     <div className="draft-banner" role="status" aria-live="polite">

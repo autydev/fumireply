@@ -27,7 +27,7 @@ export function ThreadMessages({ messages }: { messages: MessageWithDraft[] }) {
               <p className="ai-draft-hint">AI suggested: {msg.ai_draft.body}</p>
             )}
           <time className="message-timestamp" dateTime={msg.timestamp}>
-            {new Date(msg.timestamp).toLocaleString('ja-JP')}
+            {new Date(msg.timestamp).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
           </time>
         </li>
       ))}

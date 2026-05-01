@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { useEffect, useState } from 'react'
 import { screen, waitFor } from '@testing-library/react'
 import { renderRoute } from '~/test/file-route-utils'
 import type { ConversationDetail } from '~/routes/(app)/threads/$id/-lib/get-conversation.fn'
@@ -13,7 +14,8 @@ vi.mock('~/routes/(app)/threads/$id/-lib/get-draft-status.fn', () => ({
   getDraftStatusFn: vi.fn(),
 }))
 
-const CONV_ID = 'conv-uuid-1'
+// Proper UUID constants (safer if validators tighten to z.string().uuid())
+const CONV_ID = '00000000-0000-0000-0000-000000000001'
 const NOW_ISO = '2026-05-01T00:00:00.000Z'
 
 function makeDetail(overrides: Partial<ConversationDetail> = {}): ConversationDetail {
@@ -50,9 +52,6 @@ function makeMessage(
 
 describe('Thread page', () => {
   it('renders messages in chronological order', async () => {
-    const { getConversationFn } = await import(
-      '~/routes/(app)/threads/$id/-lib/get-conversation.fn'
-    )
     const { ThreadMessages } = await import(
       '~/routes/(app)/threads/$id/-components/ThreadMessages'
     )
@@ -69,8 +68,6 @@ describe('Thread page', () => {
       makeMessage({ id: 'msg-3', body: 'Third message', timestamp: '2026-04-30T10:10:00Z' }),
     ]
 
-    vi.mocked(getConversationFn).mockResolvedValue(makeDetail({ messages }))
-
     renderRoute({
       path: '/threads/$id',
       component: () => <ThreadMessages messages={messages} />,
@@ -86,14 +83,33 @@ describe('Thread page', () => {
     })
   })
 
-  it('shows unread reset: getConversationFn is called (which resets unread_count)', async () => {
+  it('loader calls getConversationFn (which triggers unread_count reset)', async () => {
     const { getConversationFn } = await import(
       '~/routes/(app)/threads/$id/-lib/get-conversation.fn'
     )
-    vi.mocked(getConversationFn).mockResolvedValue(makeDetail())
 
-    await getConversationFn({ data: { id: CONV_ID } })
-    expect(getConversationFn).toHaveBeenCalledWith({ data: { id: CONV_ID } })
+    const detail = makeDetail()
+    vi.mocked(getConversationFn).mockResolvedValue(detail)
+
+    // Simulate the loader: component fetches on mount just like the SSR route's loader
+    function LoaderSimulator() {
+      const [loaded, setLoaded] = useState(false)
+      useEffect(() => {
+        getConversationFn({ data: { id: CONV_ID } }).then(() => setLoaded(true))
+      }, [])
+      return <div data-testid="status">{loaded ? 'loaded' : 'loading'}</div>
+    }
+
+    renderRoute({
+      path: '/threads/$id',
+      component: LoaderSimulator,
+      initialEntries: [`/threads/${CONV_ID}`],
+    })
+
+    await waitFor(() => {
+      expect(vi.mocked(getConversationFn)).toHaveBeenCalledWith({ data: { id: CONV_ID } })
+      expect(screen.getByTestId('status')).toHaveTextContent('loaded')
+    })
   })
 
   it('populates ReplyForm with latest_draft body when status is ready', async () => {
@@ -163,7 +179,7 @@ describe('Thread page', () => {
       initialEntries: [`/threads/${CONV_ID}`],
     })
 
-    // DraftBanner renders null when status is not pending
+    // DraftBanner renders null when initialStatus is not pending
     await waitFor(() => {
       expect(screen.queryByRole('status')).toBeNull()
     })

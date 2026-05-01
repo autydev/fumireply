@@ -9,7 +9,7 @@ import { sendMessengerReply } from '~/server/services/messenger'
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
 
-const inputSchema = z.object({ conversationId: z.string().uuid(), body: z.string().min(1) })
+const inputSchema = z.object({ conversationId: z.string().uuid(), body: z.string().trim().min(1) })
 
 export type SendReplyResult =
   | {
@@ -121,7 +121,7 @@ export async function handleSendReply(
     }
   }
 
-  const sendError: SendReplyResult['error'] =
+  const sendError: 'outside_window' | 'token_expired' | 'meta_error' | 'validation_failed' =
     sendResult.error === 'token_expired'
       ? 'token_expired'
       : sendResult.error === 'outside_window'
