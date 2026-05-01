@@ -18,24 +18,21 @@ export async function deleteUserData(
   psid: string,
   hashSalt: string,
 ): Promise<DeleteUserDataResult> {
-  // Service role bypasses RLS to find all tenants that own this PSID.
-  const tenantRows = await dbAdmin
-    .selectDistinct({ tenantId: conversations.tenantId })
-    .from(conversations)
-    .where(eq(conversations.customerPsid, psid))
-
   const confirmationCode = randomUUID().replace(/-/g, '')
   const psidHash = createHash('sha256').update(hashSalt + psid).digest('hex')
 
-  if (tenantRows.length === 0) {
-    return { confirmationCode }
-  }
-
-  const tenantIds = tenantRows.map(({ tenantId }) => tenantId)
-
-  // Single atomic service-role transaction: delete across all matching tenants
-  // and insert the audit row together — eliminates partial-deletion risk.
+  // Single atomic service-role transaction: tenant lookup, deletion, and
+  // audit insert all run within the same snapshot to prevent TOCTOU races.
   await dbAdmin.transaction(async (tx) => {
+    const tenantRows = await tx
+      .selectDistinct({ tenantId: conversations.tenantId })
+      .from(conversations)
+      .where(eq(conversations.customerPsid, psid))
+
+    if (tenantRows.length === 0) return
+
+    const tenantIds = tenantRows.map(({ tenantId }) => tenantId)
+
     await tx
       .delete(conversations)
       .where(and(inArray(conversations.tenantId, tenantIds), eq(conversations.customerPsid, psid)))

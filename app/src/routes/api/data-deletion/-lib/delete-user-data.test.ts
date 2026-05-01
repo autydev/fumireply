@@ -9,8 +9,14 @@ const mockInsert = vi.fn(() => ({ values: mockInsertValues }))
 const mockDeleteWhere = vi.fn().mockResolvedValue([])
 const mockDelete = vi.fn(() => ({ where: mockDeleteWhere }))
 
+// tx.selectDistinct().from().where() chain (now on tx, not dbAdmin)
+const mockAdminWhere = vi.fn().mockResolvedValue([])
+const mockAdminFrom = vi.fn(() => ({ where: mockAdminWhere }))
+const mockAdminSelectDistinct = vi.fn(() => ({ from: mockAdminFrom }))
+
 // tx passed into dbAdmin.transaction
 const tx = {
+  selectDistinct: mockAdminSelectDistinct,
   delete: mockDelete,
   insert: mockInsert,
 }
@@ -18,15 +24,7 @@ const tx = {
 // dbAdmin.transaction calls fn(tx) and returns its result
 const mockAdminTransaction = vi.fn((fn: (t: typeof tx) => Promise<unknown>) => fn(tx))
 
-// dbAdmin.selectDistinct().from().where() chain
-const mockAdminWhere = vi.fn().mockResolvedValue([])
-const mockAdminFrom = vi.fn(() => ({ where: mockAdminWhere }))
-const mockAdminSelectDistinct = vi.fn(() => ({ from: mockAdminFrom }))
-
-const mockDbAdmin = {
-  selectDistinct: mockAdminSelectDistinct,
-  transaction: mockAdminTransaction,
-}
+const mockDbAdmin = { transaction: mockAdminTransaction }
 
 vi.mock('~/server/db/client', () => ({
   dbAdmin: mockDbAdmin,
@@ -56,8 +54,11 @@ describe('deleteUserData', () => {
     const result = await deleteUserData(TEST_PSID, HASH_SALT)
 
     expect(result.confirmationCode).toHaveLength(32)
-    // No transaction should be started — no tenants found
-    expect(mockAdminTransaction).not.toHaveBeenCalled()
+    // Transaction still runs — selectDistinct is now inside it
+    expect(mockAdminTransaction).toHaveBeenCalledTimes(1)
+    // But no delete or insert happens
+    expect(mockDeleteWhere).not.toHaveBeenCalled()
+    expect(mockInsertValues).not.toHaveBeenCalled()
   })
 
   it('deletes conversations and inserts deletion_log in a single atomic transaction', async () => {
