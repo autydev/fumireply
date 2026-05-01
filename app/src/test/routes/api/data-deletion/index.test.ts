@@ -64,6 +64,7 @@ beforeEach(() => {
   vi.stubEnv('META_APP_SECRET_SSM_KEY', '/fumireply/review/meta/app-secret')
   vi.stubEnv('DELETION_LOG_HASH_SALT_SSM_KEY', '/fumireply/review/deletion-log/hash-salt')
   vi.stubEnv('AWS_REGION', 'ap-northeast-1')
+  vi.stubEnv('PUBLIC_APP_ORIGIN', 'https://fumireply.example.com')
 
   // First SSM call → app secret, second → hash salt
   mockSsmSend
@@ -81,7 +82,7 @@ describe('POST /api/data-deletion/ (handleDataDeletion)', () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as { url: string; confirmation_code: string }
     expect(body.confirmation_code).toBe(TEST_CODE)
-    expect(body.url).toContain(TEST_CODE)
+    expect(body.url).toBe(`https://fumireply.example.com/data-deletion-status/${TEST_CODE}`)
     expect(body.url).toContain('/data-deletion-status/')
     expect(mockDeleteUserData).toHaveBeenCalledWith(TEST_PSID, TEST_HASH_SALT)
   })
@@ -123,5 +124,13 @@ describe('POST /api/data-deletion/ (handleDataDeletion)', () => {
 
     expect(response.status).toBe(500)
     expect(mockDeleteUserData).not.toHaveBeenCalled()
+  })
+
+  it('returns 500 when PUBLIC_APP_ORIGIN env var is missing', async () => {
+    vi.stubEnv('PUBLIC_APP_ORIGIN', '')
+    const sr = buildSignedRequest(TEST_PSID, TEST_APP_SECRET)
+    const response = await handleDataDeletion(buildPostRequest(sr))
+
+    expect(response.status).toBe(500)
   })
 })

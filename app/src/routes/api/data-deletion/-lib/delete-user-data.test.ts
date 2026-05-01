@@ -94,7 +94,7 @@ describe('deleteUserData', () => {
     expect(result.confirmationCode).toHaveLength(32)
   })
 
-  it('processes multiple tenants independently', async () => {
+  it('processes multiple tenants independently, inserting deletion_log only once', async () => {
     const TENANT_B = '22222222-2222-2222-2222-222222222222'
     mockAdminWhere.mockResolvedValueOnce([
       { tenantId: TEST_TENANT_ID },
@@ -105,6 +105,10 @@ describe('deleteUserData', () => {
 
     // One transaction per tenant
     expect(mockDbTransaction).toHaveBeenCalledTimes(2)
+    // Both tenants have their conversations deleted
+    expect(mockDeleteWhere).toHaveBeenCalledTimes(2)
+    // deletion_log INSERT is only done once (index === 0) to avoid UNIQUE violation
+    expect(mockInsertValues).toHaveBeenCalledTimes(1)
     expect(result.confirmationCode).toHaveLength(32)
   })
 

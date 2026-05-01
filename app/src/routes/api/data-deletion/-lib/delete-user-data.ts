@@ -5,8 +5,7 @@ import { conversations, deletionLog } from '~/server/db/schema'
 
 type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
-// Local withTenant helper — mirrors the shared helper added in U2.5.
-// Uses anon-role db client so RLS (tenant_isolation policy) is enforced.
+// Uses anon-role db client so the tenant_isolation RLS policy is enforced.
 async function withTenant<T>(tenantId: string, fn: (tx: DbTx) => Promise<T>): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL app.tenant_id = ${tenantId}::text`)
@@ -39,17 +38,19 @@ export async function deleteUserData(
   const confirmationCode = randomUUID().replace(/-/g, '')
   const psidHash = createHash('sha256').update(hashSalt + psid).digest('hex')
 
-  for (const { tenantId } of tenantRows) {
+  for (const [index, { tenantId }] of tenantRows.entries()) {
     await withTenant(tenantId, async (tx) => {
-      // DELETE conversations WHERE customer_psid = psid (RLS adds tenant_id filter).
       // ON DELETE CASCADE propagates: conversations → messages → ai_drafts.
       await tx.delete(conversations).where(eq(conversations.customerPsid, psid))
 
-      await tx.insert(deletionLog).values({
-        tenantId,
-        psidHash,
-        confirmationCode,
-      })
+      // deletion_log.confirmation_code is UNIQUE — insert only once across all tenants.
+      if (index === 0) {
+        await tx.insert(deletionLog).values({
+          tenantId,
+          psidHash,
+          confirmationCode,
+        })
+      }
     })
   }
 

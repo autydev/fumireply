@@ -95,7 +95,8 @@ export async function handleDataDeletion(request: Request): Promise<Response> {
     return new Response('Database error', { status: 500 })
   }
 
-  const origin = new URL(request.url).origin
+  const origin = process.env.PUBLIC_APP_ORIGIN
+  if (!origin) return new Response('Server misconfiguration', { status: 500 })
   const statusUrl = `${origin}/data-deletion-status/${confirmationCode}`
 
   return Response.json({ url: statusUrl, confirmation_code: confirmationCode })
