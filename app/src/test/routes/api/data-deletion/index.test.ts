@@ -133,4 +133,12 @@ describe('POST /api/data-deletion/ (handleDataDeletion)', () => {
 
     expect(response.status).toBe(500)
   })
+
+  it('returns 500 when PUBLIC_APP_ORIGIN is not a valid URL', async () => {
+    vi.stubEnv('PUBLIC_APP_ORIGIN', 'not-a-valid-url')
+    const sr = buildSignedRequest(TEST_PSID, TEST_APP_SECRET)
+    const response = await handleDataDeletion(buildPostRequest(sr))
+
+    expect(response.status).toBe(500)
+  })
 })

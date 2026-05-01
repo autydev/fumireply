@@ -8,7 +8,7 @@ type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 // Uses anon-role db client so the tenant_isolation RLS policy is enforced.
 async function withTenant<T>(tenantId: string, fn: (tx: DbTx) => Promise<T>): Promise<T> {
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL app.tenant_id = ${tenantId}::text`)
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`)
     return fn(tx)
   })
 }

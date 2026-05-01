@@ -68,7 +68,7 @@ export async function handleDataDeletion(request: Request): Promise<Response> {
     return new Response('Invalid request body', { status: 400 })
   }
 
-  const appSecretKey = process.env.META_APP_SECRET_SSM_KEY
+  const appSecretKey = process.env.META_APP_SECRET_SSM_KEY?.trim()
   if (!appSecretKey) return new Response('Server misconfiguration', { status: 500 })
 
   let appSecret: string
@@ -83,7 +83,7 @@ export async function handleDataDeletion(request: Request): Promise<Response> {
 
   const psid = verification.userId
 
-  const hashSaltKey = process.env.DELETION_LOG_HASH_SALT_SSM_KEY
+  const hashSaltKey = process.env.DELETION_LOG_HASH_SALT_SSM_KEY?.trim()
   if (!hashSaltKey) return new Response('Server misconfiguration', { status: 500 })
 
   let hashSalt: string
@@ -101,9 +101,17 @@ export async function handleDataDeletion(request: Request): Promise<Response> {
     return new Response('Database error', { status: 500 })
   }
 
-  const origin = process.env.PUBLIC_APP_ORIGIN
+  const origin = process.env.PUBLIC_APP_ORIGIN?.trim()
   if (!origin) return new Response('Server misconfiguration', { status: 500 })
-  const statusUrl = `${origin}/data-deletion-status/${confirmationCode}`
+
+  let appOrigin: URL
+  try {
+    appOrigin = new URL(origin)
+  } catch {
+    return new Response('Server misconfiguration', { status: 500 })
+  }
+
+  const statusUrl = new URL(`/data-deletion-status/${confirmationCode}`, appOrigin).toString()
 
   return Response.json({ url: statusUrl, confirmation_code: confirmationCode })
 }
