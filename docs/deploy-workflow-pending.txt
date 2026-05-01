@@ -1,2 +1,7 @@
-U5.3 deploy-app.yml implementation — workflow file requires manual addition due to OAuth scope restriction.
-See PR description for full file content.
+This file is intentionally left as a placeholder commit so the branch has reviewable content.
+
+The actual implementation (.github/workflows/deploy-app.yml) is documented in the PR body.
+It cannot be pushed directly because GitHub requires the `workflow` token scope.
+
+To apply: copy the YAML from the PR body and commit it manually to main as
+  .github/workflows/deploy-app.yml
