@@ -432,6 +432,20 @@ GitHub Actions 用の IAM OIDC Provider + Role。詳細は旧版と同じ（`ter
 
 ### 6.1 インフラ変更（Terraform）
 
+**MVP（審査提出まで）**：
+
+```
+開発者の PR
+  ↓
+GitHub Actions: terraform fmt -check + validate（plan は OIDC role 未設定で fmt/validate のみ）
+  ↓
+レビュー承認 → main にマージ
+  ↓
+運用者がローカルで terraform apply（envs/review）
+```
+
+**Phase 2 以降（審査通過後）**：
+
 ```
 開発者の PR
   ↓
@@ -444,10 +458,12 @@ GitHub Actions: 手動承認ゲート（environment protection）
 terraform apply（envs/review）
 ```
 
-**原則**:
-- `terraform apply` は CI 経由のみ（ローカル apply は禁止、緊急時の例外を除く）
-- `main` マージ後も自動 apply はしない（手動承認ゲート必須）
-- Bootstrap だけは例外：初回のみローカル apply
+**原則（MVP）**:
+- `terraform apply` は **ローカル実行**（運用者の AWS 認証情報、`audit-runbook.md` に手順記載）
+- 理由：CI から apply するために必要な広範な作成権限（Lambda/IAM/SNS/SQS/S3/CloudFront/ACM/Route53/EventBridge の `Create*`/`Update*`）を `github-actions-oidc` に付与すると attack surface が大きく、MVP 頻度（数回〜十数回）に対して ROI が低い
+- `github-actions-oidc` は **operational 権限のみ**（`lambda:UpdateFunctionCode` × 4、S3 sync、CloudFront invalidation、state S3、SSM read）→ `deploy-app.yml`（T104）の運用デプロイに利用
+- `terraform-plan.yml` は `vars.AWS_PLAN_ROLE_ARN` で gating 済み。MVP では未設定のまま fmt/validate のみ実行
+- Bootstrap も例外なくローカル apply
 
 ### 6.2 アプリケーション変更（Lambda コード）
 
