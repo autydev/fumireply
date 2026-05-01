@@ -155,7 +155,7 @@ export const sendReplyFn = createServerFn({ method: 'POST' })
       insertedBody: string
       insertedTimestamp: Date
     }
-    type PrepErr = { ok: false; error: SendReplyResult['error']; details?: string }
+    type PrepErr = { ok: false; error: Extract<SendReplyResult, { ok: false }>['error']; details?: string }
 
     const prep: PrepOk | PrepErr = await withTenant(tenantId, async (tx) => {
       const convRows = await tx
