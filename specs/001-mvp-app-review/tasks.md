@@ -135,15 +135,15 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 ### Webhook 受信 Lambda（FR-001〜004, FR-017、FR-022〜FR-024 の起動）
 <!-- unit: U3.1 | deps: U2.5 | scope: backend | tasks: T055-T061 | files: ~5 | automation: auto -->
 
-- [ ] T055 [P] [US1] Create `webhook/package.json` — minimal deps: `@aws-sdk/client-sqs`, `@aws-sdk/client-ssm`, `postgres`, `drizzle-orm`, `zod`; engines node 24
-- [ ] T056 [P] [US1] Create `webhook/tsconfig.json` + `webhook/vitest.config.ts`
-- [ ] T057 [P] [US1] Create `webhook/src/signature.ts` — HMAC-SHA256 verification, `crypto.timingSafeEqual`
-- [ ] T058 [P] [US1] Create `webhook/src/signature.test.ts` — valid / invalid / missing header / wrong prefix
-- [ ] T059 [US1] Create `webhook/src/handler.ts` — API Gateway HTTP API event 直接ハンドラ per `contracts/meta-webhook.md`:
+- [x] T055 [P] [US1] Create `webhook/package.json` — minimal deps: `@aws-sdk/client-sqs`, `@aws-sdk/client-ssm`, `postgres`, `drizzle-orm`, `zod`; engines node 24
+- [x] T056 [P] [US1] Create `webhook/tsconfig.json` + `webhook/vitest.config.ts`
+- [x] T057 [P] [US1] Create `webhook/src/signature.ts` — HMAC-SHA256 verification, `crypto.timingSafeEqual`
+- [x] T058 [P] [US1] Create `webhook/src/signature.test.ts` — valid / invalid / missing header / wrong prefix
+- [x] T059 [US1] Create `webhook/src/handler.ts` — API Gateway HTTP API event 直接ハンドラ per `contracts/meta-webhook.md`:
   - GET: `hub.mode=subscribe` → verify_token を SSM から取得して比較 → `hub.challenge` エコー
   - POST: signature verify → zod payload validation → **service role 接続で `connected_pages WHERE page_id = entry[].id AND is_active=true` から `tenant_id` 解決**（見つからなければ 200 + `unknown_page` ログ）→ **`withTenant(tenant_id, async tx => ...)` 内で** `conversations` upsert + `messages` INSERT (`tenant_id`, `ON CONFLICT (meta_message_id) DO NOTHING RETURNING id`) + `message_type='text'` の場合のみ `ai_drafts` INSERT (`tenant_id`, `status='pending'`, `ON CONFLICT (message_id) DO NOTHING`) → 新規挿入時のみ SQS `SendMessage({ messageId })`（tenant_id は載せない、Worker 側で再解決）→ 200
-- [ ] T060 [P] [US1] Create `webhook/src/handler.test.ts` — integration: 実 Meta ペイロードで POST → signature 検証 → DB INSERT 確認 → SQS enqueue 確認（aws-sdk-client-mock）; sticker → ai_drafts 作らず SQS enqueue されない; 重複 mid → 1 件のみ
-- [ ] T061 [US1] Update `terraform/modules/webhook-lambda/` — Lambda の zip 成果物が `webhook/dist/` を指すようデプロイパイプラインで参照、API Gateway integration が `/api/webhook` を確実にルーティング（`/api/*` のうち `/api/webhook` のみこの Lambda、それ以外は app-lambda という設定）
+- [x] T060 [P] [US1] Create `webhook/src/handler.test.ts` — integration: 実 Meta ペイロードで POST → signature 検証 → DB INSERT 確認 → SQS enqueue 確認（aws-sdk-client-mock）; sticker → ai_drafts 作らず SQS enqueue されない; 重複 mid → 1 件のみ
+- [x] T061 [US1] Update `terraform/modules/webhook-lambda/` — Lambda の zip 成果物が `webhook/dist/` を指すようデプロイパイプラインで参照、API Gateway integration が `/api/webhook` を確実にルーティング（`/api/*` のうち `/api/webhook` のみこの Lambda、それ以外は app-lambda という設定）
 
 ### Login（FR-009, FR-010, FR-011）— Supabase Auth
 <!-- unit: U3.2 | deps: U2.5 | scope: frontend | tasks: T062-T067 | files: ~6 | automation: auto -->
@@ -158,10 +158,10 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 ### Inbox（FR-002）
 <!-- unit: U3.3 | deps: U2.5 | scope: frontend | tasks: T068-T071 | files: ~4 | automation: auto -->
 
-- [ ] T068 [US1] Create `app/src/routes/(app)/inbox/-lib/list-conversations.fn.ts` — `listConversationsFn` serverFn: auth middleware → query `conversations` order by `last_message_at DESC` + latest message body preview (100 文字) + `within_24h_window` calc
-- [ ] T069 [P] [US1] Create `app/src/routes/(app)/inbox/-components/InboxList.tsx` — list UI 参考 `mock/inbox-screens.jsx`; **除外**: VIP タグ、AI 分類カテゴリ、顧客管理、優先度（spec.md L181-191 Assumptions 遵守）; 含む: 顧客名（PSID フォールバック）、最終メッセージ preview、unread バッジ、24h 窓ステータス
-- [ ] T070 [US1] Create `app/src/routes/(app)/inbox/index.tsx` — SSR route with auth middleware (T052); loader calls `listConversationsFn`, renders `InboxList`
-- [ ] T071 [P] [US1] Create `app/src/test/routes/(app)/inbox/index.test.tsx` — integration: fixture 3 conversations → 最新順、未ログインリダイレクト、unread バッジ表示
+- [x] T068 [US1] Create `app/src/routes/(app)/inbox/-lib/list-conversations.fn.ts` — `listConversationsFn` serverFn: auth middleware → query `conversations` order by `last_message_at DESC` + latest message body preview (100 文字) + `within_24h_window` calc
+- [x] T069 [P] [US1] Create `app/src/routes/(app)/inbox/-components/InboxList.tsx` — list UI 参考 `mock/inbox-screens.jsx`; **除外**: VIP タグ、AI 分類カテゴリ、顧客管理、優先度（spec.md L181-191 Assumptions 遵守）; 含む: 顧客名（PSID フォールバック）、最終メッセージ preview、unread バッジ、24h 窓ステータス
+- [x] T070 [US1] Create `app/src/routes/(app)/inbox/index.tsx` — SSR route with auth middleware (T052); loader calls `listConversationsFn`, renders `InboxList`
+- [x] T071 [P] [US1] Create `app/src/test/routes/(app)/inbox/index.test.tsx` — integration: fixture 3 conversations → 最新順、未ログインリダイレクト、unread バッジ表示
 
 **Checkpoint US1**: webhook-lambda → DB INSERT + SQS enqueue → inbox 表示のフルパス稼働、reviewer 資格情報でログイン可能
 
@@ -176,10 +176,10 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 ### AI Worker Lambda（FR-022〜FR-026）
 <!-- unit: U4.1 | deps: U2.5 | scope: backend | tasks: T072-T076 | files: ~5 | automation: auto -->
 
-- [ ] T072 [P] [US2] Create `ai-worker/package.json` — minimal deps: `@anthropic-ai/sdk`, `@aws-sdk/client-ssm`, `postgres`, `drizzle-orm`, `zod`
-- [ ] T073 [P] [US2] Create `ai-worker/tsconfig.json` + `ai-worker/vitest.config.ts`
-- [ ] T074 [P] [US2] Create `ai-worker/src/prompt.ts` — system prompt 定数（TCG retailer customer support）+ `buildUserPrompt({ history, latestBody })` per `contracts/ai-draft.md`
-- [ ] T075 [US2] Create `ai-worker/src/handler.ts` — SQS event handler per `contracts/ai-draft.md`:
+- [x] T072 [P] [US2] Create `ai-worker/package.json` — minimal deps: `@anthropic-ai/sdk`, `@aws-sdk/client-ssm`, `postgres`, `drizzle-orm`, `zod`
+- [x] T073 [P] [US2] Create `ai-worker/tsconfig.json` + `ai-worker/vitest.config.ts`
+- [x] T074 [P] [US2] Create `ai-worker/src/prompt.ts` — system prompt 定数（TCG retailer customer support）+ `buildUserPrompt({ history, latestBody })` per `contracts/ai-draft.md`
+- [x] T075 [US2] Create `ai-worker/src/handler.ts` — SQS event handler per `contracts/ai-draft.md`:
   - parse `Records[0].body` → `messageId`
   - **service role 接続で `messages.tenant_id` 解決**（見つからなければスキップ成功）
   - **`withTenant(tenant_id, async tx => ...)` 内で** `messages` + 直近 5 件の同 conversation を取得
@@ -189,36 +189,36 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
   - 成功時 `withTenant` 内で `ai_drafts` UPDATE (`status='ready'`, `body`, `model`, tokens, `latency_ms`)
   - 失敗時 `withTenant` 内で `ai_drafts` UPDATE (`status='failed'`, `error`); SQS は ACK（throw しない）
   - SDK 例外時のみ throw → SQS が再配信
-- [ ] T076 [P] [US2] Create `ai-worker/src/handler.test.ts` — integration: Anthropic API を MSW モック → ai_drafts UPDATE 成功 / 401 失敗 / 429 リトライ / 5xx リトライ / sticker スキップ / 直近会話履歴の prompt 組み立て確認。**FR-026（AI 自動送信禁止 / Human-in-the-Loop 必須）の否定検証**: テスト中に Meta Send API クライアントが**一切呼ばれていないこと**を assert（`expect(metaSendApiMock).toHaveBeenCalledTimes(0)`）。Worker は `ai_drafts` への保存しか行わず、送信は管理画面の人間操作のみであることをテストレベルで担保する
+- [x] T076 [P] [US2] Create `ai-worker/src/handler.test.ts` — integration: Anthropic API を MSW モック → ai_drafts UPDATE 成功 / 401 失敗 / 429 リトライ / 5xx リトライ / sticker スキップ / 直近会話履歴の prompt 組み立て確認。**FR-026（AI 自動送信禁止 / Human-in-the-Loop 必須）の否定検証**: テスト中に Meta Send API クライアントが**一切呼ばれていないこと**を assert（`expect(metaSendApiMock).toHaveBeenCalledTimes(0)`）。Worker は `ai_drafts` への保存しか行わず、送信は管理画面の人間操作のみであることをテストレベルで担保する
 
 ### Thread 表示 + AI 下書き UI（FR-022〜FR-024、FR-005）
 <!-- unit: U4.2 | deps: U3.3,U4.1 | scope: frontend | tasks: T077-T085 | files: ~9 | automation: auto -->
 
-- [ ] T077 [US2] Create `app/src/routes/(app)/threads/$id/-lib/get-conversation.fn.ts` — `getConversationFn` per `contracts/admin-api.md`: auth → `conversations` + `messages` (時系列) LEFT JOIN `ai_drafts`、最新 inbound に紐づく ready draft を `latest_draft` として返却 → `UPDATE conversations SET unread_count = 0`
-- [ ] T078 [US2] Create `app/src/routes/(app)/threads/$id/-lib/send-reply.fn.ts` — `sendReplyFn` per `contracts/admin-api.md`: auth → tenantId 取得 → **`withTenant(tenantId, async tx => ...)` 内で**：24h window check → `connected_pages.page_access_token_encrypted` を取得 → `crypto.decryptToken` で復号 → INSERT `messages` (`tenant_id`, `send_status='pending'`, `sent_by_auth_uid=user.id`) → `sendMessengerReply({ pageAccessToken, ... })` → UPDATE 結果; 5 秒以内に決着
-- [ ] T079 [P] [US2] Create `app/src/routes/(app)/threads/$id/-lib/send-reply.fn.test.ts` — integration with MSW Send API mock: 成功、outside_window、token_expired、meta_error
-- [ ] T080 [P] [US2] Create `app/src/routes/(app)/threads/$id/-lib/get-draft-status.fn.ts` — `getDraftStatusFn`: `ai_drafts` を `message_id` で検索、`{ status, body }` 返却（ポーリング用）
-- [ ] T081 [P] [US2] Create `app/src/routes/(app)/threads/$id/-components/ThreadMessages.tsx` — 時系列メッセージ表示、direction で左右、`send_status` でアイコン、`ai_draft.status='ready'` の inbound には「AI suggested:」のサブテキスト表示（任意のヒント、操作には影響しない）
-- [ ] T082 [P] [US2] Create `app/src/routes/(app)/threads/$id/-components/DraftBanner.tsx` — `latest_draft.status='pending'` 時に「下書き生成中…」表示 + 3 秒ごとに `getDraftStatusFn` ポーリング、ready で消える + ReplyForm の初期値を更新; `failed` でも消える（空入力フォールバック、FR-025）
-- [ ] T083 [P] [US2] Create `app/src/routes/(app)/threads/$id/-components/ReplyForm.tsx` — textarea (初期値 `latest_draft.body`)、送信ボタン、24h 窓残り時間表示、エラー表示 (FR-008)
-- [ ] T084 [US2] Create `app/src/routes/(app)/threads/$id/index.tsx` — SSR route: loader で `getConversationFn`、`ThreadMessages` + `DraftBanner` + `ReplyForm` をマウント
-- [ ] T085 [P] [US2] Create `app/src/test/routes/(app)/threads/$id/index.test.tsx` — integration: メッセージ表示順、unread リセット、`latest_draft.status='ready'` で ReplyForm に初期値、`pending` でバナー表示、`failed` で空入力、24h 超過で送信無効化
+- [x] T077 [US2] Create `app/src/routes/(app)/threads/$id/-lib/get-conversation.fn.ts` — `getConversationFn` per `contracts/admin-api.md`: auth → `conversations` + `messages` (時系列) LEFT JOIN `ai_drafts`、最新 inbound に紐づく ready draft を `latest_draft` として返却 → `UPDATE conversations SET unread_count = 0`
+- [x] T078 [US2] Create `app/src/routes/(app)/threads/$id/-lib/send-reply.fn.ts` — `sendReplyFn` per `contracts/admin-api.md`: auth → tenantId 取得 → **`withTenant(tenantId, async tx => ...)` 内で**：24h window check → `connected_pages.page_access_token_encrypted` を取得 → `crypto.decryptToken` で復号 → INSERT `messages` (`tenant_id`, `send_status='pending'`, `sent_by_auth_uid=user.id`) → `sendMessengerReply({ pageAccessToken, ... })` → UPDATE 結果; 5 秒以内に決着
+- [x] T079 [P] [US2] Create `app/src/routes/(app)/threads/$id/-lib/send-reply.fn.test.ts` — integration with MSW Send API mock: 成功、outside_window、token_expired、meta_error
+- [x] T080 [P] [US2] Create `app/src/routes/(app)/threads/$id/-lib/get-draft-status.fn.ts` — `getDraftStatusFn`: `ai_drafts` を `message_id` で検索、`{ status, body }` 返却（ポーリング用）
+- [x] T081 [P] [US2] Create `app/src/routes/(app)/threads/$id/-components/ThreadMessages.tsx` — 時系列メッセージ表示、direction で左右、`send_status` でアイコン、`ai_draft.status='ready'` の inbound には「AI suggested:」のサブテキスト表示（任意のヒント、操作には影響しない）
+- [x] T082 [P] [US2] Create `app/src/routes/(app)/threads/$id/-components/DraftBanner.tsx` — `latest_draft.status='pending'` 時に「下書き生成中…」表示 + 3 秒ごとに `getDraftStatusFn` ポーリング、ready で消える + ReplyForm の初期値を更新; `failed` でも消える（空入力フォールバック、FR-025）
+- [x] T083 [P] [US2] Create `app/src/routes/(app)/threads/$id/-components/ReplyForm.tsx` — textarea (初期値 `latest_draft.body`)、送信ボタン、24h 窓残り時間表示、エラー表示 (FR-008)
+- [x] T084 [US2] Create `app/src/routes/(app)/threads/$id/index.tsx` — SSR route: loader で `getConversationFn`、`ThreadMessages` + `DraftBanner` + `ReplyForm` をマウント
+- [x] T085 [P] [US2] Create `app/src/test/routes/(app)/threads/$id/index.test.tsx` — integration: メッセージ表示順、unread リセット、`latest_draft.status='ready'` で ReplyForm に初期値、`pending` でバナー表示、`failed` で空入力、24h 超過で送信無効化
 
 ### FR-018 Page Access Token 警告
 <!-- unit: U4.3 | deps: U3.3 | scope: frontend | tasks: T086-T088 | files: ~3 | automation: auto -->
 
-- [ ] T086 [P] [US2] Create `app/src/server/fns/page-status.fn.ts` — `getPageStatusFn` per `contracts/admin-api.md`: 直近の `messages.send_error='token_expired'` から受動判定（`/me?fields=id,name` の能動チェックは廃止）。5 分サーバーキャッシュ
-- [ ] T087 [P] [US2] Create `app/src/routes/(app)/-components/TokenStatusBanner.tsx` — 5 分ごとに `getPageStatusFn` ポーリング (useEffect + setInterval); `token_valid === false` で赤バナー表示
-- [ ] T088 [US2] Update `app/src/routes/(app)/__root.tsx` (or layout) に `TokenStatusBanner` をマウント
+- [x] T086 [P] [US2] Create `app/src/server/fns/page-status.fn.ts` — `getPageStatusFn` per `contracts/admin-api.md`: 直近の `messages.send_error='token_expired'` から受動判定（`/me?fields=id,name` の能動チェックは廃止）。5 分サーバーキャッシュ
+- [x] T087 [P] [US2] Create `app/src/routes/(app)/-components/TokenStatusBanner.tsx` — 5 分ごとに `getPageStatusFn` ポーリング (useEffect + setInterval); `token_valid === false` で赤バナー表示
+- [x] T088 [US2] Update `app/src/routes/(app)/__root.tsx` (or layout) に `TokenStatusBanner` をマウント
 
 ### 統合テスト + E2E
 <!-- unit: U4.4 | deps: U3.1,U4.1,U4.2 | scope: backend | tasks: T089-T093 | files: ~5 | automation: auto -->
 
-- [ ] T089 [P] [US2] Create `app/tests/integration/send-reply.test.ts` — full flow against test DB + MSW Meta API: ログイン → inbox 取得 → threads/$id 取得 → sendReply → DB に outbound メッセージ `sent` で記録
-- [ ] T090 [P] [US2] Create `app/tests/integration/ai-draft-worker.test.ts` — Worker handler を SQS event で起動 → MSW Anthropic mock → `ai_drafts.status='ready'` で UPDATE される
-- [ ] T091 [P] [US2] Create `app/tests/integration/webhook-receive.test.ts` — webhook handler 経由で実 Meta payload → DB INSERT + SQS enqueue（aws-sdk-client-mock）
-- [ ] T092 [P] [US2] Create `app/tests/e2e/review-flow.spec.ts` — Playwright: ログイン → inbox → thread クリック → AI 下書き待機（モック化、即座に `ready` を返す）→ reply 編集 → 送信 → 成功表示
-- [ ] T093 [P] Create `.github/workflows/e2e.yml` — nightly trigger: build app → spin up postgres service container → seed → `npm run test:e2e`
+- [x] T089 [P] [US2] Create `app/tests/integration/send-reply.test.ts` — full flow against test DB + MSW Meta API: ログイン → inbox 取得 → threads/$id 取得 → sendReply → DB に outbound メッセージ `sent` で記録
+- [x] T090 [P] [US2] Create `app/tests/integration/ai-draft-worker.test.ts` — Worker handler を SQS event で起動 → MSW Anthropic mock → `ai_drafts.status='ready'` で UPDATE される
+- [x] T091 [P] [US2] Create `app/tests/integration/webhook-receive.test.ts` — webhook handler 経由で実 Meta payload → DB INSERT + SQS enqueue（aws-sdk-client-mock）
+- [x] T092 [P] [US2] Create `app/tests/e2e/review-flow.spec.ts` — Playwright: ログイン → inbox → thread クリック → AI 下書き待機（モック化、即座に `ready` を返す）→ reply 編集 → 送信 → 成功表示
+- [x] T093 [P] Create `.github/workflows/e2e.yml` — nightly trigger: build app → spin up postgres service container → seed → `npm run test:e2e`
 
 **Checkpoint US2**: 管理画面でスレッドを開くと AI 下書きが 60 秒以内に表示され、編集して送信したメッセージが Messenger 実機に到達
 
@@ -233,23 +233,23 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 ### 公開ページ (静的)
 <!-- unit: U5.1 | deps: U2.5 | scope: frontend | tasks: T094-T098 | files: ~5 | automation: auto -->
 
-- [ ] T094 [P] [US3] Create `app/src/routes/(public)/index.tsx` — 会社情報ページ (FR-015)
-- [ ] T095 [P] [US3] Create `app/src/routes/(public)/privacy.tsx` — プライバシーポリシー: 取得項目 (Messenger メッセージ本文、PSID、ページ ID)、利用目的、保存期間、**第三者提供（Anthropic）**、削除窓口、連絡先 (FR-012)
-- [ ] T096 [P] [US3] Create `app/src/routes/(public)/terms.tsx` — 利用規約 (FR-013)
-- [ ] T097 [P] [US3] Create `app/src/routes/(public)/data-deletion.tsx` — データ削除手順ページ + Meta コールバック動作説明 + ai_drafts も削除対象である旨 (FR-014)
-- [ ] T098 [US3] Configure SSG prerender: update `app/vite.config.ts` / TanStack Start config to mark `(public)/*` routes as `prerender: true`; `npm run build` 成果物に静的 HTML が出力されること確認
+- [x] T094 [P] [US3] Create `app/src/routes/(public)/index.tsx` — 会社情報ページ (FR-015)
+- [x] T095 [P] [US3] Create `app/src/routes/(public)/privacy.tsx` — プライバシーポリシー: 取得項目 (Messenger メッセージ本文、PSID、ページ ID)、利用目的、保存期間、**第三者提供（Anthropic）**、削除窓口、連絡先 (FR-012)
+- [x] T096 [P] [US3] Create `app/src/routes/(public)/terms.tsx` — 利用規約 (FR-013)
+- [x] T097 [P] [US3] Create `app/src/routes/(public)/data-deletion.tsx` — データ削除手順ページ + Meta コールバック動作説明 + ai_drafts も削除対象である旨 (FR-014)
+- [x] T098 [US3] Configure SSG prerender: update `app/vite.config.ts` / TanStack Start config to mark `(public)/*` routes as `prerender: true`; `npm run build` 成果物に静的 HTML が出力されること確認
 ### データ削除コールバック
 <!-- unit: U5.2 | deps: U2.4 | scope: backend | tasks: T099-T103 | files: ~5 | automation: auto -->
 
-- [ ] T099 [P] [US3] Create `app/src/routes/api/data-deletion/-lib/delete-user-data.ts` — transaction: `conversations` where `customer_psid = $psid` → DELETE `messages` (CASCADE で `ai_drafts` も削除) → DELETE `conversations` → INSERT `deletion_log` with `psid_hash = sha256(salt || psid)` + random `confirmation_code`
-- [ ] T100 [P] [US3] Create `app/src/routes/api/data-deletion/-lib/delete-user-data.test.ts` — integration: fixture PSID 削除 → messages/conversations/ai_drafts 消える、deletion_log 行追加
-- [ ] T101 [US3] Create `app/src/routes/api/data-deletion/index.ts` — POST handler per `contracts/data-deletion-callback.md`: signed_request HMAC verify → user_id 抽出 → `delete-user-data` 実行 → JSON 返却
-- [ ] T102 [P] [US3] Create `app/src/test/routes/api/data-deletion/index.test.ts` — integration: valid signed_request → 200 + JSON、invalid → 400
-- [ ] T103 [US3] Create `app/src/routes/(public)/data-deletion-status/$code.tsx` — SSR route: `deletion_log` から code で検索、「Deleted」or「Not found」のみ
+- [x] T099 [P] [US3] Create `app/src/routes/api/data-deletion/-lib/delete-user-data.ts` — transaction: `conversations` where `customer_psid = $psid` → DELETE `messages` (CASCADE で `ai_drafts` も削除) → DELETE `conversations` → INSERT `deletion_log` with `psid_hash = sha256(salt || psid)` + random `confirmation_code`
+- [x] T100 [P] [US3] Create `app/src/routes/api/data-deletion/-lib/delete-user-data.test.ts` — integration: fixture PSID 削除 → messages/conversations/ai_drafts 消える、deletion_log 行追加
+- [x] T101 [US3] Create `app/src/routes/api/data-deletion/index.ts` — POST handler per `contracts/data-deletion-callback.md`: signed_request HMAC verify → user_id 抽出 → `delete-user-data` 実行 → JSON 返却
+- [x] T102 [P] [US3] Create `app/src/test/routes/api/data-deletion/index.test.ts` — integration: valid signed_request → 200 + JSON、invalid → 400
+- [x] T103 [US3] Create `app/src/routes/(public)/data-deletion-status/$code.tsx` — SSR route: `deletion_log` から code で検索、「Deleted」or「Not found」のみ
 ### デプロイパイプライン
 <!-- unit: U5.3 | deps: U2.3,U3.1,U4.1 | scope: infra | tasks: T104 | files: ~1 | automation: auto -->
 
-- [ ] T104 Create `.github/workflows/deploy-app.yml` — on merge to main: build (app, webhook, ai-worker, keep-alive) → upload SSG output + CSR login + assets to S3 → CloudFront invalidation → 4 Lambda zip → `aws lambda update-function-code` × 4 per `infrastructure.md` §6.2
+- [x] T104 Create `.github/workflows/deploy-app.yml` — on merge to main: build (app, webhook, ai-worker, keep-alive) → upload SSG output + CSR login + assets to S3 → CloudFront invalidation → 4 Lambda zip → `aws lambda update-function-code` × 4 per `infrastructure.md` §6.2
 
 **Checkpoint US3**: 4 公開 URL が独自ドメイン HTTPS で配信、データ削除コールバックが ai_drafts も含めて削除、CloudFront ルーティングが正
 
@@ -290,7 +290,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 ### keep-alive Lambda
 <!-- unit: U8.1 | deps: U2.3 | scope: backend | tasks: T111 | files: ~3 | automation: auto -->
 
-- [ ] T111 [P] Create `keep-alive/package.json` + `keep-alive/src/handler.ts` + `keep-alive/src/handler.test.ts` — Supabase Pooler に SELECT 1 を発行する Lambda (FR-027)。**指数バックオフ 3 回リトライ（500ms / 1.5s / 4.5s）**、3 回失敗時は SNS Publish で即時通知 + 構造化ログ `keepalive_critical` 出力 + throw（EventBridge 自動リトライへ）。テストは MSW 不要（postgres クライアントを mock）、リトライ動作・SNS Publish・throw 動作を unit テスト
+- [x] T111 [P] Create `keep-alive/package.json` + `keep-alive/src/handler.ts` + `keep-alive/src/handler.test.ts` — Supabase Pooler に SELECT 1 を発行する Lambda (FR-027)。**指数バックオフ 3 回リトライ（500ms / 1.5s / 4.5s）**、3 回失敗時は SNS Publish で即時通知 + 構造化ログ `keepalive_critical` 出力 + throw（EventBridge 自動リトライへ）。テストは MSW 不要（postgres クライアントを mock）、リトライ動作・SNS Publish・throw 動作を unit テスト
 ### 運用ランブック
 <!-- unit: U8.2 | deps: U2.5 | scope: docs | tasks: T112 | files: ~1 | automation: manual -->
 
