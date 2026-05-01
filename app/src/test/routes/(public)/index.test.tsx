@@ -1,26 +1,38 @@
+import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { renderRoute } from '~/test/file-route-utils'
+import { Route } from '~/routes/(public)/index'
 
-// Import the route's component directly. The in-memory test router below
-// mounts a minimal tree so we don't depend on routeTree.gen.ts which is
-// generated at build time.
-function HomePage() {
-  return (
-    <main>
-      <h1>fumireply</h1>
-      <p>Walking Skeleton — Hello World</p>
-    </main>
-  )
-}
+const CompanyPage = Route.options.component as () => ReactNode
 
-describe('(public)/ index route', () => {
-  it('renders the walking-skeleton landing page', async () => {
-    renderRoute({ path: '/', component: HomePage, initialEntries: ['/'] })
+describe('(public)/ company info route', () => {
+  it('renders the company name heading', async () => {
+    renderRoute({ path: '/', component: CompanyPage, initialEntries: ['/'] })
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('fumireply')
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('株式会社Malbek')
     })
-    expect(screen.getByText('Walking Skeleton — Hello World')).toBeInTheDocument()
+  })
+
+  it('renders required company info fields (FR-015)', async () => {
+    renderRoute({ path: '/', component: CompanyPage, initialEntries: ['/'] })
+
+    await waitFor(() => {
+      expect(screen.getByText('会社名')).toBeInTheDocument()
+      expect(screen.getByText('所在地')).toBeInTheDocument()
+      expect(screen.getByText('メールアドレス')).toBeInTheDocument()
+      expect(screen.getByText('事業内容')).toBeInTheDocument()
+    })
+  })
+
+  it('renders navigation links to other public pages', async () => {
+    renderRoute({ path: '/', component: CompanyPage, initialEntries: ['/'] })
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'プライバシーポリシー' })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: '利用規約' })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'データ削除' })).toBeInTheDocument()
+    })
   })
 })
