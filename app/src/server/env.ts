@@ -14,13 +14,24 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>
 
+let cached: Env | undefined
+
 function parseEnv(): Env {
+  if (cached) return cached
   const result = envSchema.safeParse(process.env)
   if (!result.success) {
     const missing = result.error.issues.map((i) => i.path.join('.')).join(', ')
     throw new Error(`Missing or invalid environment variables: ${missing}`)
   }
-  return result.data
+  cached = result.data
+  return cached
 }
 
-export const env = parseEnv()
+// Lazy proxy: env vars are only validated on first property access.
+// Keeps SSG prerender working at build time when the host has no runtime secrets,
+// while still failing fast on the first request that actually needs them.
+export const env = new Proxy({} as Env, {
+  get(_target, prop: string) {
+    return parseEnv()[prop as keyof Env]
+  },
+})
