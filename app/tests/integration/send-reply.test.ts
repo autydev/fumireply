@@ -2,16 +2,6 @@
 // Integration: send-reply full user story — auth → listConversations → getConversation → sendReply
 // Tests the complete sendReply business logic with shared mock DB state and MSW Meta API
 
-process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test'
-process.env.DATABASE_URL_SERVICE_ROLE = 'postgresql://test:test@localhost:5432/test'
-process.env.SUPABASE_URL = 'https://test.supabase.co'
-process.env.SUPABASE_PUBLISHABLE_KEY = 'test-key'
-process.env.SUPABASE_SECRET_KEY = 'test-secret'
-process.env.META_APP_SECRET_SSM_KEY = '/test/meta/secret'
-process.env.WEBHOOK_VERIFY_TOKEN_SSM_KEY = '/test/webhook/token'
-process.env.ANTHROPIC_API_KEY_SSM_KEY = '/test/anthropic/key'
-process.env.AWS_REGION = 'ap-northeast-1'
-
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -40,12 +30,26 @@ const LAST_INBOUND_AT = new Date(Date.now() - 3 * 60 * 60 * 1000)   // 3h ago �
 const OLD_INBOUND_AT  = new Date(Date.now() - 30 * 60 * 60 * 1000)  // 30h ago — outside window
 
 const server = setupServer()
-beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))
+beforeAll(() => {
+  vi.stubEnv('DATABASE_URL', 'postgresql://test:test@localhost:5432/test')
+  vi.stubEnv('DATABASE_URL_SERVICE_ROLE', 'postgresql://test:test@localhost:5432/test')
+  vi.stubEnv('SUPABASE_URL', 'https://test.supabase.co')
+  vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'test-key')
+  vi.stubEnv('SUPABASE_SECRET_KEY', 'test-secret')
+  vi.stubEnv('META_APP_SECRET_SSM_KEY', '/test/meta/secret')
+  vi.stubEnv('WEBHOOK_VERIFY_TOKEN_SSM_KEY', '/test/webhook/token')
+  vi.stubEnv('ANTHROPIC_API_KEY_SSM_KEY', '/test/anthropic/key')
+  vi.stubEnv('AWS_REGION', 'ap-northeast-1')
+  server.listen({ onUnhandledRequest: 'warn' })
+})
 afterEach(() => {
   server.resetHandlers()
   vi.clearAllMocks()
 })
-afterAll(() => server.close())
+afterAll(() => {
+  server.close()
+  vi.unstubAllEnvs()
+})
 
 import { handleSendReply } from '~/routes/(app)/threads/$id/-lib/send-reply.fn'
 import type { TenantTx } from '~/server/db/with-tenant'

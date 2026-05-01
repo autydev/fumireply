@@ -219,16 +219,19 @@ describe('AI Worker handler — integration', () => {
 
   it('Anthropic 500 ×4: exhausts retries → updates to failed with server_error', async () => {
     vi.useFakeTimers()
-    const serverError = Object.assign(new Error('Internal server error'), { status: 500 })
-    mockAnthropicCreate.mockRejectedValue(serverError)
+    try {
+      const serverError = Object.assign(new Error('Internal server error'), { status: 500 })
+      mockAnthropicCreate.mockRejectedValue(serverError)
 
-    const handlerPromise = handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn())
-    // Advance all retry delays (1s + 3s + 9s) without waiting real time
-    await vi.runAllTimersAsync()
-    await handlerPromise
-    vi.useRealTimers()
+      const handlerPromise = handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn())
+      // Advance all retry delays (1s + 3s + 9s) without waiting real time
+      await vi.runAllTimersAsync()
+      await handlerPromise
 
-    expect(capturedUpdate?.status).toBe('failed')
-    expect(capturedUpdate?.error).toBe('server_error')
+      expect(capturedUpdate?.status).toBe('failed')
+      expect(capturedUpdate?.error).toBe('server_error')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
