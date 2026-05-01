@@ -193,13 +193,22 @@ export const sendReplyFn = createServerFn({ method: 'POST' })
     if (!prep.ok) return prep
 
     // External I/O outside DB transaction: SSM key fetch + HTTP to Meta
-    const masterKey = await getMasterKey()
-    const pageAccessToken = decryptToken(prep.encryptedToken, masterKey)
-    const sendResult = await sendMessengerReply({
-      pageAccessToken,
-      recipientPsid: prep.customerPsid,
-      messageText: data.body,
-    })
+    let sendResult: Awaited<ReturnType<typeof sendMessengerReply>>
+    try {
+      const masterKey = await getMasterKey()
+      const pageAccessToken = decryptToken(prep.encryptedToken, masterKey)
+      sendResult = await sendMessengerReply({
+        pageAccessToken,
+        recipientPsid: prep.customerPsid,
+        messageText: data.body,
+      })
+    } catch {
+      // Failsafe: mark pending message as failed so it doesn't stay stuck forever
+      await withTenant(tenantId, async (tx) => {
+        await tx.update(messages).set({ sendStatus: 'failed', sendError: 'meta_error' }).where(eq(messages.id, prep.insertedId))
+      })
+      return { ok: false as const, error: 'meta_error' as const }
+    }
 
     // TX2 (short): UPDATE message to sent/failed → commit
     return withTenant(tenantId, async (tx) => {
