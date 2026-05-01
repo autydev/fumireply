@@ -1,8 +1,6 @@
 import { createFileRoute, notFound } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { eq } from 'drizzle-orm'
-import { dbAdmin } from '~/server/db/client'
-import { deletionLog } from '~/server/db/schema'
+import { getDeletionStatusRecord } from './-lib/get-deletion-status'
 
 const CONFIRMATION_CODE_PATTERN = /^[0-9a-fA-F]{32}$/
 
@@ -12,16 +10,7 @@ const getDeletionStatus = createServerFn({ method: 'GET' })
     return code
   })
   .handler(async ({ data: code }) => {
-    // Service role bypasses RLS — status endpoint is public and tenant-agnostic
-    const rows = await dbAdmin
-      .select({
-        confirmationCode: deletionLog.confirmationCode,
-        deletedAt: deletionLog.deletedAt,
-      })
-      .from(deletionLog)
-      .where(eq(deletionLog.confirmationCode, code))
-
-    return rows[0] ?? null
+    return getDeletionStatusRecord(code)
   })
 
 export const Route = createFileRoute('/(public)/data-deletion-status/$code')({

@@ -38,19 +38,24 @@ export async function deleteUserData(
   const confirmationCode = randomUUID().replace(/-/g, '')
   const psidHash = createHash('sha256').update(hashSalt + psid).digest('hex')
 
-  for (const [index, { tenantId }] of tenantRows.entries()) {
+  const firstTenantId = tenantRows[0]?.tenantId
+
+  for (const { tenantId } of tenantRows) {
     await withTenant(tenantId, async (tx) => {
       // ON DELETE CASCADE propagates: conversations → messages → ai_drafts.
       await tx.delete(conversations).where(eq(conversations.customerPsid, psid))
+    })
+  }
 
-      // deletion_log.confirmation_code is UNIQUE — insert only once across all tenants.
-      if (index === 0) {
-        await tx.insert(deletionLog).values({
-          tenantId,
-          psidHash,
-          confirmationCode,
-        })
-      }
+  // Insert the audit row only after ALL deletes succeed so the log reflects
+  // a completed deletion rather than a partial one.
+  if (firstTenantId) {
+    await withTenant(firstTenantId, async (tx) => {
+      await tx.insert(deletionLog).values({
+        tenantId: firstTenantId,
+        psidHash,
+        confirmationCode,
+      })
     })
   }
 

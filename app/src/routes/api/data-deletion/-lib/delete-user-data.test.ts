@@ -69,11 +69,11 @@ describe('deleteUserData', () => {
 
     const result = await deleteUserData(TEST_PSID, HASH_SALT)
 
-    // withTenant should have run one transaction
-    expect(mockDbTransaction).toHaveBeenCalledTimes(1)
+    // withTenant runs twice: once for DELETE, once for INSERT (after all deletes succeed)
+    expect(mockDbTransaction).toHaveBeenCalledTimes(2)
 
-    // SET LOCAL should have been called once
-    expect(mockExecute).toHaveBeenCalledTimes(1)
+    // set_config called once per transaction
+    expect(mockExecute).toHaveBeenCalledTimes(2)
     expect(mockExecute).toHaveBeenCalledWith(expect.anything())
 
     // conversations DELETE
@@ -102,11 +102,11 @@ describe('deleteUserData', () => {
 
     const result = await deleteUserData(TEST_PSID, HASH_SALT)
 
-    // One transaction per tenant
-    expect(mockDbTransaction).toHaveBeenCalledTimes(2)
+    // Two DELETE transactions (one per tenant) + one INSERT transaction = 3 total
+    expect(mockDbTransaction).toHaveBeenCalledTimes(3)
     // Both tenants have their conversations deleted
     expect(mockDeleteWhere).toHaveBeenCalledTimes(2)
-    // deletion_log INSERT is only done once (index === 0) to avoid UNIQUE violation
+    // deletion_log INSERT runs once after all deletes succeed
     expect(mockInsertValues).toHaveBeenCalledTimes(1)
     expect(result.confirmationCode).toHaveLength(32)
   })

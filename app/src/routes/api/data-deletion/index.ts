@@ -93,22 +93,24 @@ export async function handleDataDeletion(request: Request): Promise<Response> {
     return new Response('Failed to fetch hash salt', { status: 500 })
   }
 
+  // Validate PUBLIC_APP_ORIGIN before any irreversible DB changes so a
+  // misconfiguration doesn't leave data deleted with no valid URL to return.
+  const rawOrigin = process.env.PUBLIC_APP_ORIGIN?.trim()
+  if (!rawOrigin) return new Response('Server misconfiguration', { status: 500 })
+
+  let appOrigin: URL
+  try {
+    appOrigin = new URL(rawOrigin)
+  } catch {
+    return new Response('Server misconfiguration', { status: 500 })
+  }
+
   let confirmationCode: string
   try {
     const result = await deleteUserData(psid, hashSalt)
     confirmationCode = result.confirmationCode
   } catch {
     return new Response('Database error', { status: 500 })
-  }
-
-  const origin = process.env.PUBLIC_APP_ORIGIN?.trim()
-  if (!origin) return new Response('Server misconfiguration', { status: 500 })
-
-  let appOrigin: URL
-  try {
-    appOrigin = new URL(origin)
-  } catch {
-    return new Response('Server misconfiguration', { status: 500 })
   }
 
   const statusUrl = new URL(`/data-deletion-status/${confirmationCode}`, appOrigin).toString()
