@@ -18,18 +18,28 @@ export function DraftBanner({
   const [visible, setVisible] = useState(initialStatus === 'pending')
   const startTimeRef = useRef(Date.now())
   const isActiveRef = useRef(initialStatus === 'pending')
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
+    setVisible(initialStatus === 'pending')
+    startTimeRef.current = Date.now()
+    isActiveRef.current = initialStatus === 'pending'
+
     if (initialStatus !== 'pending') return
 
-    startTimeRef.current = Date.now()
-    isActiveRef.current = true
+    const stopPolling = () => {
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+      isActiveRef.current = false
+    }
 
     const poll = async () => {
       if (!isActiveRef.current) return
 
       if (Date.now() - startTimeRef.current > MAX_POLL_MS) {
-        isActiveRef.current = false
+        stopPolling()
         setVisible(false)
         return
       }
@@ -37,11 +47,11 @@ export function DraftBanner({
       try {
         const result = await getDraftStatusFn({ data: { messageId } })
         if (result.status === 'ready') {
-          isActiveRef.current = false
+          stopPolling()
           if (result.body !== null) onReady(result.body)
           setVisible(false)
         } else if (result.status === 'failed') {
-          isActiveRef.current = false
+          stopPolling()
           setVisible(false)
         }
       } catch {
@@ -49,13 +59,12 @@ export function DraftBanner({
       }
     }
 
-    const id = setInterval(() => {
+    intervalRef.current = setInterval(() => {
       void poll()
     }, POLL_INTERVAL_MS)
 
     return () => {
-      clearInterval(id)
-      isActiveRef.current = false
+      stopPolling()
     }
   }, [messageId, initialStatus, onReady])
 

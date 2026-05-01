@@ -15,7 +15,15 @@ export function ThreadMessages({ messages }: { messages: MessageWithDraft[] }) {
         >
           <p className="message-body">{msg.body}</p>
           {msg.direction === 'outbound' && msg.send_status && (
-            <span className="message-status" data-status={msg.send_status}>
+            <span
+              className="message-status"
+              data-status={msg.send_status}
+              aria-label={
+                msg.send_status === 'sent' ? '送信済み'
+                : msg.send_status === 'failed' ? '送信失敗'
+                : '送信中'
+              }
+            >
               {msg.send_status === 'sent' && '✓'}
               {msg.send_status === 'failed' && '✗'}
               {msg.send_status === 'pending' && '…'}

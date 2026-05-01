@@ -122,7 +122,9 @@ export const getConversationFn = createServerFn({ method: 'POST' })
           ai_draft:
             draft && row.direction === 'inbound'
               ? {
-                  status: draft.status as 'pending' | 'ready' | 'failed',
+                  status: (draft.status === 'ready' || draft.status === 'failed'
+                    ? draft.status
+                    : 'pending') as 'pending' | 'ready' | 'failed',
                   body: draft.body ?? null,
                   model: draft.model ?? null,
                 }

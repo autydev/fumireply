@@ -27,9 +27,9 @@ export const getDraftStatusFn = createServerFn({ method: 'POST' })
         return { status: 'pending' as const, body: null }
       }
 
-      return {
-        status: rows[0].status as 'pending' | 'ready' | 'failed',
-        body: rows[0].body ?? null,
-      }
+      const raw = rows[0].status
+      const status: 'pending' | 'ready' | 'failed' =
+        raw === 'ready' || raw === 'failed' ? raw : 'pending'
+      return { status, body: rows[0].body ?? null }
     })
   })
