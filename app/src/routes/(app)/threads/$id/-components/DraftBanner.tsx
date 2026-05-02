@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { getDraftStatusFn } from '../-lib/get-draft-status.fn'
+import { SparkleIcon } from '~/components/ui/icons'
 
 const POLL_INTERVAL_MS = 3000
 const MAX_POLL_MS = 60_000
@@ -46,7 +47,7 @@ export function DraftBanner({
 
       try {
         const result = await getDraftStatusFn({ data: { messageId } })
-        if (!isActiveRef.current) return  // guard: another tick already stopped polling
+        if (!isActiveRef.current) return
         if (result.status === 'ready') {
           stopPolling()
           if (result.body !== null) onReady(result.body)
@@ -56,7 +57,7 @@ export function DraftBanner({
           setVisible(false)
         }
       } catch {
-        // silent — keep polling
+        // keep polling
       }
     }
 
@@ -72,7 +73,24 @@ export function DraftBanner({
   if (!visible) return null
 
   return (
-    <div className="draft-banner" role="status" aria-live="polite">
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '10px 14px',
+        background: 'var(--color-primary-soft)',
+        border: '1px solid oklch(0.55 0.16 265 / 0.2)',
+        borderRadius: 10,
+        fontSize: 12.5,
+        color: 'var(--color-primary-ink)',
+        fontWeight: 500,
+        margin: '0 0 8px',
+      }}
+    >
+      <SparkleIcon size={12} />
       下書き生成中…
     </div>
   )

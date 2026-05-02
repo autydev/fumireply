@@ -15,9 +15,5 @@ export const Route = createFileRoute('/(auth)/login/')({
 
 function LoginPage() {
   const { returnTo } = Route.useSearch()
-  return (
-    <main>
-      <LoginForm returnTo={returnTo} />
-    </main>
-  )
+  return <LoginForm returnTo={returnTo} />
 }
