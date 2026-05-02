@@ -30,6 +30,7 @@ export function ReplyForm({
   const [saveState, setSaveState] = useState<AutoSaveState>('saved')
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveInnerTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isWindowClosed = !conversation.within_24h_window
   const hoursRemaining = conversation.hours_remaining_in_window
@@ -46,15 +47,17 @@ export function ReplyForm({
     setBody(val)
     setSaveState('editing')
     if (saveTimer.current) clearTimeout(saveTimer.current)
+    if (saveInnerTimer.current) clearTimeout(saveInnerTimer.current)
     saveTimer.current = setTimeout(() => {
       setSaveState('saving')
-      setTimeout(() => setSaveState('saved'), 450)
+      saveInnerTimer.current = setTimeout(() => setSaveState('saved'), 450)
     }, 600)
   }
 
   useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current)
+      if (saveInnerTimer.current) clearTimeout(saveInnerTimer.current)
     }
   }, [])
 
@@ -196,7 +199,8 @@ export function ReplyForm({
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
               <button
                 onClick={() => setFeedback(feedback === 'up' ? null : 'up')}
-                title="このドラフトは良い"
+                aria-label="このドラフトは良い"
+                aria-pressed={feedback === 'up'}
                 style={{
                   padding: '3px 6px',
                   borderRadius: 5,
@@ -212,7 +216,8 @@ export function ReplyForm({
               </button>
               <button
                 onClick={() => setFeedback(feedback === 'down' ? null : 'down')}
-                title="このドラフトは悪い"
+                aria-label="このドラフトは悪い"
+                aria-pressed={feedback === 'down'}
                 style={{
                   padding: '3px 6px',
                   borderRadius: 5,
