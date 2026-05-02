@@ -147,12 +147,13 @@ aws ssm put-parameter \
   --name "/fumireply/review/deletion-log/hash-salt" \
   --type "SecureString" --value "$(openssl rand -hex 32)"
 
-# Page Access Token 暗号化用マスター鍵（AES-256、32 bytes hex）
+# Page Access Token 暗号化用マスター鍵（AES-256 / 32 bytes、base64 エンコードで保存）
+# ⚠️ seed/review.ts は base64 として decode するため、必ず `-base64 32` で生成すること（hex で保存すると `RangeError: Invalid key length` になる）
 # ⚠️ この鍵をローテーションする際は全 connected_pages.page_access_token_encrypted を再暗号化する必要があるため
 #    生成後は紛失しないよう audit-runbook.md にも記載のこと
 aws ssm put-parameter \
   --name "/fumireply/master-encryption-key" \
-  --type "SecureString" --value "$(openssl rand -hex 32)"
+  --type "SecureString" --value "$(openssl rand -base64 32)"
 ```
 
 ---
@@ -234,7 +235,7 @@ curl -X POST "${SUPABASE_URL}/auth/v1/admin/users" \
     \"email\": \"operator@malbek.co.jp\",
     \"password\": \"${OP_PASSWORD}\",
     \"email_confirm\": true,
-    \"user_metadata\": { \"tenant_id\": \"${TENANT_ID}\", \"role\": \"operator\" }
+    \"app_metadata\": { \"tenant_id\": \"${TENANT_ID}\", \"role\": \"operator\" }
   }"
 
 # パスワードを SSM にバックアップ
@@ -253,7 +254,7 @@ curl -X POST "${SUPABASE_URL}/auth/v1/admin/users" \
     \"email\": \"reviewer@malbek.co.jp\",
     \"password\": \"${REVIEWER_PASSWORD}\",
     \"email_confirm\": true,
-    \"user_metadata\": { \"tenant_id\": \"${TENANT_ID}\", \"role\": \"reviewer\" }
+    \"app_metadata\": { \"tenant_id\": \"${TENANT_ID}\", \"role\": \"reviewer\" }
   }"
 
 aws ssm put-parameter \

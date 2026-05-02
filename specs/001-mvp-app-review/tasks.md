@@ -120,7 +120,7 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 ### Supabase Auth テストユーザー作成
 <!-- unit: U2.6 | deps: U2.4 | scope: infra | tasks: T054 | files: 0 | automation: manual -->
 
-- [ ] T054 Run Supabase Admin API user creation per `quickstart.md` §3.1 — `operator@malbek.co.jp` and `reviewer@malbek.co.jp` を作成、パスワードを SSM `/fumireply/review/supabase/{operator,reviewer}-password` に保管
+- [x] T054 Run Supabase Admin API user creation per `quickstart.md` §3.1 — `operator@malbek.co.jp` and `reviewer@malbek.co.jp` を作成、パスワードを SSM `/fumireply/review/supabase/{operator,reviewer}-password` に保管
 
 **Checkpoint Phase 2 終了**: Terraform apply 成功（4 Lambda + SQS + S3/CloudFront）、Supabase プロジェクト + 初期 tenant (Malbek) + 初期ユーザー（`user_metadata.tenant_id` 設定済み）、DB マイグレーション済み（**6 テーブル + RLS ポリシー**）、`withTenant` ヘルパ + `crypto.encrypt/decrypt` ヘルパが integration test で実証、Page Access Token が DB に暗号化保存済み、全共通 service のユニットテスト通過
 
@@ -287,6 +287,32 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 
 **Purpose**: 審査提出直前の仕上げ。CloudWatch / deploy pipeline / ドキュメント / 最終リハーサル。
 
+### UI 実装（mock ハンドオフを忠実に再現）
+<!-- unit: U8.0 | deps: U4.2 | scope: frontend | tasks: T126〜T132 | files: ~20 | automation: auto -->
+
+**目的**: `mock/design_handoff_tcg_cs_system/` のデザインを High-fidelity（ピクセルレベル）で再現する。reviewer が触る login / inbox / threads の 3 画面が対象。公開ページ (privacy/terms/data-deletion/index) は文章主体のため本 Unit のスコープ外（既存の素 HTML のまま提出）。
+
+**デザインリファレンス**: `mock/design_handoff_tcg_cs_system/`
+- `README.md` … スクリーンごとのレイアウト指針 + Design Tokens（色・タイポ・スペーシング・シャドウ）+ 状態管理の指針
+- `Malbek CS.html` … 全画面の HTML プロトタイプ（Babel ランタイム）
+- `inbox-screens.jsx` … inbox / threads（`InboxList` / `ThreadView` / `DraftCard` 等）の参照実装
+- `other-screens.jsx` … login の参照実装
+- `components.jsx` … 共通コンポーネント（Button, Card, Badge, Avatar 等）の参照実装
+- `styles.css` … Design Tokens の CSS 変数定義（カラー / タイポ / spacing / radius / shadow）
+
+**忠実度ルール**:
+- 色・余白・タイポ・角丸・シャドウは README.md の Design Tokens に従い Tailwind v4 の `@theme` に移植する
+- HTML / JSX をそのまま流用しない。TanStack Start の既存パターン（file-based route + `createServerFn` + `className` ベースの Tailwind）で**書き直す**
+- 機能面のリグレッションを避けるため、既存 server fn の **入出力契約は変更しない**（`list-conversations.fn.ts` / `get-conversation.fn.ts` / `send-reply.fn.ts` 等）
+- mock の機能のうち Phase 1 スコープ外のもの（顧客管理、商品 DB、Slack 連携、AI トーンカスタマイズ、自動カテゴリ分類、Instagram など）は本 Unit では実装しない。**login / inbox / threads の見た目だけ**を mock に揃える
+
+- [ ] T126 [Polish] Install Tailwind v4 + shadcn/ui base in `app/` — `npm install -D tailwindcss @tailwindcss/vite`、`vite.config.ts` に `tailwindcss()` plugin 追加、`src/styles.css` を新規作成して `@import "tailwindcss";` + `mock/.../styles.css` の Design Tokens を `@theme` ブロックに移植、`__root.tsx` で `import '~/styles.css'`
+- [ ] T127 [P] [Polish] Port shared UI primitives from `mock/.../components.jsx` to `src/components/ui/` — Button / Card / Badge / Avatar / Input / Textarea を React + TypeScript + Tailwind で再実装。class-variance-authority で variant を表現、forwardRef + Radix プリミティブ採用可
+- [ ] T128 [Polish] Build `AppHeader` + `(app)` layout per mock — サービス名（mock に従う、例: "Malbek CS"）+ 必要に応じたナビゲーション + ログアウトボタン（既存 `logoutFn` 呼び出し）。`(app)/route.tsx` に組み込み。layout はサイドバー or トップバー（mock に従う）
+- [ ] T129 [P] [Polish] Implement `(auth)/login` route to mock — `other-screens.jsx → Login` を再現。センター固定カード（400px 幅、warm off-white 背景）、ブランドマーク + タイトル + email/password 入力 + ボタン + エラー表示。既存の `loginFn` と `LoginForm` の入出力は変えない
+- [ ] T130 [P] [Polish] Implement `(app)/inbox` route to mock — `inbox-screens.jsx → InboxList` を再現。会話リスト（送信者 Avatar + 名前 + 最終メッセージ抜粋 + 経過時間 + 未読/状態バッジ）、選択状態、空状態、検索/フィルタ UI（フィルタは見た目のみで OK）。既存 `list-conversations.fn.ts` の戻り値で表示できる範囲のみ実装し、不足するフィールドは追加しない（mock 上のみのプロパティはハードコード or 省略）
+- [ ] T131 [Polish] Implement `(app)/threads/$id` route to mock — `inbox-screens.jsx → ThreadView` + `DraftCard` を再現。スレッドヘッダー（顧客名 + ステータス）、メッセージバブル（自分側・相手側の左右配置と色違い）、AI 下書きバナー / カード（編集可能 textarea + Send ボタン）、24h ポリシー警告バナー（既存 `TokenStatusBanner` を流用）。既存の `get-conversation.fn.ts` / `send-reply.fn.ts` / `get-draft-status.fn.ts` を流用
+- [ ] T132 [Polish] Visual regression check — 上記 4 画面（login / inbox / threads / header）を mock の HTML プロトタイプ (`Malbek CS.html`) と並べて目視比較。色・余白・タイポ・角丸・シャドウ・ホバー状態を確認し、Design Tokens の差分があれば `@theme` を修正
 ### keep-alive Lambda
 <!-- unit: U8.1 | deps: U2.3 | scope: backend | tasks: T111 | files: ~3 | automation: auto -->
 
