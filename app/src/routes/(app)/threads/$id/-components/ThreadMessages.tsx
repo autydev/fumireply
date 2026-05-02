@@ -3,7 +3,7 @@ import type { MessageWithDraft } from '../-lib/get-conversation.fn'
 import { SparkleIcon, CheckIcon } from '~/components/ui/icons'
 
 export function ThreadMessages({ messages }: { messages: MessageWithDraft[] }) {
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const bottomRef = useRef<HTMLLIElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: 'smooth' })
@@ -45,7 +45,7 @@ export function ThreadMessages({ messages }: { messages: MessageWithDraft[] }) {
           <MessageBubble msg={msg} />
         </li>
       ))}
-      <div ref={bottomRef} />
+      <li ref={bottomRef} aria-hidden="true" style={{ listStyle: 'none', height: 0 }} />
     </ul>
   )
 }

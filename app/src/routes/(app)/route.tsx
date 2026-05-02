@@ -84,27 +84,40 @@ function Sidebar() {
       <nav>
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon
-          const isActive = item.href !== '#' && location.pathname.startsWith(item.href)
+          const isDisabled = item.href === '#'
+          const isActive = !isDisabled && location.pathname.startsWith(item.href)
+          const sharedStyle = {
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '7px 10px',
+            borderRadius: 8,
+            fontSize: '13.5px',
+            fontWeight: 500,
+            color: isActive ? 'var(--color-ink)' : 'var(--color-ink-2)',
+            background: isActive ? 'white' : 'transparent',
+            boxShadow: isActive ? 'var(--shadow-xs)' : 'none',
+            textDecoration: 'none',
+            position: 'relative' as const,
+            cursor: isDisabled ? 'default' : 'pointer',
+            opacity: isDisabled ? 0.45 : 1,
+            transition: 'background 120ms, color 120ms',
+          }
+
+          if (isDisabled) {
+            return (
+              <span key={item.key} aria-disabled="true" style={sharedStyle}>
+                <Icon size={15} />
+                <span>{item.label}</span>
+              </span>
+            )
+          }
+
           return (
             <Link
               key={item.key}
               to={item.href as '/inbox'}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '7px 10px',
-                borderRadius: 8,
-                fontSize: '13.5px',
-                fontWeight: 500,
-                color: isActive ? 'var(--color-ink)' : 'var(--color-ink-2)',
-                background: isActive ? 'white' : 'transparent',
-                boxShadow: isActive ? 'var(--shadow-xs)' : 'none',
-                textDecoration: 'none',
-                position: 'relative',
-                cursor: item.href === '#' ? 'default' : 'pointer',
-                transition: 'background 120ms, color 120ms',
-              }}
+              style={sharedStyle}
               onMouseEnter={(e) => {
                 if (!isActive) {
                   e.currentTarget.style.background = 'var(--color-bg-hover)'

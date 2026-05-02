@@ -1,32 +1,8 @@
 import { Link } from '@tanstack/react-router'
 import type { ConversationSummary } from '../-lib/list-conversations.fn'
+import { slaState, formatTime } from '../-lib/sla-helpers'
 import { Avatar } from '~/components/ui/avatar'
 import { SearchIcon, ClockIcon } from '~/components/ui/icons'
-
-const HOUR_MS = 3_600_000
-const DAY_MS = 24 * HOUR_MS
-
-function slaState(conv: ConversationSummary): 'overdue' | 'warn' | 'policy-warn' | null {
-  if (!conv.last_inbound_at) return null
-  const elapsedMs = Date.now() - new Date(conv.last_inbound_at).getTime()
-  if (elapsedMs >= DAY_MS) return 'policy-warn'
-  if (conv.unread_count > 0) {
-    const hrs = elapsedMs / HOUR_MS
-    if (hrs >= 4) return 'overdue'
-    if (hrs >= 2) return 'warn'
-  }
-  return null
-}
-
-function formatTime(isoStr: string): string {
-  const d = new Date(isoStr)
-  const now = Date.now()
-  const diff = now - d.getTime()
-  if (diff < 60_000) return 'たった今'
-  if (diff < HOUR_MS) return `${Math.floor(diff / 60_000)}分前`
-  if (diff < DAY_MS) return `${Math.floor(diff / HOUR_MS)}時間前`
-  return `${Math.floor(diff / DAY_MS)}日前`
-}
 
 type FilterKey = 'all' | 'unread' | 'draft' | 'overdue'
 
@@ -81,7 +57,8 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
           </span>
         </div>
         {/* Search box (visual only) */}
-        <div
+        <button
+          aria-label="会話を検索"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -91,6 +68,8 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
             border: '1px solid var(--color-line)',
             borderRadius: 8,
             cursor: 'text',
+            width: '100%',
+            textAlign: 'left',
           }}
         >
           <SearchIcon size={13} />
@@ -109,7 +88,7 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
           >
             ⌘K
           </span>
-        </div>
+        </button>
       </div>
 
       {/* Filter chips */}
@@ -241,6 +220,7 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
                       {conv.customer_name ?? conv.customer_psid}
                     </span>
                     <span
+                      suppressHydrationWarning
                       style={{
                         fontSize: 11,
                         color: 'var(--color-ink-3)',
@@ -270,7 +250,7 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
                   </div>
 
                   {/* Meta: 24h window + SLA */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div suppressHydrationWarning style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                     {!conv.within_24h_window && (
                       <span
                         style={{

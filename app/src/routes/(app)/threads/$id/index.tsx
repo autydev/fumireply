@@ -10,10 +10,10 @@ import { ChevronLeftIcon, MoreHorizIcon, StarIcon } from '~/components/ui/icons'
 
 export const Route = createFileRoute('/(app)/threads/$id/')({
   loader: async ({ params }) => {
-    const [convData, listData] = await Promise.all([
-      getConversationFn({ data: { id: params.id } }),
-      listConversationsFn(),
-    ])
+    // getConversationFn resets unread_count to 0 inside a transaction;
+    // listConversationsFn must run after so the inbox shows the updated count.
+    const convData = await getConversationFn({ data: { id: params.id } })
+    const listData = await listConversationsFn()
     return { ...convData, conversations: listData.conversations }
   },
   component: ThreadPage,
