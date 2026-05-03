@@ -38,9 +38,9 @@ describe('(public)/privacy route', () => {
     renderRoute({ path: '/privacy', component: PrivacyPage, initialEntries: ['/privacy'] })
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: '会社情報' })).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: '利用規約' })).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: 'データ削除' })).toBeInTheDocument()
+      expect(screen.getAllByRole('link', { name: '会社情報' }).length).toBeGreaterThan(0)
+      expect(screen.getAllByRole('link', { name: '利用規約' }).length).toBeGreaterThan(0)
+      expect(screen.getAllByRole('link', { name: 'データ削除' }).length).toBeGreaterThan(0)
     })
   })
 })

@@ -37,9 +37,9 @@ describe('(public)/terms route', () => {
     renderRoute({ path: '/terms', component: TermsPage, initialEntries: ['/terms'] })
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: '会社情報' })).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: 'プライバシーポリシー' })).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: 'データ削除' })).toBeInTheDocument()
+      expect(screen.getAllByRole('link', { name: '会社情報' }).length).toBeGreaterThan(0)
+      expect(screen.getAllByRole('link', { name: 'プライバシーポリシー' }).length).toBeGreaterThan(0)
+      expect(screen.getAllByRole('link', { name: 'データ削除' }).length).toBeGreaterThan(0)
     })
   })
 })
