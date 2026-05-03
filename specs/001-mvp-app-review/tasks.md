@@ -306,13 +306,13 @@ description: "Tasks for MVP Meta App Review submission — Sprint 1〜6（Supaba
 - 機能面のリグレッションを避けるため、既存 server fn の **入出力契約は変更しない**（`list-conversations.fn.ts` / `get-conversation.fn.ts` / `send-reply.fn.ts` 等）
 - mock の機能のうち Phase 1 スコープ外のもの（顧客管理、商品 DB、Slack 連携、AI トーンカスタマイズ、自動カテゴリ分類、Instagram など）は本 Unit では実装しない。**login / inbox / threads の見た目だけ**を mock に揃える
 
-- [ ] T126 [Polish] Install Tailwind v4 + shadcn/ui base in `app/` — `npm install -D tailwindcss @tailwindcss/vite`、`vite.config.ts` に `tailwindcss()` plugin 追加、`src/styles.css` を新規作成して `@import "tailwindcss";` + `mock/.../styles.css` の Design Tokens を `@theme` ブロックに移植、`__root.tsx` で `import '~/styles.css'`
-- [ ] T127 [P] [Polish] Port shared UI primitives from `mock/.../components.jsx` to `src/components/ui/` — Button / Card / Badge / Avatar / Input / Textarea を React + TypeScript + Tailwind で再実装。class-variance-authority で variant を表現、forwardRef + Radix プリミティブ採用可
-- [ ] T128 [Polish] Build `AppHeader` + `(app)` layout per mock — サービス名（mock に従う、例: "Malbek CS"）+ 必要に応じたナビゲーション + ログアウトボタン（既存 `logoutFn` 呼び出し）。`(app)/route.tsx` に組み込み。layout はサイドバー or トップバー（mock に従う）
-- [ ] T129 [P] [Polish] Implement `(auth)/login` route to mock — `other-screens.jsx → Login` を再現。センター固定カード（400px 幅、warm off-white 背景）、ブランドマーク + タイトル + email/password 入力 + ボタン + エラー表示。既存の `loginFn` と `LoginForm` の入出力は変えない
-- [ ] T130 [P] [Polish] Implement `(app)/inbox` route to mock — `inbox-screens.jsx → InboxList` を再現。会話リスト（送信者 Avatar + 名前 + 最終メッセージ抜粋 + 経過時間 + 未読/状態バッジ）、選択状態、空状態、検索/フィルタ UI（フィルタは見た目のみで OK）。既存 `list-conversations.fn.ts` の戻り値で表示できる範囲のみ実装し、不足するフィールドは追加しない（mock 上のみのプロパティはハードコード or 省略）
-- [ ] T131 [Polish] Implement `(app)/threads/$id` route to mock — `inbox-screens.jsx → ThreadView` + `DraftCard` を再現。スレッドヘッダー（顧客名 + ステータス）、メッセージバブル（自分側・相手側の左右配置と色違い）、AI 下書きバナー / カード（編集可能 textarea + Send ボタン）、24h ポリシー警告バナー（既存 `TokenStatusBanner` を流用）。既存の `get-conversation.fn.ts` / `send-reply.fn.ts` / `get-draft-status.fn.ts` を流用
-- [ ] T132 [Polish] Visual regression check — 上記 4 画面（login / inbox / threads / header）を mock の HTML プロトタイプ (`Malbek CS.html`) と並べて目視比較。色・余白・タイポ・角丸・シャドウ・ホバー状態を確認し、Design Tokens の差分があれば `@theme` を修正
+- [x] T126 [Polish] Install Tailwind v4 + shadcn/ui base in `app/` — `npm install -D tailwindcss @tailwindcss/vite`、`vite.config.ts` に `tailwindcss()` plugin 追加、`src/styles.css` を新規作成して `@import "tailwindcss";` + `mock/.../styles.css` の Design Tokens を `@theme` ブロックに移植、`__root.tsx` で `import '~/styles.css'`
+- [x] T127 [P] [Polish] Port shared UI primitives from `mock/.../components.jsx` to `src/components/ui/` — Button / Card / Badge / Avatar / Input / Textarea を React + TypeScript + Tailwind で再実装。class-variance-authority で variant を表現、forwardRef + Radix プリミティブ採用可
+- [x] T128 [Polish] Build `AppHeader` + `(app)` layout per mock — サービス名（mock に従う、例: "Malbek CS"）+ 必要に応じたナビゲーション + ログアウトボタン（既存 `logoutFn` 呼び出し）。`(app)/route.tsx` に組み込み。layout はサイドバー or トップバー（mock に従う）
+- [x] T129 [P] [Polish] Implement `(auth)/login` route to mock — `other-screens.jsx → Login` を再現。センター固定カード（400px 幅、warm off-white 背景）、ブランドマーク + タイトル + email/password 入力 + ボタン + エラー表示。既存の `loginFn` と `LoginForm` の入出力は変えない
+- [x] T130 [P] [Polish] Implement `(app)/inbox` route to mock — `inbox-screens.jsx → InboxList` を再現。会話リスト（送信者 Avatar + 名前 + 最終メッセージ抜粋 + 経過時間 + 未読/状態バッジ）、選択状態、空状態、検索/フィルタ UI（フィルタは見た目のみで OK）。既存 `list-conversations.fn.ts` の戻り値で表示できる範囲のみ実装し、不足するフィールドは追加しない（mock 上のみのプロパティはハードコード or 省略）
+- [x] T131 [Polish] Implement `(app)/threads/$id` route to mock — `inbox-screens.jsx → ThreadView` + `DraftCard` を再現。スレッドヘッダー（顧客名 + ステータス）、メッセージバブル（自分側・相手側の左右配置と色違い）、AI 下書きバナー / カード（編集可能 textarea + Send ボタン）、24h ポリシー警告バナー（既存 `TokenStatusBanner` を流用）。既存の `get-conversation.fn.ts` / `send-reply.fn.ts` / `get-draft-status.fn.ts` を流用
+- [x] T132 [Polish] Visual regression check — 上記 4 画面（login / inbox / threads / header）を mock の HTML プロトタイプ (`Malbek CS.html`) と並べて目視比較。色・余白・タイポ・角丸・シャドウ・ホバー状態を確認し、Design Tokens の差分があれば `@theme` を修正
 ### keep-alive Lambda
 <!-- unit: U8.1 | deps: U2.3 | scope: backend | tasks: T111 | files: ~3 | automation: auto -->
 
