@@ -19,7 +19,8 @@
     "test:e2e": "playwright test",
     "lint": "eslint src tests --no-error-on-unmatched-pattern",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed:review": "tsx src/server/db/seed/review.ts"
+    "db:seed:review": "tsx src/server/db/seed/review.ts",
+    "db:seed:e2e": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/server/db/seed/e2e.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
@@ -37,6 +38,7 @@
     "@aws-sdk/client-sqs": "^3.1040.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.59.1",
+    "@tailwindcss/vite": "^4.2.4",
     "@tanstack/router-cli": "^1.166.33",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -53,6 +55,7 @@
     "jsdom": "^29.0.2",
     "msw": "^2.14.2",
     "prettier": "^3.8.3",
+    "tailwindcss": "^4.2.4",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.0",

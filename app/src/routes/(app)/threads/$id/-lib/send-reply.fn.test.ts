@@ -112,7 +112,7 @@ describe('handleSendReply', () => {
     )
 
     const tx = buildMockTx({})
-    const { handleSendReply } = await import('./send-reply.fn')
+    const { handleSendReply } = await import('./send-reply.server')
     const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
       conversationId: CONVERSATION_ID,
       body: 'Hello',
@@ -127,7 +127,7 @@ describe('handleSendReply', () => {
 
   it('returns outside_window when 24h has passed since last inbound', async () => {
     const tx = buildMockTx({ lastInboundAt: OLD_INBOUND_AT })
-    const { handleSendReply } = await import('./send-reply.fn')
+    const { handleSendReply } = await import('./send-reply.server')
     const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
       conversationId: CONVERSATION_ID,
       body: 'Hello',
@@ -148,7 +148,7 @@ describe('handleSendReply', () => {
     )
 
     const tx = buildMockTx({})
-    const { handleSendReply } = await import('./send-reply.fn')
+    const { handleSendReply } = await import('./send-reply.server')
     const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
       conversationId: CONVERSATION_ID,
       body: 'Hello',
@@ -169,7 +169,7 @@ describe('handleSendReply', () => {
       )
 
       const tx = buildMockTx({})
-      const { handleSendReply } = await import('./send-reply.fn')
+      const { handleSendReply } = await import('./send-reply.server')
       const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
         conversationId: CONVERSATION_ID,
         body: 'Hello',

@@ -1,6 +1,7 @@
 import { createFileRoute, notFound } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getDeletionStatusRecord } from './-lib/get-deletion-status'
+import { PublicShell } from '../-components/PublicShell'
 
 const CONFIRMATION_CODE_PATTERN = /^[0-9a-fA-F]{32}$/
 
@@ -28,41 +29,41 @@ function DataDeletionStatusPage() {
   const deletedAtStr = new Date(deletedAt).toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
 
   return (
-    <main style={{ fontFamily: 'sans-serif', maxWidth: '600px', margin: '40px auto', padding: '0 16px' }}>
-      <h1>Data Deletion Confirmed / データ削除完了</h1>
-      <p>
-        Your customer data associated with this confirmation code has been permanently deleted from
-        our system.
-      </p>
-      <p>
-        このコードに紐づくお客様データは当社システムから完全に削除されました。
-      </p>
-      <dl>
-        <dt>
-          <strong>Deleted at / 削除日時</strong>
-        </dt>
-        <dd>{deletedAtStr}</dd>
-        <dt>
-          <strong>Confirmation Code / 確認コード</strong>
-        </dt>
-        <dd>
-          <code>{confirmationCode}</code>
-        </dd>
-      </dl>
-      <p>
-        If you have questions, please contact:{' '}
-        <a href="mailto:support@malbek.co.jp">support@malbek.co.jp</a>
-      </p>
-    </main>
+    <PublicShell>
+      <main className="public-page">
+        <h1>Data Deletion Confirmed / データ削除完了</h1>
+        <p>
+          Your customer data associated with this confirmation code has been permanently deleted from
+          our system.
+        </p>
+        <p>
+          このコードに紐づくお客様データは当社システムから完全に削除されました。
+        </p>
+        <dl>
+          <dt>Deleted at / 削除日時</dt>
+          <dd>{deletedAtStr}</dd>
+          <dt>Confirmation Code / 確認コード</dt>
+          <dd>
+            <code>{confirmationCode}</code>
+          </dd>
+        </dl>
+        <p>
+          If you have questions, please contact:{' '}
+          <a href="mailto:support@malbek.co.jp">support@malbek.co.jp</a>
+        </p>
+      </main>
+    </PublicShell>
   )
 }
 
 function NotFoundPage() {
   return (
-    <main style={{ fontFamily: 'sans-serif', maxWidth: '600px', margin: '40px auto', padding: '0 16px' }}>
-      <h1>Not found / 見つかりません</h1>
-      <p>The confirmation code you provided was not found in our system.</p>
-      <p>ご提供の確認コードはシステムに見つかりませんでした。</p>
-    </main>
+    <PublicShell>
+      <main className="public-page">
+        <h1>Not found / 見つかりません</h1>
+        <p>The confirmation code you provided was not found in our system.</p>
+        <p>ご提供の確認コードはシステムに見つかりませんでした。</p>
+      </main>
+    </PublicShell>
   )
 }

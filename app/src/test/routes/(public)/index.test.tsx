@@ -30,9 +30,9 @@ describe('(public)/ company info route', () => {
     renderRoute({ path: '/', component: CompanyPage, initialEntries: ['/'] })
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: 'プライバシーポリシー' })).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: '利用規約' })).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: 'データ削除' })).toBeInTheDocument()
+      expect(screen.getAllByRole('link', { name: 'プライバシーポリシー' }).length).toBeGreaterThan(0)
+      expect(screen.getAllByRole('link', { name: '利用規約' }).length).toBeGreaterThan(0)
+      expect(screen.getAllByRole('link', { name: 'データ削除' }).length).toBeGreaterThan(0)
     })
   })
 })

@@ -36,9 +36,9 @@ describe('(public)/data-deletion route', () => {
     renderRoute({ path: '/data-deletion', component: DataDeletionPage, initialEntries: ['/data-deletion'] })
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: '会社情報' })).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: 'プライバシーポリシー' })).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: '利用規約' })).toBeInTheDocument()
+      expect(screen.getAllByRole('link', { name: '会社情報' }).length).toBeGreaterThan(0)
+      expect(screen.getAllByRole('link', { name: 'プライバシーポリシー' }).length).toBeGreaterThan(0)
+      expect(screen.getAllByRole('link', { name: '利用規約' }).length).toBeGreaterThan(0)
     })
   })
 })
