@@ -144,7 +144,7 @@ function MessageBubble({ msg }: { msg: MessageWithDraft }) {
           </span>
         )}
         {isSent && (
-          <span style={{ display: 'inline-flex', color: 'var(--color-primary)', gap: '-2px' }}>
+          <span aria-label="送信済み" style={{ display: 'inline-flex', color: 'var(--color-primary)', gap: '-2px' }}>
             <CheckIcon size={11} stroke={2.5} />
             <CheckIcon size={11} stroke={2.5} style={{ marginLeft: -6 }} />
           </span>

@@ -13,6 +13,9 @@ vi.mock('~/routes/(app)/threads/$id/-lib/send-reply.fn', () => ({
 vi.mock('~/routes/(app)/threads/$id/-lib/get-draft-status.fn', () => ({
   getDraftStatusFn: vi.fn(),
 }))
+vi.mock('~/routes/(app)/inbox/-lib/list-conversations.fn', () => ({
+  listConversationsFn: vi.fn(),
+}))
 
 // Proper UUID constants (safer if validators tighten to z.string().uuid())
 const CONV_ID = '00000000-0000-0000-0000-000000000001'
@@ -83,19 +86,38 @@ describe('Thread page', () => {
     })
   })
 
-  it('loader calls getConversationFn (which triggers unread_count reset)', async () => {
+  it('loader calls getConversationFn then listConversationsFn in order', async () => {
     const { getConversationFn } = await import(
       '~/routes/(app)/threads/$id/-lib/get-conversation.fn'
+    )
+    const { listConversationsFn } = await import(
+      '~/routes/(app)/inbox/-lib/list-conversations.fn'
     )
 
     const detail = makeDetail()
     vi.mocked(getConversationFn).mockResolvedValue(detail)
+    vi.mocked(listConversationsFn).mockResolvedValue({ conversations: [] })
 
-    // Simulate the loader: component fetches on mount just like the SSR route's loader
+    const callOrder: string[] = []
+    vi.mocked(getConversationFn).mockImplementation(async () => {
+      callOrder.push('getConversation')
+      return detail
+    })
+    vi.mocked(listConversationsFn).mockImplementation(async () => {
+      callOrder.push('listConversations')
+      return { conversations: [] }
+    })
+
+    // Simulate the loader sequential pattern
     function LoaderSimulator() {
       const [loaded, setLoaded] = useState(false)
       useEffect(() => {
-        getConversationFn({ data: { id: CONV_ID } }).then(() => setLoaded(true))
+        async function run() {
+          await getConversationFn({ data: { id: CONV_ID } })
+          await listConversationsFn()
+          setLoaded(true)
+        }
+        void run()
       }, [])
       return <div data-testid="status">{loaded ? 'loaded' : 'loading'}</div>
     }
@@ -107,8 +129,70 @@ describe('Thread page', () => {
     })
 
     await waitFor(() => {
-      expect(vi.mocked(getConversationFn)).toHaveBeenCalledWith({ data: { id: CONV_ID } })
       expect(screen.getByTestId('status')).toHaveTextContent('loaded')
+    })
+    expect(callOrder).toEqual(['getConversation', 'listConversations'])
+    expect(vi.mocked(getConversationFn)).toHaveBeenCalledWith({ data: { id: CONV_ID } })
+    expect(vi.mocked(listConversationsFn)).toHaveBeenCalled()
+  })
+
+  it('shows pending indicator for outbound messages with send_status=pending', async () => {
+    const { ThreadMessages } = await import(
+      '~/routes/(app)/threads/$id/-components/ThreadMessages'
+    )
+
+    const messages = [
+      makeMessage({ id: 'msg-1', direction: 'outbound', body: 'Sending…', send_status: 'pending' }),
+    ]
+
+    renderRoute({
+      path: '/threads/$id',
+      component: () => <ThreadMessages messages={messages} />,
+      initialEntries: [`/threads/${CONV_ID}`],
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('送信中…')).toBeInTheDocument()
+    })
+  })
+
+  it('shows accessible sent label for outbound messages with send_status=sent', async () => {
+    const { ThreadMessages } = await import(
+      '~/routes/(app)/threads/$id/-components/ThreadMessages'
+    )
+
+    const messages = [
+      makeMessage({ id: 'msg-1', direction: 'outbound', body: 'Hi', send_status: 'sent' }),
+    ]
+
+    renderRoute({
+      path: '/threads/$id',
+      component: () => <ThreadMessages messages={messages} />,
+      initialEntries: [`/threads/${CONV_ID}`],
+    })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('送信済み')).toBeInTheDocument()
+    })
+  })
+
+  it('shows failure label for outbound messages with send_status=failed', async () => {
+    const { ThreadMessages } = await import(
+      '~/routes/(app)/threads/$id/-components/ThreadMessages'
+    )
+
+    const messages = [
+      makeMessage({ id: 'msg-1', direction: 'outbound', body: 'Oops', send_status: 'failed' }),
+    ]
+
+    renderRoute({
+      path: '/threads/$id',
+      component: () => <ThreadMessages messages={messages} />,
+      initialEntries: [`/threads/${CONV_ID}`],
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('送信失敗')).toBeInTheDocument()
     })
   })
 
