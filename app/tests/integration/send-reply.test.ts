@@ -51,7 +51,7 @@ afterAll(() => {
   vi.unstubAllEnvs()
 })
 
-import { handleSendReply } from '~/routes/(app)/threads/$id/-lib/send-reply.fn'
+import { handleSendReply } from '~/routes/(app)/threads/$id/-lib/send-reply.server'
 import type { TenantTx } from '~/server/db/with-tenant'
 
 // Build a mock tx whose Drizzle query chain resolves in the correct sequence.

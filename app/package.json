@@ -19,7 +19,8 @@
     "test:e2e": "playwright test",
     "lint": "eslint src tests --no-error-on-unmatched-pattern",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed:review": "tsx src/server/db/seed/review.ts"
+    "db:seed:review": "tsx src/server/db/seed/review.ts",
+    "db:seed:e2e": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/server/db/seed/e2e.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
