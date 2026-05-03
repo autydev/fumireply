@@ -72,10 +72,10 @@ function Sidebar() {
             flexShrink: 0,
           }}
         >
-          M
+          F
         </div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 14, letterSpacing: '-0.01em' }}>Malbek CS</div>
+          <div style={{ fontWeight: 700, fontSize: 14, letterSpacing: '-0.01em' }}>Fumireply</div>
           <div style={{ fontSize: 11, color: 'var(--color-ink-3)', fontFamily: 'var(--font-mono)', letterSpacing: '-0.02em' }}>v0.1.0</div>
         </div>
       </div>

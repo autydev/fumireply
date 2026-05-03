@@ -82,12 +82,12 @@ export function LoginForm({ returnTo }: { returnTo?: string }) {
               boxShadow: 'var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.25)',
             }}
           >
-            M
+            F
           </div>
         </div>
 
         <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', textAlign: 'center', marginBottom: 6 }}>
-          Malbek CS
+          Fumireply
         </div>
         <div style={{ fontSize: 13, color: 'var(--color-ink-3)', textAlign: 'center', marginBottom: 26 }}>
           Messenger + Instagram DM を半自動で。
