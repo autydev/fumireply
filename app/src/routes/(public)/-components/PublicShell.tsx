@@ -13,7 +13,6 @@ const NAV = [
 ]
 
 export function PublicShell({ children }: Props) {
-  const year = new Date().getFullYear()
   return (
     <>
       <header className="public-header">
@@ -43,8 +42,8 @@ export function PublicShell({ children }: Props) {
               </Link>
             ))}
           </nav>
-          <span className="public-footer__copyright">
-            © {year} 株式会社Malbek
+          <span suppressHydrationWarning className="public-footer__copyright">
+            © {new Date().getFullYear()} 株式会社Malbek
           </span>
         </div>
       </footer>

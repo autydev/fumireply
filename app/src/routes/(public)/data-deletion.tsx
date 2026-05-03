@@ -52,7 +52,7 @@ function DataDeletionPage() {
             削除完了後、確認コードが発行されます。確認コードをお持ちの方は、以下の URL で削除状況を確認できます:
           </p>
           <p>
-            <code>https://fumireply.exsuite.work/api/data-deletion/status/&lt;確認コード&gt;</code>
+            <code>https://fumireply.exsuite.work/data-deletion-status/&lt;確認コード&gt;</code>
           </p>
 
           <h3>方法2: メールによる手動依頼</h3>
@@ -93,7 +93,7 @@ function DataDeletionPage() {
             </li>
             <li>
               <strong>削除ステータス確認:</strong>{' '}
-              <code>GET https://fumireply.exsuite.work/api/data-deletion/status/:code</code>
+              <code>GET https://fumireply.exsuite.work/data-deletion-status/:code</code>
             </li>
           </ul>
           <p>

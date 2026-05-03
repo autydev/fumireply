@@ -105,6 +105,7 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
           <button
             key={f.key}
             onClick={() => onFilterChange?.(f.key)}
+            aria-pressed={filter === f.key}
             style={{
               display: 'flex',
               alignItems: 'center',
