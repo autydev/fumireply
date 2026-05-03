@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { MessageWithDraft } from '../-lib/get-conversation.fn'
-import { SparkleIcon, CheckIcon } from '~/components/ui/icons'
+import { CheckIcon, ClockIcon } from '~/components/ui/icons'
 
 export function ThreadMessages({ messages }: { messages: MessageWithDraft[] }) {
   const bottomRef = useRef<HTMLLIElement>(null)
@@ -98,6 +98,7 @@ function MessageBubble({ msg }: { msg: MessageWithDraft }) {
   // Outbound
   const isSent = msg.send_status === 'sent'
   const isFailed = msg.send_status === 'failed'
+  const isPending = msg.send_status === 'pending'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', maxWidth: '75%', marginLeft: 'auto' }}>
@@ -127,25 +128,21 @@ function MessageBubble({ msg }: { msg: MessageWithDraft }) {
           fontFamily: 'var(--font-mono)',
         }}
       >
-        {msg.ai_draft?.status === 'ready' && (
+        {timeStr}
+        {isPending && (
           <span
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: 3,
-              fontSize: 10,
-              color: 'var(--color-primary-ink)',
-              background: 'var(--color-primary-soft)',
-              border: '1px solid oklch(0.55 0.16 265 / 0.2)',
-              borderRadius: 4,
-              padding: '1px 5px',
+              color: 'var(--color-ink-3)',
+              fontSize: 11,
             }}
           >
-            <SparkleIcon size={9} />
-            AI承認済
+            <ClockIcon size={11} />
+            送信中…
           </span>
         )}
-        {timeStr}
         {isSent && (
           <span style={{ display: 'inline-flex', color: 'var(--color-primary)', gap: '-2px' }}>
             <CheckIcon size={11} stroke={2.5} />

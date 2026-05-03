@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import type { MessageWithDraft } from './-lib/get-conversation.fn'
 import { getConversationFn } from './-lib/get-conversation.fn'
@@ -7,6 +8,8 @@ import { Avatar } from '~/components/ui/avatar'
 import { InboxList } from '../../inbox/-components/InboxList'
 import { listConversationsFn } from '../../inbox/-lib/list-conversations.fn'
 import { ChevronLeftIcon, MoreHorizIcon, StarIcon } from '~/components/ui/icons'
+
+type FilterKey = 'all' | 'unread' | 'draft' | 'overdue'
 
 export const Route = createFileRoute('/(app)/threads/$id/')({
   loader: async ({ params }) => {
@@ -22,6 +25,7 @@ export const Route = createFileRoute('/(app)/threads/$id/')({
 function ThreadPage() {
   const { conversation, messages, latest_draft, conversations } = Route.useLoaderData()
   const { id } = Route.useParams()
+  const [filter, setFilter] = useState<FilterKey>('all')
 
   const latestInboundMessageId =
     messages
@@ -34,7 +38,12 @@ function ThreadPage() {
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden', height: '100%' }}>
       {/* Inbox list column */}
-      <InboxList conversations={conversations} selectedId={id} />
+      <InboxList
+        conversations={conversations}
+        selectedId={id}
+        filter={filter}
+        onFilterChange={setFilter}
+      />
 
       {/* Thread view */}
       <div

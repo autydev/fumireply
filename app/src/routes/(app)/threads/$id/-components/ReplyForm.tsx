@@ -36,7 +36,7 @@ export function ReplyForm({
   const hoursRemaining = conversation.hours_remaining_in_window
   const showPolicyWarning =
     hoursRemaining !== null && hoursRemaining <= 6 && hoursRemaining > 0
-  const hasDraft = latestDraft !== null && latestDraft.status === 'ready'
+  const hasDraft = draftStatus === 'ready'
 
   const handleDraftReady = useCallback((draftBody: string) => {
     setBody(draftBody)
