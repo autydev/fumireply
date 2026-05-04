@@ -535,6 +535,7 @@ TanStack Start 1.167+ の AWS Lambda デプロイは、**Nitro の `aws-lambda` 
 - [ ] Verify build output — `npm run build` 後に `.output/server/index.mjs` が **Lambda handler 形式**（`export const handler = ...`）でエクスポートされていることを確認
 - [ ] Update `terraform/modules/app-lambda/main.tf` — Lambda Web Adapter レイヤ ARN の参照を削除、`AWS_LAMBDA_EXEC_WRAPPER` / `PORT` 環境変数を削除、Handler を `index.handler` に変更
 - [ ] Update `.github/workflows/deploy-app.yml` — `printf '#!/bin/bash\nexec node index.mjs\n' > app/.output/server/run.sh` の生成と `chmod +x` を削除、zip 構造の確認（`.output/server/**` 直下）
+- [ ] Remove dead `/_build/*` CloudFront ordered_cache_behavior in `terraform/modules/static-site/main.tf` — TanStack Start 1.167+ は `/assets/*` のみを使うので `/_build/*` は不要（残置しても害はないが Distribution 設定をクリーンに保つため）
 - [ ] Update `specs/001-mvp-app-review/infrastructure.md` — LWA 関連の記述を削除、`aws-lambda` preset 採用の経緯を追記
 - [ ] Update `specs/001-mvp-app-review/plan.md` — Lambda Web Adapter への言及を「Nitro `aws-lambda` preset」に置換
 - [ ] レビュー環境で疎通確認（`/login` → `/inbox` → `/threads/$id` の SSR が機能すること、Supabase Auth Cookie が正しく発行・読み取りできること）

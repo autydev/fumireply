@@ -145,18 +145,18 @@ jobs:
       # ─── Sync static assets to S3 ─────────────────────────────────────────
 
       - name: Sync hashed assets (immutable cache)
-        # Hashed filenames under /_build/ are content-addressed, so long TTL is safe.
+        # Hashed filenames under /assets/ are content-addressed, so long TTL is safe.
         run: |
-          aws s3 sync app/.output/public/_build/ "s3://${STATIC_BUCKET}/_build/" \
+          aws s3 sync app/.output/public/assets/ "s3://${STATIC_BUCKET}/assets/" \
             --cache-control "public, max-age=31536000, immutable" \
             --delete \
             --no-cli-pager
 
       - name: Sync HTML and other assets (short-term cache)
-        # Excludes /_build/ so the immutable assets synced above are not removed by --delete.
+        # Excludes /assets/ so the immutable assets synced above are not removed by --delete.
         run: |
           aws s3 sync app/.output/public/ "s3://${STATIC_BUCKET}/" \
-            --exclude "_build/*" \
+            --exclude "assets/*" \
             --cache-control "public, max-age=300" \
             --delete \
             --no-cli-pager
