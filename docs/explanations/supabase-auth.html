@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supabase 認証フロー — fumireply</title>
+<style>
+  :root {
+    --fg: #1f2328; --muted: #57606a;
+    --bg: #ffffff; --bg-soft: #f6f8fa;
+    --bg-code: #0d1117; --fg-code: #e6edf3;
+    --accent: #0969da; --accent-soft: #ddf4ff;
+    --border: #d0d7de;
+    --warn: #9a6700; --warn-soft: #fff8c5;
+    --danger: #cf222e; --danger-soft: #ffebe9;
+    --success: #1a7f37; --success-soft: #dafbe1;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; color: var(--fg); background: var(--bg); line-height: 1.75; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 28px 24px 80px; }
+  nav.crumb { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  nav.crumb a { color: var(--accent); text-decoration: none; }
+  nav.crumb a:hover { text-decoration: underline; }
+  h1 { font-size: 28px; margin: 0 0 6px; line-height: 1.3; }
+  h2 { font-size: 20px; margin: 40px 0 10px; padding-top: 18px; border-top: 1px solid var(--border); }
+  h3 { font-size: 15px; margin: 22px 0 6px; }
+  p { margin: 8px 0; }
+  .lead { color: var(--muted); margin: 4px 0 24px; }
+  code { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 0.9em; background: var(--bg-soft); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); }
+  pre { background: var(--bg-code); color: var(--fg-code); padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 12.5px; line-height: 1.6; }
+  pre code { background: transparent; padding: 0; border: 0; color: inherit; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--bg-soft); }
+  td code, th code { background: #fff; }
+  .callout { padding: 10px 14px; border-radius: 6px; margin: 14px 0; border-left: 4px solid var(--accent); background: var(--accent-soft); font-size: 14px; }
+  .callout.warn   { border-left-color: var(--warn);   background: var(--warn-soft); }
+  .callout.danger { border-left-color: var(--danger); background: var(--danger-soft); }
+  .callout.note   { border-left-color: var(--muted);  background: var(--bg-soft); }
+  .file { color: var(--accent); font-family: ui-monospace, monospace; font-size: 0.92em; }
+  .flow { margin: 14px 0; }
+  .flow .step { display: flex; margin: 0; }
+  .flow .step .num { flex: 0 0 30px; background: var(--accent); color: #fff; font-weight: 600; display: flex; align-items: center; justify-content: center; border-radius: 5px 0 0 5px; font-size: 13px; }
+  .flow .step .body { flex: 1; padding: 8px 14px; background: var(--bg-soft); border: 1px solid var(--border); border-left: none; border-radius: 0 5px 5px 0; font-size: 14px; }
+  .flow .arrow { padding: 2px 0 2px 13px; color: var(--muted); font-size: 14px; line-height: 1.2; }
+  .flow .step + .arrow { margin-top: 4px; }
+  .flow .arrow + .step { margin-top: 4px; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--bg-soft); color: var(--muted); border: 1px solid var(--border); margin-right: 4px; vertical-align: middle; }
+  .pill.cookie { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .pill.jwt { background: #fbefff; color: #8250df; border-color: #d8b9ff; }
+  .pill.db { background: var(--success-soft); color: var(--success); border-color: #91d29c; }
+  .pill.ssm { background: var(--warn-soft); color: var(--warn); border-color: #d6b870; }
+  ul, ol { margin: 6px 0 10px; padding-left: 22px; }
+  li { margin: 3px 0; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .toc { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; font-size: 14px; }
+  .toc ul { padding-left: 20px; margin: 4px 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="crumb">
+  fumireply / docs / explanations /
+  <a href="./supabase-auth.html">supabase-auth</a> ·
+  <a href="./meta-tokens.html">meta-tokens</a> ·
+  <a href="./webhook.html">webhook</a> ·
+  <a href="./seed.html">seed</a> ·
+  <a href="./e2e-meta-testing.html">e2e-meta-testing</a>
+</nav>
+
+<h1>Supabase 認証フロー</h1>
+<p class="lead">レビュアー / オペレーターがログインし、テナント分離 (RLS) されたデータにアクセスするまでの流れ。</p>
+
+<section class="toc">
+  <strong>目次</strong>
+  <ul>
+    <li><a href="#summary">1. 一言まとめ</a></li>
+    <li><a href="#tokens">2. 取得しているもの一覧</a></li>
+    <li><a href="#login">3. ログイン (signInWithPassword)</a></li>
+    <li><a href="#middleware">4. 各リクエストの検証 (auth-middleware)</a></li>
+    <li><a href="#refresh">5. アクセストークンのリフレッシュ</a></li>
+    <li><a href="#tenant-rls">6. テナントコンテキストと RLS</a></li>
+    <li><a href="#logout">7. ログアウト</a></li>
+    <li><a href="#files">8. 関連ファイル</a></li>
+  </ul>
+</section>
+
+<h2 id="summary">1. 一言まとめ</h2>
+<p>
+  fumireply は <strong>Supabase Auth が発行する JWT を HttpOnly Cookie に格納し、サーバー側ミドルウェアで毎リクエスト検証する</strong>方式。
+  ユーザー DB はアプリ側に持たず、所属テナント (<code>tenant_id</code>) と権限 (<code>role</code>) は Supabase ユーザーの <code>app_metadata</code> に書いておき、JWT クレームから取り出す。
+  ミドルウェアは取り出した <code>tenantId</code> をリクエストコンテキストに入れ、各 DB 操作は <code>withTenant()</code> 経由で <code>SET LOCAL app.tenant_id</code> し、<strong>Postgres の RLS</strong> が他テナントの行を見せない、という二段構え。
+</p>
+
+<div class="callout">
+  <strong>設計判断 (research.md R-002)</strong>:
+  ユーザー / セッションテーブルを自前で持たず、Supabase Auth に丸投げ。MVP のスコープでは Cognito より簡素で初期構築が速い、というトレードオフ採用。
+</div>
+
+<h2 id="tokens">2. 取得しているもの一覧</h2>
+
+<p>ログイン成功時に Supabase から戻ってくるもの・アプリが保管するものは下表のとおり。</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 22%;">名前</th>
+      <th style="width: 20%;">どこに置く</th>
+      <th style="width: 12%;">寿命</th>
+      <th>用途</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>access_token</code> <span class="pill jwt">JWT</span></td>
+      <td>Cookie <code>sb-access-token</code> <span class="pill cookie">HttpOnly</span></td>
+      <td>1 時間 (3600s)</td>
+      <td>毎リクエストで <code>supabase.auth.getUser(token)</code> に渡してユーザー特定。署名検証は Supabase 側。</td>
+    </tr>
+    <tr>
+      <td><code>refresh_token</code></td>
+      <td>Cookie <code>sb-refresh-token</code> <span class="pill cookie">HttpOnly</span></td>
+      <td>30 日 (2592000s)</td>
+      <td>アクセストークンが切れたとき <code>refreshSession()</code> で新しいペアと交換。Supabase は使用ごとに自動ローテーション。</td>
+    </tr>
+    <tr>
+      <td><code>user.id</code> (UUID)</td>
+      <td>JWT クレーム / Supabase Auth テーブル</td>
+      <td>—</td>
+      <td>誰が送信した返信かを <code>messages.sent_by_auth_uid</code> に記録するために使う。</td>
+    </tr>
+    <tr>
+      <td><code>user.app_metadata.tenant_id</code></td>
+      <td>JWT クレーム (Supabase 側で発行)</td>
+      <td>—</td>
+      <td>所属テナント UUID。アプリの全 DB アクセスでこの値を使ってテナント分離する <strong>(最重要)</strong>。</td>
+    </tr>
+    <tr>
+      <td><code>user.app_metadata.role</code></td>
+      <td>JWT クレーム</td>
+      <td>—</td>
+      <td><code>'operator' | 'reviewer' | null</code>。UI / 認可分岐に使う。</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout note">
+  <strong>「ユーザーテーブル」が無いことに注意</strong>: Drizzle スキーマ (<code>app/src/server/db/schema.ts</code>) に <code>users</code> テーブルは存在しない。
+  ユーザー名簿は Supabase Auth が単独の真実源。アプリ側は JWT を「読む」だけ。
+</div>
+
+<h2 id="login">3. ログイン (signInWithPassword)</h2>
+
+<h3>3.1 シーケンス</h3>
+
+<div class="flow">
+  <div class="step"><div class="num">1</div><div class="body">ブラウザの <code>LoginForm</code> がメール / パスワードを送信し、サーバー関数 <code>loginFn</code> が呼ばれる</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">2</div><div class="body"><code>performLogin()</code> → <code>supabase.auth.signInWithPassword({ email, password })</code></div></div>
+  <div class="arrow">↓ Supabase が JWT (access) と refresh_token を発行</div>
+  <div class="step"><div class="num">3</div><div class="body"><code>user.app_metadata.tenant_id</code> が無いユーザーは弾く (<code>invalid_credentials</code> として返す)</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">4</div><div class="body"><code>setCookie('sb-access-token', ..., { httpOnly:true, secure:true, sameSite:'lax', maxAge:3600 })</code><br><code>setCookie('sb-refresh-token', ..., { httpOnly:true, secure:true, sameSite:'lax', maxAge:2592000 })</code></div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">5</div><div class="body"><code>{ id, email, tenantId, role }</code> をクライアントに返却 → ブラウザは <code>/inbox</code> へリダイレクト</div></div>
+</div>
+
+<h3>3.2 重要なコード</h3>
+
+<p class="file">app/src/routes/(auth)/login/-lib/login.server.ts</p>
+<pre><code>const { data: d, error } = await getSupabaseClient().auth.signInWithPassword({
+  email: data.email,
+  password: data.password,
+})
+
+const tenantId = user.app_metadata?.tenant_id as string | undefined
+if (!tenantId) {
+  return { ok: false, error: 'invalid_credentials' }   // tenant 未割当ユーザーはログイン不可
+}
+
+setCookie('sb-access-token',  session.access_token,  { httpOnly:true, secure:true, sameSite:'lax', path:'/', maxAge:3600 })
+setCookie('sb-refresh-token', session.refresh_token, { httpOnly:true, secure:true, sameSite:'lax', path:'/', maxAge:2592000 })</code></pre>
+
+<div class="callout warn">
+  <strong>HttpOnly + secure + SameSite=lax</strong>: JS から読めない (XSS でトークン盗難不可) / HTTPS 限定 / クロスサイト POST に乗らない (CSRF 緩和)。
+  Bearer ヘッダ方式ではなく Cookie 方式を選んでいる主動機がここ。
+</div>
+
+<h2 id="middleware">4. 各リクエストの検証 (auth-middleware)</h2>
+
+<p>
+  TanStack Start の <code>createMiddleware({ type: 'function' })</code> でラップしたサーバー関数は、
+  本体ロジックの前に必ずこのミドルウェアを通る。やっていることは 4 段階。
+</p>
+
+<div class="flow">
+  <div class="step"><div class="num">1</div><div class="body"><code>getCookie('sb-access-token')</code> を読む。無ければ <code>/login</code> にリダイレクト</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">2</div><div class="body"><code>verifyAccessToken(token)</code> = <code>supabase.auth.getUser(token)</code> で検証。<br>失敗したら <code>sb-refresh-token</code> でリフレッシュ → 新トークンで Cookie を上書き</div></div>
+  <div class="arrow">↓ user オブジェクト確定</div>
+  <div class="step"><div class="num">3</div><div class="body"><code>user.app_metadata.tenant_id</code> を抽出。空なら <code>/login?error=no_tenant</code><br><code>tenants</code> テーブルを <code>dbAdmin</code> (service role) で引いて <code>status === 'active'</code> を確認。違えば <code>/login?error=tenant_suspended</code></div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">4</div><div class="body"><code>next({ context: { user: { id, email, tenantId, role } } })</code> 後段ハンドラに渡す</div></div>
+</div>
+
+<p class="file">app/src/server/middleware/auth-middleware.ts</p>
+<pre><code>export const authMiddleware = createMiddleware({ type: 'function' }).server(
+  async ({ next }) =&gt; {
+    const accessToken = getCookie('sb-access-token')
+    if (!accessToken) throw redirect({ to: '/login' })
+
+    let user = await verifyAccessToken(accessToken)
+
+    if (!user) {                                            // 期限切れ → refresh
+      const refreshToken = getCookie('sb-refresh-token')
+      if (!refreshToken) throw redirect({ to: '/login' })
+      const refreshed = await refreshSession(refreshToken)
+      if (!refreshed) throw redirect({ to: '/login' })
+      setCookie('sb-access-token',  refreshed.accessToken,  { ... })
+      setCookie('sb-refresh-token', refreshed.refreshToken, { ... })
+      user = refreshed.user
+    }
+
+    const tenantId = (user.app_metadata?.tenant_id as string | undefined) ?? ''
+    if (!tenantId) throw redirect({ to: '/login?error=no_tenant' })
+
+    // tenants は RLS OFF。dbAdmin (service role) で読み、status をチェック
+    const tenantRows = await dbAdmin
+      .select({ status: tenants.status })
+      .from(tenants).where(eq(tenants.id, tenantId)).limit(1)
+    if (!tenantRows[0] || tenantRows[0].status !== 'active') {
+      throw redirect({ to: '/login?error=tenant_suspended' })
+    }
+
+    return next({ context: { user: { id: user.id, email: user.email ?? '', tenantId, role } } })
+  },
+)</code></pre>
+
+<div class="callout">
+  <strong>JWT 検証は Supabase に投げている</strong>: 自前で JWKS を取って検証はしていない。
+  <code>supabase.auth.getUser(token)</code> が Supabase の <code>/auth/v1/user</code> に問い合わせる。
+  毎リクエスト 1 回ネットワーク往復が発生するが、5 秒タイムアウト (<code>auth.ts</code>) で守ってある。
+</div>
+
+<h2 id="refresh">5. アクセストークンのリフレッシュ</h2>
+
+<p>
+  access_token (1h) が切れた瞬間にユーザーがログアウトさせられる UX を避けるため、
+  ミドルウェアが <strong>透過的に refresh_token を使ってペアを更新</strong>する。失敗時のみ <code>/login</code> へ。
+</p>
+
+<div class="flow">
+  <div class="step"><div class="num">1</div><div class="body"><code>verifyAccessToken</code> が null を返す (期限切れ or 無効)</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">2</div><div class="body"><code>supabase.auth.refreshSession({ refresh_token })</code></div></div>
+  <div class="arrow">↓ 新しい access_token + 新しい refresh_token</div>
+  <div class="step"><div class="num">3</div><div class="body">両方の Cookie を <code>setCookie()</code> で上書き (リクエストが終わる前に Set-Cookie ヘッダに乗る)</div></div>
+</div>
+
+<div class="callout note">
+  Supabase の refresh_token は<strong>使用ごとにローテーション</strong>される (Refresh Token Rotation)。
+  古い refresh_token は使えなくなる。盗まれたトークンの再利用検知に役立つが、
+  現状 fumireply には「盗用検知時にそのユーザーの全セッションを失効させる」フックは無い。
+</div>
+
+<h2 id="tenant-rls">6. テナントコンテキストと RLS</h2>
+
+<p>
+  認証で確定した <code>tenantId</code> は、DB 操作のたびに Postgres セッションへ流し込む必要がある。
+  これを担うのが <code>withTenant()</code>。
+</p>
+
+<p class="file">app/src/server/db/with-tenant.ts</p>
+<pre><code>export async function withTenant&lt;T&gt;(tenantId: string, fn: (tx: TenantTx) =&gt; Promise&lt;T&gt;): Promise&lt;T&gt; {
+  return db.transaction(async (tx) =&gt; {
+    await tx.execute(sql`SELECT set_config('app.tenant_id', (${tenantId}::uuid)::text, true)`)
+    return fn(tx)
+  })
+}</code></pre>
+
+<p>
+  <code>set_config(name, value, is_local=true)</code> はその<strong>トランザクション内</strong>でのみ効く設定。
+  RLS ポリシーが <code>tenant_id = current_setting('app.tenant_id')::uuid</code> をチェックするので、
+  違うテナントの行は SELECT で消え、INSERT/UPDATE は WITH CHECK で弾かれる。
+</p>
+
+<p class="file">app/src/server/db/migrations/0001_rls.sql (抜粋)</p>
+<pre><code>ALTER TABLE "connected_pages" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON "connected_pages"
+  FOR ALL
+  USING       (tenant_id = current_setting('app.tenant_id', true)::uuid)
+  WITH CHECK  (tenant_id = current_setting('app.tenant_id', true)::uuid);
+-- conversations, messages, ai_drafts, deletion_log にも同じポリシー</code></pre>
+
+<div class="callout">
+  <strong>2 つの DB クライアント</strong>:<br>
+  <span class="pill db">db</span> 通常の Pooler 接続 (anon ロール) — RLS 強制。アプリの全クエリはこっち。<br>
+  <span class="pill db">dbAdmin</span> service role 接続 — RLS バイパス。テナント解決やシステム操作のみ (例: webhook が <code>page_id</code> から <code>tenant_id</code> を引くとき、認証ミドルウェアが <code>tenants</code> を引くとき)。
+</div>
+
+<h3>6.1 全体像</h3>
+
+<div class="flow">
+  <div class="step"><div class="num">1</div><div class="body">ブラウザ <span class="pill cookie">sb-access-token cookie</span></div></div>
+  <div class="arrow">↓ HTTP リクエスト</div>
+  <div class="step"><div class="num">2</div><div class="body">authMiddleware: cookie → JWT 検証 → <code>tenantId</code> 抽出 → context へ</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">3</div><div class="body">サーバー関数本体: <code>withTenant(context.user.tenantId, async (tx) =&gt; { ... })</code></div></div>
+  <div class="arrow">↓ <code>SET LOCAL app.tenant_id</code></div>
+  <div class="step"><div class="num">4</div><div class="body">Postgres: RLS ポリシーが <code>current_setting('app.tenant_id')</code> と各行の <code>tenant_id</code> を突き合わせる</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">5</div><div class="body">他テナントの行は SELECT に出ず、書き込みも WITH CHECK で拒否</div></div>
+</div>
+
+<h2 id="logout">7. ログアウト</h2>
+
+<p>
+  <code>supabase.auth.signOut({ scope: 'global' })</code> で Supabase 側の refresh_token を失効させ、両 Cookie を <code>maxAge:0</code> でクリア。
+  <code>scope:'global'</code> なのでそのユーザーの全デバイスのセッションが切れる。
+</p>
+
+<h2 id="files">8. 関連ファイル</h2>
+
+<table>
+  <thead><tr><th style="width: 42%;">ファイル</th><th>役割</th></tr></thead>
+  <tbody>
+    <tr><td class="file">app/src/server/services/auth.ts</td><td>Supabase クライアント生成 / <code>verifyAccessToken</code> / <code>refreshSession</code></td></tr>
+    <tr><td class="file">app/src/server/middleware/auth-middleware.ts</td><td>毎リクエストの cookie 取り出し → JWT 検証 → tenant チェック → context 注入</td></tr>
+    <tr><td class="file">app/src/routes/(auth)/login/-lib/login.server.ts</td><td><code>signInWithPassword</code> 呼び出しと cookie セット</td></tr>
+    <tr><td class="file">app/src/routes/(auth)/login/-lib/login.fn.ts</td><td>サーバー関数として上をラップ</td></tr>
+    <tr><td class="file">app/src/server/fns/logout.fn.ts</td><td><code>signOut</code> + cookie クリア</td></tr>
+    <tr><td class="file">app/src/server/db/with-tenant.ts</td><td><code>set_config('app.tenant_id', …, true)</code> をトランザクション先頭で実行</td></tr>
+    <tr><td class="file">app/src/server/db/client.ts</td><td><code>db</code> (anon, RLS) / <code>dbAdmin</code> (service role) を遅延初期化</td></tr>
+    <tr><td class="file">app/src/server/db/migrations/0001_rls.sql</td><td>5 テーブルへの <code>tenant_isolation</code> ポリシー定義</td></tr>
+    <tr><td class="file">specs/001-mvp-app-review/research.md</td><td>R-002 (Supabase Auth 採用理由)</td></tr>
+  </tbody>
+</table>
+
+</div>
+</body>
+</html>

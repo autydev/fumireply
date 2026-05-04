@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meta トークン解説 — fumireply</title>
+<style>
+  :root {
+    --fg: #1f2328; --muted: #57606a;
+    --bg: #ffffff; --bg-soft: #f6f8fa;
+    --bg-code: #0d1117; --fg-code: #e6edf3;
+    --accent: #0969da; --accent-soft: #ddf4ff;
+    --border: #d0d7de;
+    --warn: #9a6700; --warn-soft: #fff8c5;
+    --danger: #cf222e; --danger-soft: #ffebe9;
+    --success: #1a7f37; --success-soft: #dafbe1;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; color: var(--fg); background: var(--bg); line-height: 1.75; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 28px 24px 80px; }
+  nav.crumb { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  nav.crumb a { color: var(--accent); text-decoration: none; }
+  nav.crumb a:hover { text-decoration: underline; }
+  h1 { font-size: 28px; margin: 0 0 6px; line-height: 1.3; }
+  h2 { font-size: 20px; margin: 40px 0 10px; padding-top: 18px; border-top: 1px solid var(--border); }
+  h3 { font-size: 15px; margin: 22px 0 6px; }
+  p { margin: 8px 0; }
+  .lead { color: var(--muted); margin: 4px 0 24px; }
+  code { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 0.9em; background: var(--bg-soft); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); }
+  pre { background: var(--bg-code); color: var(--fg-code); padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 12.5px; line-height: 1.6; }
+  pre code { background: transparent; padding: 0; border: 0; color: inherit; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--bg-soft); }
+  td code, th code { background: #fff; }
+  .callout { padding: 10px 14px; border-radius: 6px; margin: 14px 0; border-left: 4px solid var(--accent); background: var(--accent-soft); font-size: 14px; }
+  .callout.warn   { border-left-color: var(--warn);   background: var(--warn-soft); }
+  .callout.danger { border-left-color: var(--danger); background: var(--danger-soft); }
+  .callout.note   { border-left-color: var(--muted);  background: var(--bg-soft); }
+  .file { color: var(--accent); font-family: ui-monospace, monospace; font-size: 0.92em; }
+  .flow { margin: 14px 0; }
+  .flow .step { display: flex; }
+  .flow .step .num { flex: 0 0 30px; background: var(--accent); color: #fff; font-weight: 600; display: flex; align-items: center; justify-content: center; border-radius: 5px 0 0 5px; font-size: 13px; }
+  .flow .step .body { flex: 1; padding: 8px 14px; background: var(--bg-soft); border: 1px solid var(--border); border-left: none; border-radius: 0 5px 5px 0; font-size: 14px; }
+  .flow .arrow { padding: 2px 0 2px 13px; color: var(--muted); font-size: 14px; }
+  .flow .step + .arrow, .flow .arrow + .step { margin-top: 4px; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--bg-soft); color: var(--muted); border: 1px solid var(--border); margin-right: 4px; vertical-align: middle; }
+  .pill.user   { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .pill.page   { background: var(--success-soft); color: var(--success); border-color: #91d29c; }
+  .pill.app    { background: #fbefff; color: #8250df; border-color: #d8b9ff; }
+  .pill.verify { background: var(--warn-soft); color: var(--warn); border-color: #d6b870; }
+  .pill.ssm    { background: #fff5e1; color: #b8740c; border-color: #f1c98a; }
+  .pill.db     { background: var(--success-soft); color: var(--success); border-color: #91d29c; }
+  ul, ol { margin: 6px 0 10px; padding-left: 22px; }
+  li { margin: 3px 0; }
+  .toc { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; font-size: 14px; }
+  .toc ul { padding-left: 20px; margin: 4px 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; background: var(--bg); }
+  .card h4 { margin: 0 0 6px; font-size: 15px; display: flex; align-items: center; }
+  .card .desc { font-size: 13.5px; color: var(--fg); margin: 4px 0 0; }
+  .bytes { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; font-family: ui-monospace, monospace; font-size: 13px; margin: 12px 0; }
+  .bytes div { padding: 8px 10px; border-right: 1px solid var(--border); }
+  .bytes div:last-child { border-right: none; flex: 1; }
+  .bytes .iv  { background: var(--accent-soft); color: var(--accent); }
+  .bytes .tag { background: #fbefff; color: #8250df; }
+  .bytes .ct  { background: var(--success-soft); color: var(--success); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="crumb">
+  fumireply / docs / explanations /
+  <a href="./supabase-auth.html">supabase-auth</a> ·
+  <a href="./meta-tokens.html">meta-tokens</a> ·
+  <a href="./webhook.html">webhook</a> ·
+  <a href="./seed.html">seed</a> ·
+  <a href="./e2e-meta-testing.html">e2e-meta-testing</a>
+</nav>
+
+<h1>Meta (Facebook / Messenger) トークン解説</h1>
+<p class="lead">User Token / Page Token / App Secret / Webhook Verify Token — 4 種類のシークレットの違い・用途・取得手順・保管方法。</p>
+
+<section class="toc">
+  <strong>目次</strong>
+  <ul>
+    <li><a href="#why">1. なぜ複数種類のトークンが必要か</a></li>
+    <li><a href="#types">2. 4 種のトークン早見表</a></li>
+    <li><a href="#user-vs-page">3. User Token と Page Token の違い (重要)</a></li>
+    <li><a href="#acquire">4. Page Access Token を取得する流れ</a></li>
+    <li><a href="#storage">5. 保管方法 — DB 暗号化 vs SSM</a></li>
+    <li><a href="#crypto">6. 暗号化のしくみ (AES-256-GCM)</a></li>
+    <li><a href="#runtime">7. 送信時の復号と利用</a></li>
+    <li><a href="#errors">8. トークン関連の Meta API エラー</a></li>
+    <li><a href="#files">9. 関連ファイル</a></li>
+  </ul>
+</section>
+
+<h2 id="why">1. なぜ複数種類のトークンが必要か</h2>
+
+<p>
+  Meta のプラットフォームには「<strong>誰が誰の代理で何をするか</strong>」の階層がある:
+</p>
+<ul>
+  <li><strong>App</strong> (= fumireply という「アプリ」を Meta に登録した存在)</li>
+  <li><strong>User</strong> (= そのアプリを使う Facebook ユーザー、例えばオーナーさん)</li>
+  <li><strong>Page</strong> (= ユーザーが管理している Facebook ページ)</li>
+</ul>
+<p>
+  Messenger 経由で「ページ <code>X</code> として返信を送る」には、<strong>ページの代理人として認可された Page Access Token が必要</strong>。
+  ただしそのトークンを直接取ることはできず、まず User Access Token を経由してページのトークンを発行してもらう、という二段ロケットになる。
+  さらに、Webhook の真正性 (Meta から本当に来たか) を検証するために App 自身の秘密 (<code>App Secret</code>) も使う。
+</p>
+
+<h2 id="types">2. 4 種のトークン早見表</h2>
+
+<div class="grid">
+
+  <div class="card">
+    <h4><span class="pill user">User Access Token</span></h4>
+    <div class="desc"><strong>誰が</strong>: Facebook ユーザー本人 (オーナー)<br>
+      <strong>用途</strong>: <strong>Page Access Token を発行してもらうための踏み台</strong>。<br>
+      短命 (~60 分) と長命 (~60 日) があり、短命を <code>fb_exchange_token</code> で長命に交換する。<br>
+      <strong>fumireply 内での扱い</strong>: <em>保存しない</em>。Page Token を取ったら破棄。</div>
+  </div>
+
+  <div class="card">
+    <h4><span class="pill page">Page Access Token</span></h4>
+    <div class="desc"><strong>誰が</strong>: ページ<br>
+      <strong>用途</strong>: Send API <code>POST /me/messages</code> でメッセージを送信。<br>
+      <strong>長命の場合は無期限</strong> (User がアプリを再認可しない / パスワード変更しない限り)。<br>
+      <strong>fumireply 内での扱い</strong>: <strong>テナント単位で DB に AES-256-GCM 暗号化保存</strong>。
+      <code>connected_pages.page_access_token_encrypted</code> (bytea)。</div>
+  </div>
+
+  <div class="card">
+    <h4><span class="pill app">App Secret</span></h4>
+    <div class="desc"><strong>誰が</strong>: アプリ自身<br>
+      <strong>用途</strong>: Webhook 受信時の <code>X-Hub-Signature-256</code> 検証 (HMAC キー)。
+      また User Token を長命に交換するときの <code>client_secret</code> パラメータ。<br>
+      <strong>fumireply 内での扱い</strong>: <span class="pill ssm">SSM</span> SecureString で 1 個だけ保管。
+      パス例 <code>/fumireply/review/meta/app-secret</code>。</div>
+  </div>
+
+  <div class="card">
+    <h4><span class="pill verify">Webhook Verify Token</span></h4>
+    <div class="desc"><strong>誰が</strong>: 任意の文字列 (こちらが決める)<br>
+      <strong>用途</strong>: Webhook サブスクリプション登録時の <strong>サーバー所有確認</strong>。Meta が GET <code>?hub.verify_token=…</code> を投げてくるので、保存しているものと一致するか確認して <code>hub.challenge</code> を返す。<br>
+      <strong>fumireply 内での扱い</strong>: <span class="pill ssm">SSM</span> SecureString で 1 個。パス例 <code>/fumireply/review/meta/webhook-verify-token</code>。
+      テナントごとには持たず、Meta App ごと (= 全テナント共通)。</div>
+  </div>
+
+</div>
+
+<div class="callout note">
+  <strong>5 つ目の小要素: PSID (Page-Scoped ID)</strong> — トークンではないが関連する。同じ Facebook ユーザーでもページが違えば違う ID が振られる。
+  fumireply では会話相手の識別子として <code>conversations.customer_psid</code> に保存している。
+</div>
+
+<h2 id="user-vs-page">3. User Token と Page Token の違い (重要)</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 22%;">観点</th>
+      <th>User Access Token</th>
+      <th>Page Access Token</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>主体</td>
+      <td>Facebook ユーザー個人</td>
+      <td>Facebook ページ (法人格的な存在)</td>
+    </tr>
+    <tr>
+      <td>取得方法</td>
+      <td>OAuth ダイアログ / Graph API Explorer / Login for Business</td>
+      <td>取得済みの User Token を使って <code>GET /me/accounts</code> を叩く</td>
+    </tr>
+    <tr>
+      <td>fumireply で使う場面</td>
+      <td>セットアップ時の<strong>1 回だけ</strong> (Page Token を取り出すための踏み台)</td>
+      <td>毎回の<strong>返信送信</strong>で必須 (Send API)</td>
+    </tr>
+    <tr>
+      <td>有効期限</td>
+      <td>短命 ~60 分 / 長命 ~60 日</td>
+      <td>長命の Page Token は実質無期限</td>
+    </tr>
+    <tr>
+      <td>失効する条件</td>
+      <td>時間経過 / ユーザーがパスワード変更 / 認可解除</td>
+      <td>ユーザーが認可解除 / パスワード変更 / ページから管理者権限剥奪</td>
+    </tr>
+    <tr>
+      <td>fumireply での保存</td>
+      <td>保存しない (取り出したらすぐ破棄)</td>
+      <td>暗号化して DB の <code>connected_pages.page_access_token_encrypted</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <strong>覚え方</strong>: User Token は「ページの鍵束を取り出すためのオーナーの本人確認」。Page Token は「鍵束から取り出したページ専用の鍵」。
+  毎日使うのは鍵 (Page Token) だけで、本人確認 (User Token) は鍵を作る瞬間にしか要らない。
+</div>
+
+<h2 id="acquire">4. Page Access Token を取得する流れ</h2>
+
+<p>
+  fumireply MVP では、この取得は <strong>手動オペレーション</strong>で行う想定 (UI からの OAuth 連携は未実装)。
+  取得した Page Token を環境変数で seed スクリプトに渡し、暗号化保存する。
+</p>
+
+<div class="flow">
+  <div class="step"><div class="num">1</div><div class="body">Meta for Developers のダッシュボードで Graph API Explorer を開き、<strong>短命 User Token</strong> を発行 (~60 分有効)</div></div>
+  <div class="arrow">↓ <code>fb_exchange_token</code></div>
+  <div class="step"><div class="num">2</div><div class="body">
+<pre><code>GET https://graph.facebook.com/v19.0/oauth/access_token
+  ?grant_type=fb_exchange_token
+  &amp;client_id=&lt;APP_ID&gt;
+  &amp;client_secret=&lt;APP_SECRET&gt;
+  &amp;fb_exchange_token=&lt;短命 USER TOKEN&gt;</code></pre>
+    レスポンスの <code>access_token</code> が<strong>長命 User Token</strong> (~60 日)
+  </div></div>
+  <div class="arrow">↓ <code>GET /me/accounts</code></div>
+  <div class="step"><div class="num">3</div><div class="body">
+<pre><code>GET https://graph.facebook.com/v19.0/me/accounts
+  ?access_token=&lt;長命 USER TOKEN&gt;</code></pre>
+  返ってきた配列の各エントリに <code>access_token</code> (= <strong>Page Access Token</strong>) と <code>id</code> (= Page ID) が入っている
+  </div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">4</div><div class="body">取り出した Page Token と Page ID を seed スクリプトに渡す:<br>
+<pre><code>META_PAGE_ACCESS_TOKEN="EAAB..." \
+META_PAGE_ID="1234567890" \
+META_PAGE_NAME="Malbek Shop" \
+npm run db:seed:review</code></pre>
+  </div></div>
+</div>
+
+<div class="callout warn">
+  <strong>App Secret はサーバー側だけが知っている秘密</strong>。長命交換 (<code>fb_exchange_token</code>) のときに必要なので、Graph API Explorer で代用しているうちは手元で扱う必要があるが、自動化する場合はサーバー (Lambda など) から呼び出すのが正しい。
+</div>
+
+<h2 id="storage">5. 保管方法 — DB 暗号化 vs SSM</h2>
+
+<table>
+  <thead><tr><th>シークレット</th><th>保管先</th><th>個数</th><th>理由</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="pill page">Page Access Token</span></td>
+      <td><span class="pill db">DB (<code>connected_pages</code>)</span> 暗号化済み</td>
+      <td>テナント x ページ ごと (1:N)</td>
+      <td>マルチテナント SaaS では新規テナントが増えるたびに SSM パラメータを増やしたくない。DB に置けば <code>INSERT</code> 1 発で済む。</td>
+    </tr>
+    <tr>
+      <td>マスター鍵</td>
+      <td><span class="pill ssm">SSM SecureString</span></td>
+      <td>システム全体で 1 個</td>
+      <td>Page Token を AES-256-GCM で暗号化するための 32 バイト鍵。SSM に置く理由は KMS 暗号化 + IAM 制御 + Lambda 起動時にメモリキャッシュできるから。</td>
+    </tr>
+    <tr>
+      <td><span class="pill app">App Secret</span></td>
+      <td><span class="pill ssm">SSM SecureString</span></td>
+      <td>Meta App ごと (= 1 個)</td>
+      <td>テナント横断で同じ値。Webhook 署名検証に必要。</td>
+    </tr>
+    <tr>
+      <td><span class="pill verify">Webhook Verify Token</span></td>
+      <td><span class="pill ssm">SSM SecureString</span></td>
+      <td>1 個</td>
+      <td>同上。Meta App はシステム全体で 1 つの想定。</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <strong>R-005 の決定 (research.md)</strong>: 当初案の「テナントごとに <code>/fumireply/&lt;tenant&gt;/page-access-token</code> という SSM パラメータを切る」は、テナント増加時の運用コストが高く撤回。
+  代わりに「マスター鍵だけ SSM、本体は DB に暗号化保存」に変更している。
+</div>
+
+<h2 id="crypto">6. 暗号化のしくみ (AES-256-GCM)</h2>
+
+<p>
+  Page Token は 32 バイトのマスター鍵で AES-256-GCM 暗号化し、結果の bytea を DB に保存する。
+  保存フォーマットは固定 12B + 16B + N の連結:
+</p>
+
+<div class="bytes">
+  <div class="iv">IV<br>12 B</div>
+  <div class="tag">Auth Tag<br>16 B</div>
+  <div class="ct">Ciphertext<br>N B (= plaintext と同サイズ)</div>
+</div>
+
+<p class="file">app/src/server/services/crypto.ts</p>
+<pre><code>const IV_LENGTH = 12
+const AUTH_TAG_LENGTH = 16
+const ALGORITHM = 'aes-256-gcm'
+
+export function encryptToken(plaintext: string, masterKey: Buffer): Buffer {
+  const iv = randomBytes(IV_LENGTH)                      // 毎回ランダム
+  const cipher = createCipheriv(ALGORITHM, masterKey, iv)
+  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
+  const authTag = cipher.getAuthTag()                    // 改竄検知用
+  return Buffer.concat([iv, authTag, ciphertext])
+}
+
+export function decryptToken(blob: Buffer, masterKey: Buffer): string {
+  const iv         = blob.subarray(0, 12)
+  const authTag    = blob.subarray(12, 28)
+  const ciphertext = blob.subarray(28)
+  const decipher = createDecipheriv(ALGORITHM, masterKey, iv)
+  decipher.setAuthTag(authTag)                            // 改竄されていれば final() で例外
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8')
+}</code></pre>
+
+<h3>マスター鍵の取得</h3>
+<pre><code>const MASTER_KEY_SSM_PATH = '/fumireply/master-encryption-key'
+
+export async function getMasterKey(): Promise&lt;Buffer&gt; {
+  if (masterKeyCache) return masterKeyCache             // Lambda 寿命中はメモリ再利用
+  const encoded = await getSsmParameter(MASTER_KEY_SSM_PATH)
+  const masterKey = Buffer.from(encoded.trim(), 'base64')
+  if (masterKey.length !== 32) throw new Error('...')
+  masterKeyCache = masterKey
+  return masterKey
+}</code></pre>
+
+<div class="callout warn">
+  <strong>同じ平文でも暗号文は毎回違う</strong>: IV を毎回 <code>randomBytes(12)</code> で振り直すため。
+  これは GCM の安全性要件 (鍵 x IV の組合せを再利用してはいけない) を満たすために必須。
+</div>
+
+<h2 id="runtime">7. 送信時の復号と利用</h2>
+
+<p>
+  オペレーターが「送信」ボタンを押す → <code>sendReplyFn</code> が DB から暗号化バイト列と SSM からマスター鍵を引き、復号して Meta Send API へ。
+</p>
+
+<div class="flow">
+  <div class="step"><div class="num">1</div><div class="body"><code>getMasterKey()</code> — SSM から取得 (Lambda メモリキャッシュ済みなら即返却)</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">2</div><div class="body"><code>SELECT page_access_token_encrypted FROM connected_pages</code> (テナントスコープ、RLS 越し)</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">3</div><div class="body"><code>decryptToken(blob, masterKey)</code> → 平文 Page Token</div></div>
+  <div class="arrow">↓ <code>POST /v19.0/me/messages?access_token={token}</code></div>
+  <div class="step"><div class="num">4</div><div class="body">
+<pre><code>{ "recipient": { "id": "&lt;PSID&gt;" },
+  "messaging_type": "RESPONSE",
+  "message": { "text": "..." } }</code></pre>
+  </div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">5</div><div class="body">200 OK → <code>data.message_id</code> を <code>messages.meta_message_id</code> に保存。Webhook 経由の echo で <code>send_status='sent'</code> に確定する</div></div>
+</div>
+
+<p class="file">app/src/server/services/messenger.ts (要約)</p>
+<pre><code>const META_API_BASE = 'https://graph.facebook.com/v19.0'
+
+export async function sendMessengerReply({ pageAccessToken, recipientPsid, messageText }) {
+  const body = JSON.stringify({
+    recipient: { id: recipientPsid },
+    messaging_type: 'RESPONSE',                        // 24h 以内の返信
+    message: { text: messageText },
+  })
+
+  // 最大 3 回リトライ (500ms / 1500ms / 4500ms)、5xx と timeout のみリトライ対象
+  for (let attempt = 0; attempt &lt; 3; attempt++) {
+    const response = await fetch(
+      `${META_API_BASE}/me/messages?access_token=${pageAccessToken}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+        signal: AbortSignal.timeout(5000) },
+    )
+    // ... ステータスごとに ok / token_expired / outside_window / permission_denied / ... に分岐
+  }
+}</code></pre>
+
+<h2 id="errors">8. トークン関連の Meta API エラー</h2>
+
+<table>
+  <thead><tr><th>HTTP</th><th>error.code</th><th>error_subcode</th><th>fumireply 上の扱い</th></tr></thead>
+  <tbody>
+    <tr><td>400</td><td>190</td><td>—</td><td><code>token_expired</code> (Page Token 失効 / 取り直し必要)</td></tr>
+    <tr><td>400</td><td>10</td><td>2018278</td><td><code>outside_window</code> (24h 過ぎ → メッセージタグが必要)</td></tr>
+    <tr><td>400</td><td>その他</td><td>—</td><td><code>invalid_request</code></td></tr>
+    <tr><td>403</td><td>—</td><td>—</td><td><code>permission_denied</code></td></tr>
+    <tr><td>5xx</td><td>—</td><td>—</td><td><code>meta_server_error</code> (リトライ対象)</td></tr>
+    <tr><td>(timeout)</td><td>—</td><td>—</td><td><code>timeout</code> (1 回までリトライ)</td></tr>
+  </tbody>
+</table>
+
+<div class="callout note">
+  <strong>token_expired への対応 (現状)</strong>: 自動再取得は未実装。エラーをユーザーに見せて、運用者が手動で Page Token を取り直して再 seed する想定。
+  Phase 2 では Login for Business で UI 側から再認可フローを組む計画 (research.md / plan.md 参照)。
+</div>
+
+<h2 id="files">9. 関連ファイル</h2>
+
+<table>
+  <thead><tr><th style="width: 42%;">ファイル</th><th>役割</th></tr></thead>
+  <tbody>
+    <tr><td class="file">app/src/server/db/schema.ts</td><td><code>connected_pages.page_access_token_encrypted: bytea</code></td></tr>
+    <tr><td class="file">app/src/server/services/crypto.ts</td><td><code>getMasterKey</code> / <code>encryptToken</code> / <code>decryptToken</code> / <code>getPageAccessTokenForTenant</code></td></tr>
+    <tr><td class="file">app/src/server/services/messenger.ts</td><td>Send API 呼び出し本体 (リトライ + エラー分類)</td></tr>
+    <tr><td class="file">app/src/server/services/ssm.ts</td><td>SSM Parameter Store 取得ラッパ (5 分メモリキャッシュ)</td></tr>
+    <tr><td class="file">app/src/server/db/seed/review.ts</td><td>Page Token を SSM から鍵を引き AES-256-GCM 暗号化して DB へ</td></tr>
+    <tr><td class="file">specs/001-mvp-app-review/research.md</td><td>R-005: トークン保管方式の決定根拠</td></tr>
+    <tr><td class="file">specs/001-mvp-app-review/data-model.md</td><td><code>connected_pages</code> の暗号フォーマット仕様</td></tr>
+  </tbody>
+</table>
+
+</div>
+</body>
+</html>

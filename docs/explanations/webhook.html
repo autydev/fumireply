@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Webhook 受信と署名検証 — fumireply</title>
+<style>
+  :root {
+    --fg: #1f2328; --muted: #57606a;
+    --bg: #ffffff; --bg-soft: #f6f8fa;
+    --bg-code: #0d1117; --fg-code: #e6edf3;
+    --accent: #0969da; --accent-soft: #ddf4ff;
+    --border: #d0d7de;
+    --warn: #9a6700; --warn-soft: #fff8c5;
+    --danger: #cf222e; --danger-soft: #ffebe9;
+    --success: #1a7f37; --success-soft: #dafbe1;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; color: var(--fg); background: var(--bg); line-height: 1.75; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 28px 24px 80px; }
+  nav.crumb { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  nav.crumb a { color: var(--accent); text-decoration: none; }
+  nav.crumb a:hover { text-decoration: underline; }
+  h1 { font-size: 28px; margin: 0 0 6px; line-height: 1.3; }
+  h2 { font-size: 20px; margin: 40px 0 10px; padding-top: 18px; border-top: 1px solid var(--border); }
+  h3 { font-size: 15px; margin: 22px 0 6px; }
+  p { margin: 8px 0; }
+  .lead { color: var(--muted); margin: 4px 0 24px; }
+  code { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 0.9em; background: var(--bg-soft); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); }
+  pre { background: var(--bg-code); color: var(--fg-code); padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 12.5px; line-height: 1.6; }
+  pre code { background: transparent; padding: 0; border: 0; color: inherit; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--bg-soft); }
+  td code, th code { background: #fff; }
+  .callout { padding: 10px 14px; border-radius: 6px; margin: 14px 0; border-left: 4px solid var(--accent); background: var(--accent-soft); font-size: 14px; }
+  .callout.warn   { border-left-color: var(--warn);   background: var(--warn-soft); }
+  .callout.danger { border-left-color: var(--danger); background: var(--danger-soft); }
+  .callout.note   { border-left-color: var(--muted);  background: var(--bg-soft); }
+  .file { color: var(--accent); font-family: ui-monospace, monospace; font-size: 0.92em; }
+  .flow { margin: 14px 0; }
+  .flow .step { display: flex; }
+  .flow .step .num { flex: 0 0 30px; background: var(--accent); color: #fff; font-weight: 600; display: flex; align-items: center; justify-content: center; border-radius: 5px 0 0 5px; font-size: 13px; }
+  .flow .step .body { flex: 1; padding: 8px 14px; background: var(--bg-soft); border: 1px solid var(--border); border-left: none; border-radius: 0 5px 5px 0; font-size: 14px; }
+  .flow .arrow { padding: 2px 0 2px 13px; color: var(--muted); font-size: 14px; }
+  .flow .step + .arrow, .flow .arrow + .step { margin-top: 4px; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--bg-soft); color: var(--muted); border: 1px solid var(--border); margin-right: 4px; vertical-align: middle; }
+  .pill.get  { background: var(--success-soft); color: var(--success); border-color: #91d29c; }
+  .pill.post { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .pill.app  { background: #fbefff; color: #8250df; border-color: #d8b9ff; }
+  .pill.ssm  { background: #fff5e1; color: #b8740c; border-color: #f1c98a; }
+  ul, ol { margin: 6px 0 10px; padding-left: 22px; }
+  li { margin: 3px 0; }
+  .toc { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; font-size: 14px; }
+  .toc ul { padding-left: 20px; margin: 4px 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .seq { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin: 14px 0; }
+  .seq .actor { font-weight: 600; font-size: 13px; color: var(--accent); }
+  .seq .msg { padding-left: 16px; font-size: 13.5px; color: var(--fg); border-left: 2px solid var(--border); margin: 4px 0 6px 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="crumb">
+  fumireply / docs / explanations /
+  <a href="./supabase-auth.html">supabase-auth</a> ·
+  <a href="./meta-tokens.html">meta-tokens</a> ·
+  <a href="./webhook.html">webhook</a> ·
+  <a href="./seed.html">seed</a> ·
+  <a href="./e2e-meta-testing.html">e2e-meta-testing</a>
+</nav>
+
+<h1>Webhook 受信と署名検証</h1>
+<p class="lead">Meta が顧客メッセージをこちらに POST してくる Webhook の認可・検証ロジック。GET (登録時) と POST (イベント受信時) で使うシークレットが違う点が要。</p>
+
+<section class="toc">
+  <strong>目次</strong>
+  <ul>
+    <li><a href="#summary">1. 一言まとめ</a></li>
+    <li><a href="#two-roles">2. GET と POST、それぞれが使うシークレット</a></li>
+    <li><a href="#get">3. GET — Webhook 登録時のオーナー証明</a></li>
+    <li><a href="#post">4. POST — イベント受信時の署名検証</a></li>
+    <li><a href="#hmac">5. HMAC-SHA256 と timing-safe 比較</a></li>
+    <li><a href="#payload">6. ペイロード処理 (テナント解決 → withTenant → SQS)</a></li>
+    <li><a href="#files">7. 関連ファイル</a></li>
+  </ul>
+</section>
+
+<h2 id="summary">1. 一言まとめ</h2>
+
+<p>
+  Webhook エンドポイントは AWS API Gateway + Lambda で <code>/webhook</code> として公開されている。
+  Meta は 2 つの方法で叩いてくる:
+</p>
+<ul>
+  <li><span class="pill get">GET</span> 登録 (subscribe) のとき 1 回 — <strong>Verify Token</strong> で「このサーバーは持ち主だ」を証明する</li>
+  <li><span class="pill post">POST</span> イベントの度 — <strong>App Secret で HMAC した署名</strong> (<code>X-Hub-Signature-256</code>) で「このボディは Meta が作った」を証明する</li>
+</ul>
+
+<h2 id="two-roles">2. GET と POST、それぞれが使うシークレット</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 14%;">メソッド</th>
+      <th style="width: 22%;">使うシークレット</th>
+      <th style="width: 28%;">SSM パス</th>
+      <th>意味</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="pill get">GET</span></td>
+      <td>Webhook Verify Token</td>
+      <td><code>/fumireply/&lt;env&gt;/meta/webhook-verify-token</code></td>
+      <td>サブスクリプション登録時の<strong>所有確認</strong>。Meta が <code>?hub.verify_token=…</code> を投げてくるので、保存値と一致したら <code>hub.challenge</code> をそのまま echo</td>
+    </tr>
+    <tr>
+      <td><span class="pill post">POST</span></td>
+      <td>App Secret <span class="pill app">App</span></td>
+      <td><code>/fumireply/&lt;env&gt;/meta/app-secret</code></td>
+      <td>HMAC-SHA256 のキーとして使い、ボディから期待署名を再計算して <code>X-Hub-Signature-256</code> ヘッダと一致するか検証</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <strong>SSM_PATH_PREFIX について</strong>: 上のパスの <code>&lt;env&gt;</code> 部分は実際には <code>SSM_PATH_PREFIX</code> 環境変数で決まる (デフォルト <code>/fumireply/</code>)。
+  <code>review</code> 環境なら <code>/fumireply/review/</code>、<code>e2e</code> なら <code>/fumireply/e2e/</code> など。
+</div>
+
+<h2 id="get">3. GET — Webhook 登録時のオーナー証明</h2>
+
+<p>Meta App ダッシュボードで Webhook URL を設定 (<code>Subscribe</code>) すると、Meta は次の URL を 1 回だけ叩く:</p>
+
+<pre><code>GET /webhook?hub.mode=subscribe
+            &amp;hub.challenge=&lt;ランダム文字列&gt;
+            &amp;hub.verify_token=&lt;設定した文字列&gt;</code></pre>
+
+<p>サーバーは <code>hub.verify_token</code> が事前共有値と一致するか確認し、一致したら <code>hub.challenge</code> をそのままレスポンスボディに echo すれば登録完了。</p>
+
+<p class="file">webhook/src/handler.ts</p>
+<pre><code>async function handleGet(event) {
+  const qs = event.queryStringParameters ?? {}
+  const mode = qs['hub.mode']
+  const challenge = qs['hub.challenge'] ?? ''
+  const token = qs['hub.verify_token'] ?? ''
+
+  if (mode !== 'subscribe') return { statusCode: 403, body: 'Forbidden' }
+
+  const ssmPrefix = env.SSM_PATH_PREFIX.replace(/\/$/, '')
+  const verifyToken = await getSsmParameter(`${ssmPrefix}/meta/webhook-verify-token`)
+
+  if (token !== verifyToken) return { statusCode: 403, body: 'Forbidden' }
+
+  return { statusCode: 200, body: challenge }            // challenge をそのまま返す
+}</code></pre>
+
+<div class="callout note">
+  <strong>Verify Token はテナント横断の共通値</strong>: Meta App は 1 個 (= 全テナントの Page が同じ App を経由) を前提とする MVP 設計。
+  もしテナントごとに別 Meta App を持つ運用にしたければ、テナント単位の SSM パス分割を検討する必要がある。
+</div>
+
+<h2 id="post">4. POST — イベント受信時の署名検証</h2>
+
+<p>Meta は新着メッセージのたびに次のような POST を投げてくる:</p>
+
+<pre><code>POST /webhook
+Content-Type: application/json
+X-Hub-Signature-256: sha256=&lt;HMAC-SHA256(appSecret, rawBody) の hex&gt;
+
+{ "object": "page",
+  "entry": [{
+    "id": "&lt;PAGE_ID&gt;", "time": 1714800000000,
+    "messaging": [{
+      "sender":    { "id": "&lt;PSID&gt;" },
+      "recipient": { "id": "&lt;PAGE_ID&gt;" },
+      "timestamp": 1714800000000,
+      "message":   { "mid": "...", "text": "こんにちは" }
+    }]
+  }] }</code></pre>
+
+<p>受信処理の最初の関門が署名検証。失敗したら 401 を返してそのまま終了する。</p>
+
+<div class="seq">
+  <div class="actor">Meta</div>
+  <div class="msg">POST /webhook (raw body, X-Hub-Signature-256: sha256=…)</div>
+  <div class="actor">Webhook Lambda</div>
+  <div class="msg">SSM: getSsmParameter('…/meta/app-secret')</div>
+  <div class="msg">crypto.HMAC-SHA256(appSecret, rawBody) → expected</div>
+  <div class="msg">timingSafeEqual(expected, provided) ?</div>
+  <div class="msg">false → 401 Invalid signature (ここで終了)</div>
+  <div class="msg">true  → JSON parse → ペイロード処理 (下記)</div>
+</div>
+
+<h2 id="hmac">5. HMAC-SHA256 と timing-safe 比較</h2>
+
+<p class="file">webhook/src/signature.ts</p>
+<pre><code>import { createHmac, timingSafeEqual } from 'node:crypto'
+
+export function verifySignature(rawBody: string, signature: string, appSecret: string): boolean {
+  if (!signature.startsWith('sha256=')) return false
+
+  const expected = Buffer.from(
+    createHmac('sha256', appSecret).update(rawBody, 'utf-8').digest('hex'),
+    'hex',
+  )
+  const provided = Buffer.from(signature.slice('sha256='.length), 'hex')
+
+  if (expected.length !== provided.length) return false
+  return timingSafeEqual(expected, provided)             // 一致しても不一致でも比較時間が同じ
+}</code></pre>
+
+<h3>なぜ <code>===</code> ではなく <code>timingSafeEqual</code> なのか</h3>
+<p>
+  通常の文字列比較は<strong>最初の不一致バイトで早期 return する</strong>ため、外部から「最初の N バイトまでは合っている」を時間差で推測できる (タイミング攻撃)。
+  <code>timingSafeEqual</code> は常に全バイトを XOR で比較するため、一致 / 不一致いずれでも実行時間がほぼ同じ。
+  HMAC キー (App Secret) が固定ゆえ、攻撃者がオラクルとして使う余地を消す目的。
+</p>
+
+<h3>raw body の取り扱い</h3>
+<p>
+  HMAC は<strong>サーバー側で再計算したバイト列が、Meta が署名した時のバイト列と完全一致</strong>することが前提。
+  そのため、JSON.parse したオブジェクトを再 stringify して計算するのは絶対 NG (空白やキー順が変わる)。
+  必ず受信した raw body を使う。<code>handler.ts</code> では <code>event.isBase64Encoded</code> も考慮して下のように取り出している:
+</p>
+<pre><code>const rawBody = event.isBase64Encoded
+  ? Buffer.from(event.body ?? '', 'base64').toString('utf-8')
+  : (event.body ?? '')</code></pre>
+
+<div class="callout warn">
+  <strong>signature ヘッダ名のケース</strong>: API Gateway 経由ではヘッダ名が小文字で正規化されるが、念のため <code>x-hub-signature-256</code> と <code>X-Hub-Signature-256</code> の両方を読んでいる (handler.ts: 171-172)。
+</div>
+
+<h2 id="payload">6. ペイロード処理 (テナント解決 → withTenant → SQS)</h2>
+
+<p>署名検証を通過した後の流れ。</p>
+
+<div class="flow">
+  <div class="step"><div class="num">1</div><div class="body"><code>JSON.parse(rawBody)</code> を Zod スキーマでバリデーション。失敗しても 200 を返す (Meta のリトライを抑える) が、内部的にはログに残してスキップ</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">2</div><div class="body">各 <code>entry</code> について <code>entry.id</code> = Page ID を取り出し、<strong><code>dbAdmin</code> (service role)</strong> で <code>connected_pages</code> を引いて <code>(tenantId, pageUuid)</code> を解決<br><span style="color: var(--muted); font-size: 13px;">※ ここはテナント解決前なので RLS を貫通する必要がある</span></div></div>
+  <div class="arrow">↓ <em>tenantId が確定</em></div>
+  <div class="step"><div class="num">3</div><div class="body"><code>withTenant(tenantId, async (tx) =&gt; {…})</code> 内で:<br>
+    ・<code>conversations</code> を upsert (psid 単位)<br>
+    ・<code>messages</code> を <code>onConflictDoNothing()</code> で挿入 (mid ユニーク制約で重複イベント無効化)<br>
+    ・<code>conversations.unreadCount</code> を +1 / <code>lastInboundAt</code> 更新<br>
+    ・テキスト系メッセージなら <code>ai_drafts</code> (status='pending') を入れる
+  </div></div>
+  <div class="arrow">↓ 新しい inbound が確定したときのみ</div>
+  <div class="step"><div class="num">4</div><div class="body">SQS に <code>{ messageId }</code> を enqueue。AI Worker Lambda が拾って下書き生成へ</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">5</div><div class="body">200 <code>EVENT_RECEIVED</code> を返す。Meta の 20 秒 SLA に余裕で間に合う設計</div></div>
+</div>
+
+<div class="callout note">
+  <strong>echo メッセージ (送信した自分のメッセージが Webhook で返ってくる) の扱い</strong>:
+  <code>message.is_echo === true</code> のときは、<code>messages.meta_message_id</code> 一致で <code>send_status='sent'</code> を打つだけで、新規 inbound としては扱わない。これでアプリ側の送信ステータスが確定する。
+</div>
+
+<h2 id="files">7. 関連ファイル</h2>
+
+<table>
+  <thead><tr><th style="width: 42%;">ファイル</th><th>役割</th></tr></thead>
+  <tbody>
+    <tr><td class="file">webhook/src/handler.ts</td><td>API Gateway → Lambda エントリ。GET / POST 振り分け、署名検証、ペイロード処理、SQS enqueue</td></tr>
+    <tr><td class="file">webhook/src/signature.ts</td><td>HMAC-SHA256 + timingSafeEqual の検証関数</td></tr>
+    <tr><td class="file">webhook/src/db/client.ts</td><td>Lambda 用の Postgres / Drizzle クライアント (anon + service role)</td></tr>
+    <tr><td class="file">webhook/src/db/with-tenant.ts</td><td>app と同じく <code>SET LOCAL app.tenant_id</code></td></tr>
+    <tr><td class="file">webhook/src/services/ssm.ts</td><td>SSM 取得 (5 分メモリキャッシュ)</td></tr>
+    <tr><td class="file">specs/001-mvp-app-review/contracts/</td><td>Webhook ペイロードと Meta API のスキーマ定義 (参考)</td></tr>
+  </tbody>
+</table>
+
+</div>
+</body>
+</html>

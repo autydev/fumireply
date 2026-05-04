@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seed スクリプト解説 — fumireply</title>
+<style>
+  :root {
+    --fg: #1f2328; --muted: #57606a;
+    --bg: #ffffff; --bg-soft: #f6f8fa;
+    --bg-code: #0d1117; --fg-code: #e6edf3;
+    --accent: #0969da; --accent-soft: #ddf4ff;
+    --border: #d0d7de;
+    --warn: #9a6700; --warn-soft: #fff8c5;
+    --danger: #cf222e; --danger-soft: #ffebe9;
+    --success: #1a7f37; --success-soft: #dafbe1;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; color: var(--fg); background: var(--bg); line-height: 1.75; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 28px 24px 80px; }
+  nav.crumb { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  nav.crumb a { color: var(--accent); text-decoration: none; }
+  nav.crumb a:hover { text-decoration: underline; }
+  h1 { font-size: 28px; margin: 0 0 6px; line-height: 1.3; }
+  h2 { font-size: 20px; margin: 40px 0 10px; padding-top: 18px; border-top: 1px solid var(--border); }
+  h3 { font-size: 15px; margin: 22px 0 6px; }
+  p { margin: 8px 0; }
+  .lead { color: var(--muted); margin: 4px 0 24px; }
+  code { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 0.9em; background: var(--bg-soft); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); }
+  pre { background: var(--bg-code); color: var(--fg-code); padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 12.5px; line-height: 1.6; }
+  pre code { background: transparent; padding: 0; border: 0; color: inherit; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--bg-soft); }
+  td code, th code { background: #fff; }
+  .callout { padding: 10px 14px; border-radius: 6px; margin: 14px 0; border-left: 4px solid var(--accent); background: var(--accent-soft); font-size: 14px; }
+  .callout.warn   { border-left-color: var(--warn);   background: var(--warn-soft); }
+  .callout.danger { border-left-color: var(--danger); background: var(--danger-soft); }
+  .callout.note   { border-left-color: var(--muted);  background: var(--bg-soft); }
+  .file { color: var(--accent); font-family: ui-monospace, monospace; font-size: 0.92em; }
+  .flow { margin: 14px 0; }
+  .flow .step { display: flex; }
+  .flow .step .num { flex: 0 0 30px; background: var(--accent); color: #fff; font-weight: 600; display: flex; align-items: center; justify-content: center; border-radius: 5px 0 0 5px; font-size: 13px; }
+  .flow .step .body { flex: 1; padding: 8px 14px; background: var(--bg-soft); border: 1px solid var(--border); border-left: none; border-radius: 0 5px 5px 0; font-size: 14px; }
+  .flow .arrow { padding: 2px 0 2px 13px; color: var(--muted); font-size: 14px; }
+  .flow .step + .arrow, .flow .arrow + .step { margin-top: 4px; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--bg-soft); color: var(--muted); border: 1px solid var(--border); margin-right: 4px; vertical-align: middle; }
+  .pill.e2e   { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .pill.review { background: var(--success-soft); color: var(--success); border-color: #91d29c; }
+  .pill.req   { background: var(--danger-soft); color: var(--danger); border-color: #f1a8a8; }
+  .pill.opt   { background: var(--bg-soft); color: var(--muted); border-color: var(--border); }
+  ul, ol { margin: 6px 0 10px; padding-left: 22px; }
+  li { margin: 3px 0; }
+  .toc { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; font-size: 14px; }
+  .toc ul { padding-left: 20px; margin: 4px 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0; }
+  .compare .col { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; background: var(--bg); }
+  .compare .col h4 { margin: 0 0 6px; font-size: 15px; }
+  @media (max-width: 720px) { .compare { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="crumb">
+  fumireply / docs / explanations /
+  <a href="./supabase-auth.html">supabase-auth</a> ·
+  <a href="./meta-tokens.html">meta-tokens</a> ·
+  <a href="./webhook.html">webhook</a> ·
+  <a href="./seed.html">seed</a> ·
+  <a href="./e2e-meta-testing.html">e2e-meta-testing</a>
+</nav>
+
+<h1>Seed スクリプト解説</h1>
+<p class="lead">DB に初期データを投入する 2 種類の seed (E2E / Review) が、それぞれ何を / なぜ入れているか。</p>
+
+<section class="toc">
+  <strong>目次</strong>
+  <ul>
+    <li><a href="#summary">1. 一言まとめ — 2 つの seed の役割分担</a></li>
+    <li><a href="#prereq">2. 前提 — マイグレーションを先に当てる</a></li>
+    <li><a href="#e2e">3. E2E seed (db:seed:e2e)</a></li>
+    <li><a href="#review">4. Review seed (db:seed:review)</a></li>
+    <li><a href="#service-role">5. なぜ service_role 鍵が必要か</a></li>
+    <li><a href="#idempotent">6. 冪等性のしくみ</a></li>
+    <li><a href="#env">7. 環境変数まとめ</a></li>
+    <li><a href="#files">8. 関連ファイル</a></li>
+  </ul>
+</section>
+
+<h2 id="summary">1. 一言まとめ — 2 つの seed の役割分担</h2>
+
+<div class="compare">
+  <div class="col">
+    <h4><span class="pill e2e">E2E seed</span> ローカル / Playwright 用</h4>
+    <p>Meta API は<strong>スタブする前提</strong>のテストデータ。Page Token はランダムバイト列でよい。代わりに「会話・受信メッセージ・<code>status='ready'</code> の AI 下書き」まで積んでおき、UI が即時動かせる状態にする。</p>
+  </div>
+  <div class="col">
+    <h4><span class="pill review">Review seed</span> 検証環境 / 本番テナント用</h4>
+    <p><strong>本物の Meta Page Access Token を AES-256-GCM で暗号化</strong>して投入。テナント (Malbek 想定) と <code>connected_pages</code> 1 行だけ作る。会話などのコンテンツは Meta から実際に流れてくるイベントで埋まる。</p>
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>観点</th><th>E2E</th><th>Review</th></tr></thead>
+  <tbody>
+    <tr><td>テナント</td><td><code>e2e-tenant</code></td><td><code>malbek</code></td></tr>
+    <tr><td>Supabase Auth ユーザー</td><td><strong>作る</strong> (<code>reviewer@example.com</code> + <code>app_metadata.tenant_id</code>)</td><td>作らない (運用で別途作成)</td></tr>
+    <tr><td>Page Token</td><td>ランダムバイト 60B (復号されない前提)</td><td>本物を SSM の master key で暗号化</td></tr>
+    <tr><td>会話 / 受信メッセージ</td><td>1 件作成</td><td>作らない</td></tr>
+    <tr><td>AI 下書き</td><td><code>status='ready'</code> で 1 件</td><td>作らない</td></tr>
+    <tr><td>Meta Send API</td><td>テストでスタブ</td><td>本物を呼ぶ</td></tr>
+    <tr><td>SSM アクセス</td><td>不要</td><td>必要 (master key 取得のため)</td></tr>
+  </tbody>
+</table>
+
+<h2 id="prereq">2. 前提 — マイグレーションを先に当てる</h2>
+
+<p>seed は <code>INSERT</code> しかしない。テーブル + RLS ポリシーの作成は <strong>migration が先</strong>。</p>
+
+<pre><code># 1. スキーマ + RLS ポリシーを作る
+npm run db:migrate
+
+# 2-A. ローカル E2E テスト用データ
+npm run db:seed:e2e
+
+# 2-B. レビュー / 本番テナント用データ
+META_PAGE_ACCESS_TOKEN="EAAB..." \
+META_PAGE_ID="1234567890" \
+META_PAGE_NAME="Malbek Shop" \
+npm run db:seed:review</code></pre>
+
+<p class="file">app/package.json</p>
+<pre><code>"db:migrate":     "drizzle-kit migrate",
+"db:seed:review": "tsx src/server/db/seed/review.ts",
+"db:seed:e2e":    "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/server/db/seed/e2e.ts"</code></pre>
+
+<div class="callout note">
+  どちらの seed も <strong>postgres superuser 接続</strong> (<code>DATABASE_URL</code>) を使う。アプリ用の anon ロール接続では RLS に阻まれて他テナントの行を作れない / 見えないため。
+</div>
+
+<h2 id="e2e">3. E2E seed (db:seed:e2e)</h2>
+
+<h3>3.1 投入する 5 ステップ</h3>
+
+<div class="flow">
+  <div class="step"><div class="num">1</div><div class="body"><code>tenants</code> に <code>(slug='e2e-tenant', status='active')</code> を upsert。<code>onConflictDoNothing()</code> + 既存行 SELECT で冪等</div></div>
+  <div class="arrow">↓ tenantId を取得</div>
+  <div class="step"><div class="num">2</div><div class="body">Supabase Auth に reviewer ユーザーを投入。<code>auth.admin.listUsers()</code> でメール一致を探し、いれば <code>updateUserById</code>、無ければ <code>createUser</code>。<br>
+    <code>app_metadata: { tenant_id, role: 'reviewer' }</code> を必ず書き込む (これが無いとログイン後に弾かれる)
+  </div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">3</div><div class="body"><code>connected_pages</code> に <code>(page_id='e2e-page-0001')</code> を upsert。<br>
+    <code>page_access_token_encrypted</code> は <code>randomBytes(60)</code> = <strong>ダミーの 60 バイト</strong>。
+    形式 (12B IV + 16B tag + N) だけ似せてある。E2E では Meta Send API をスタブするので復号は走らない</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">4</div><div class="body">同 <code>(page_id, customer_psid)</code> の既存 conversation があれば <strong>DELETE</strong> (cascade で messages / ai_drafts も消える) → 新しい <code>conversations</code> + 受信 <code>messages</code> 1 件を INSERT。<br>
+    <code>lastInboundAt = now - 5 分</code> にして 24 時間返信窓内であることを保証
+  </div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">5</div><div class="body"><code>ai_drafts</code> に <code>status='ready'</code> を入れる。実際の Anthropic 呼び出しは行わず、固定文 + ダミーのトークン数 / レイテンシを記録。UI の <code>ReplyForm</code> が即時 textarea にプリフィルできるようにするため</div></div>
+</div>
+
+<h3>3.2 Supabase Auth ユーザー作成のポイント</h3>
+
+<p class="file">app/src/server/db/seed/e2e.ts</p>
+<pre><code>const supabase = createClient(supabaseUrl, supabaseSecretKey, {
+  auth: { persistSession: false, autoRefreshToken: false },
+})
+
+const { data: list } = await supabase.auth.admin.listUsers({ perPage: 200 })
+const existingUser = list.users.find((u) =&gt; u.email === reviewerEmail)
+
+if (existingUser) {
+  await supabase.auth.admin.updateUserById(existingUser.id, {
+    password: reviewerPassword,
+    email_confirm: true,
+    app_metadata: {
+      ...(existingUser.app_metadata ?? {}),     // 既存の他キーは温存
+      tenant_id: tenantId,                      // ← 必ず最新の tenantId を上書き
+      role: 'reviewer',
+    },
+  })
+} else {
+  await supabase.auth.admin.createUser({
+    email: reviewerEmail,
+    password: reviewerPassword,
+    email_confirm: true,                        // メール認証スキップ
+    app_metadata: { tenant_id: tenantId, role: 'reviewer' },
+  })
+}</code></pre>
+
+<div class="callout warn">
+  <strong><code>app_metadata</code> でなければならない理由</strong>: Supabase の JWT クレームに自動で乗るのは <code>app_metadata</code> (サーバー由来のメタ情報) だけ。<br>
+  もう片方の <code>user_metadata</code> はユーザー自身が更新できるのでセキュリティ境界として不適切。
+  <code>auth-middleware</code> が読むのも <code>user.app_metadata?.tenant_id</code>。
+</div>
+
+<h3>3.3 default の認証情報</h3>
+
+<table>
+  <thead><tr><th>項目</th><th>デフォルト値</th><th>上書き環境変数</th></tr></thead>
+  <tbody>
+    <tr><td>メール</td><td><code>reviewer@example.com</code></td><td><code>E2E_REVIEWER_EMAIL</code></td></tr>
+    <tr><td>パスワード</td><td><code>test-password</code></td><td><code>E2E_REVIEWER_PASSWORD</code></td></tr>
+    <tr><td>テナント slug</td><td><code>e2e-tenant</code></td><td><code>E2E_TENANT_SLUG</code></td></tr>
+    <tr><td>Page ID</td><td><code>e2e-page-0001</code></td><td><code>E2E_PAGE_ID</code></td></tr>
+    <tr><td>Customer PSID</td><td><code>1000000000000001</code></td><td><code>E2E_CUSTOMER_PSID</code></td></tr>
+  </tbody>
+</table>
+
+<h2 id="review">4. Review seed (db:seed:review)</h2>
+
+<p>こちらは「本物の Page Token を 1 つ暗号化して入れる」だけのシンプルな seed。会話やメッセージは作らない (実際の Webhook で埋まる)。</p>
+
+<div class="flow">
+  <div class="step"><div class="num">1</div><div class="body">必須環境変数チェック (<code>DATABASE_URL</code>, <code>META_PAGE_ACCESS_TOKEN</code>, <code>META_PAGE_ID</code>, <code>META_PAGE_NAME</code>)</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">2</div><div class="body"><code>tenants</code> に <code>(slug='malbek', status='active')</code> を upsert</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">3</div><div class="body">SSM から <strong>マスター鍵</strong>を取得:<br>
+<pre><code>const paramName = `${ssmPathPrefix}/master-encryption-key`
+const res = await client.send(new GetParameterCommand({ Name: paramName, WithDecryption: true }))
+const masterKey = Buffer.from(res.Parameter.Value, 'base64')</code></pre>
+  </div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">4</div><div class="body"><code>encryptToken(pageAccessToken, masterKey)</code> で AES-256-GCM 暗号化:<br>
+<pre><code>const iv = randomBytes(12)
+const cipher = createCipheriv('aes-256-gcm', masterKey, iv)
+const enc = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
+const tag = cipher.getAuthTag()
+return Buffer.concat([iv, tag, enc])  // 12 + 16 + N</code></pre>
+  </div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">5</div><div class="body"><code>connected_pages</code> に INSERT:<br>
+<pre><code>{ tenantId, pageId, pageName,
+  pageAccessTokenEncrypted: encrypted,
+  webhookVerifyTokenSsmKey: `${ssmPathPrefix}/meta/webhook-verify-token` }</code></pre>
+  既存 (<code>page_id</code> ユニーク) があれば <code>onConflictDoNothing</code> でスキップ
+  </div></div>
+</div>
+
+<div class="callout warn">
+  <strong>Page Token の取得は seed の<em>外</em></strong>: スクリプトは「もう手元に Page Token がある」前提。取得手順は <a href="./meta-tokens.html#acquire">meta-tokens.html § 4</a> を参照。
+</div>
+
+<h2 id="service-role">5. なぜ service_role 鍵が必要か</h2>
+
+<p>E2E seed が <code>SUPABASE_SECRET_KEY</code> (= service_role) を要求する理由:</p>
+
+<ul>
+  <li><strong>パスワード付きユーザーをサーバー側で作るには admin API 必須</strong>。anon キーでできるのは「ユーザーが自分でサインアップ」のみ</li>
+  <li><code>email_confirm: true</code> でメール検証をスキップしたい (テストのたびにメールリンクを踏むのは現実的でない)</li>
+  <li><code>app_metadata</code> は<strong>サーバー専用フィールド</strong>。anon ユーザーは書けない (これがセキュリティ要件)</li>
+</ul>
+
+<div class="callout danger">
+  <strong>SUPABASE_SECRET_KEY は本番には絶対にコミットしない</strong>: <code>.env.local</code> に置いてリポジトリ外に保つ。
+  漏洩すると<strong>全テナントの全データ・全ユーザーが読み書きされる</strong>。アプリの実行時 (Lambda) でも、middleware で tenants テーブルを引く目的でのみ使い、テナントスコープのクエリには使わない設計。
+</div>
+
+<h2 id="idempotent">6. 冪等性のしくみ</h2>
+
+<p>どちらの seed も「何度走らせても同じ最終状態に収束する」を狙っている。実装パターンは 3 つ:</p>
+
+<table>
+  <thead><tr><th>テーブル</th><th>パターン</th><th>キー</th></tr></thead>
+  <tbody>
+    <tr><td><code>tenants</code></td><td>INSERT ... ON CONFLICT DO NOTHING + フォールバック SELECT</td><td>UNIQUE(<code>slug</code>)</td></tr>
+    <tr><td><code>connected_pages</code></td><td>同上</td><td>UNIQUE(<code>page_id</code>)</td></tr>
+    <tr><td>Supabase auth ユーザー</td><td>listUsers → 一致あれば updateUserById、無ければ createUser</td><td>email</td></tr>
+    <tr><td><code>conversations</code> (E2E のみ)</td><td><strong>DELETE してから INSERT</strong> (cascade で messages / ai_drafts も消す)</td><td>(<code>page_id</code>, <code>customer_psid</code>)</td></tr>
+  </tbody>
+</table>
+
+<div class="callout note">
+  会話だけ delete-then-insert なのは、E2E では「クリーンな受信状態 + ready な下書き」が初期条件として欲しいから。
+  upsert にすると古い <code>messages</code> / <code>ai_drafts</code> が残ってしまう。
+</div>
+
+<h2 id="env">7. 環境変数まとめ</h2>
+
+<h3>E2E seed</h3>
+
+<table>
+  <thead><tr><th>変数</th><th>必須</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td><code>DATABASE_URL</code></td><td><span class="pill req">required</span></td><td>postgres superuser 接続 (RLS バイパス)</td></tr>
+    <tr><td><code>SUPABASE_URL</code></td><td><span class="pill req">required</span></td><td>auth admin API のエンドポイント</td></tr>
+    <tr><td><code>SUPABASE_SECRET_KEY</code></td><td><span class="pill req">required</span></td><td>service_role キー (admin.createUser 用)</td></tr>
+    <tr><td><code>E2E_REVIEWER_EMAIL</code></td><td><span class="pill opt">optional</span></td><td>デフォルト <code>reviewer@example.com</code></td></tr>
+    <tr><td><code>E2E_REVIEWER_PASSWORD</code></td><td><span class="pill opt">optional</span></td><td>デフォルト <code>test-password</code></td></tr>
+    <tr><td><code>E2E_TENANT_SLUG</code> / <code>E2E_TENANT_NAME</code></td><td><span class="pill opt">optional</span></td><td>テナント名のオーバーライド</td></tr>
+    <tr><td><code>E2E_PAGE_ID</code> / <code>E2E_PAGE_NAME</code></td><td><span class="pill opt">optional</span></td><td>ページのオーバーライド</td></tr>
+    <tr><td><code>E2E_CUSTOMER_PSID</code> / <code>E2E_CUSTOMER_NAME</code></td><td><span class="pill opt">optional</span></td><td>会話相手のオーバーライド</td></tr>
+  </tbody>
+</table>
+
+<h3>Review seed</h3>
+
+<table>
+  <thead><tr><th>変数</th><th>必須</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td><code>DATABASE_URL</code></td><td><span class="pill req">required</span></td><td>postgres superuser 接続</td></tr>
+    <tr><td><code>META_PAGE_ACCESS_TOKEN</code></td><td><span class="pill req">required</span></td><td>長命 Page Access Token (平文。実行ホストの環境変数で渡す)</td></tr>
+    <tr><td><code>META_PAGE_ID</code></td><td><span class="pill req">required</span></td><td>Facebook Page ID</td></tr>
+    <tr><td><code>META_PAGE_NAME</code></td><td><span class="pill req">required</span></td><td>表示用ページ名</td></tr>
+    <tr><td><code>SSM_PATH_PREFIX</code></td><td><span class="pill opt">optional</span></td><td>デフォルト <code>/fumireply/</code></td></tr>
+    <tr><td><code>TENANT_SLUG</code> / <code>TENANT_NAME</code></td><td><span class="pill opt">optional</span></td><td>デフォルト <code>malbek</code> / <code>Malbek</code></td></tr>
+    <tr><td>(暗黙) AWS 認証情報</td><td><span class="pill req">required</span></td><td>SSM <code>{ssmPathPrefix}/master-encryption-key</code> を読む権限 (<code>ssm:GetParameter</code>) と KMS 復号権限</td></tr>
+  </tbody>
+</table>
+
+<h2 id="files">8. 関連ファイル</h2>
+
+<table>
+  <thead><tr><th style="width: 42%;">ファイル</th><th>役割</th></tr></thead>
+  <tbody>
+    <tr><td class="file">app/src/server/db/seed/e2e.ts</td><td>E2E 用 seed 本体 (5 ステップ)</td></tr>
+    <tr><td class="file">app/src/server/db/seed/review.ts</td><td>Review 用 seed 本体 (token 暗号化 + connected_pages 投入)</td></tr>
+    <tr><td class="file">app/package.json</td><td><code>db:migrate</code> / <code>db:seed:e2e</code> / <code>db:seed:review</code> の npm script 定義</td></tr>
+    <tr><td class="file">app/src/server/db/migrations/0000_*.sql</td><td>テーブル作成 (seed の前提)</td></tr>
+    <tr><td class="file">app/src/server/db/migrations/0001_rls.sql</td><td>RLS ポリシー (seed の前提)</td></tr>
+    <tr><td class="file">app/src/server/services/crypto.ts</td><td>Review seed と同じ暗号化アルゴリズム (アプリ実行時の復号もここ)</td></tr>
+    <tr><td class="file">specs/001-mvp-app-review/quickstart.md</td><td>初期セットアップ手順 (seed 実行を含む)</td></tr>
+  </tbody>
+</table>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Messenger E2E 実機テスト — fumireply</title>
+<style>
+  :root {
+    --fg: #1f2328; --muted: #57606a;
+    --bg: #ffffff; --bg-soft: #f6f8fa;
+    --bg-code: #0d1117; --fg-code: #e6edf3;
+    --accent: #0969da; --accent-soft: #ddf4ff;
+    --border: #d0d7de;
+    --warn: #9a6700; --warn-soft: #fff8c5;
+    --danger: #cf222e; --danger-soft: #ffebe9;
+    --success: #1a7f37; --success-soft: #dafbe1;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; color: var(--fg); background: var(--bg); line-height: 1.75; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 28px 24px 80px; }
+  nav.crumb { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  nav.crumb a { color: var(--accent); text-decoration: none; }
+  nav.crumb a:hover { text-decoration: underline; }
+  h1 { font-size: 28px; margin: 0 0 6px; line-height: 1.3; }
+  h2 { font-size: 20px; margin: 40px 0 10px; padding-top: 18px; border-top: 1px solid var(--border); }
+  h3 { font-size: 15px; margin: 22px 0 6px; }
+  p { margin: 8px 0; }
+  .lead { color: var(--muted); margin: 4px 0 24px; }
+  code { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 0.9em; background: var(--bg-soft); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); }
+  pre { background: var(--bg-code); color: var(--fg-code); padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 12.5px; line-height: 1.6; }
+  pre code { background: transparent; padding: 0; border: 0; color: inherit; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--bg-soft); }
+  td code, th code { background: #fff; }
+  .callout { padding: 10px 14px; border-radius: 6px; margin: 14px 0; border-left: 4px solid var(--accent); background: var(--accent-soft); font-size: 14px; }
+  .callout.warn   { border-left-color: var(--warn);   background: var(--warn-soft); }
+  .callout.danger { border-left-color: var(--danger); background: var(--danger-soft); }
+  .callout.note   { border-left-color: var(--muted);  background: var(--bg-soft); }
+  .callout.ok     { border-left-color: var(--success); background: var(--success-soft); }
+  .file { color: var(--accent); font-family: ui-monospace, monospace; font-size: 0.92em; }
+  .flow { margin: 14px 0; }
+  .flow .step { display: flex; }
+  .flow .step .num { flex: 0 0 30px; background: var(--accent); color: #fff; font-weight: 600; display: flex; align-items: center; justify-content: center; border-radius: 5px 0 0 5px; font-size: 13px; }
+  .flow .step .body { flex: 1; padding: 8px 14px; background: var(--bg-soft); border: 1px solid var(--border); border-left: none; border-radius: 0 5px 5px 0; font-size: 14px; }
+  .flow .arrow { padding: 2px 0 2px 13px; color: var(--muted); font-size: 14px; }
+  .flow .step + .arrow, .flow .arrow + .step { margin-top: 4px; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--bg-soft); color: var(--muted); border: 1px solid var(--border); margin-right: 4px; vertical-align: middle; }
+  .pill.dev   { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .pill.live  { background: var(--success-soft); color: var(--success); border-color: #91d29c; }
+  .pill.role  { background: #fbefff; color: #8250df; border-color: #d8b9ff; }
+  .pill.meta  { background: #fff5e1; color: #b8740c; border-color: #f1c98a; }
+  .pill.req   { background: var(--danger-soft); color: var(--danger); border-color: #f1a8a8; }
+  ul, ol { margin: 6px 0 10px; padding-left: 22px; }
+  li { margin: 3px 0; }
+  .toc { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; font-size: 14px; }
+  .toc ul { padding-left: 20px; margin: 4px 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0; }
+  .compare .col { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; background: var(--bg); }
+  .compare .col h4 { margin: 0 0 6px; font-size: 15px; }
+  .actor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+  .actor-grid .actor { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: var(--bg-soft); font-size: 13.5px; }
+  .actor-grid .actor h4 { margin: 0 0 4px; font-size: 14px; color: var(--accent); }
+  @media (max-width: 720px) { .compare, .actor-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="crumb">
+  fumireply / docs / explanations /
+  <a href="./supabase-auth.html">supabase-auth</a> ·
+  <a href="./meta-tokens.html">meta-tokens</a> ·
+  <a href="./webhook.html">webhook</a> ·
+  <a href="./seed.html">seed</a> ·
+  <a href="./e2e-meta-testing.html">e2e-meta-testing</a>
+</nav>
+
+<h1>Messenger E2E 実機テスト</h1>
+<p class="lead">Meta の「サンドボックス的なやつ」で本物のメッセージ送受信テストをやる方法。結論を先に言うと、Messenger Platform に WhatsApp のようなサンドボックスは存在しない。代わりに <strong>Development Mode + App Roles + 実テストページ</strong> を組み合わせて「本物の API を叩いているが審査前のアプリで動かす」状態を作る。</p>
+
+<section class="toc">
+  <strong>目次</strong>
+  <ul>
+    <li><a href="#summary">1. 一言まとめ — 「サンドボックス」はない、Dev Mode がそれ</a></li>
+    <li><a href="#facilities">2. Meta が提供している実機テスト用の仕組み 4 つ</a></li>
+    <li><a href="#actors">3. 登場人物（FB アカウントを 2 つ用意する）</a></li>
+    <li><a href="#prepare">4. 事前準備 — App / Page / Token / Webhook</a></li>
+    <li><a href="#flow">5. E2E 実機テストの実行手順</a></li>
+    <li><a href="#observe">6. 各レイヤで何を観測するか</a></li>
+    <li><a href="#vs-whatsapp">7. WhatsApp サンドボックスとの違い（混乱しがちなので）</a></li>
+    <li><a href="#pitfalls">8. ハマりどころ集</a></li>
+    <li><a href="#review-handoff">9. App Review 提出時のテストアカウント引き渡し</a></li>
+  </ul>
+</section>
+
+<h2 id="summary">1. 一言まとめ — 「サンドボックス」はない、Dev Mode がそれ</h2>
+
+<p>Meta Messenger Platform には<strong>明示的な "Sandbox" モードや専用テスト番号は存在しない</strong>。WhatsApp Business Platform にはあるが、Messenger には別物。代わりに次のセットで「実 API + 限定公開」のテストができる。</p>
+
+<table>
+  <thead><tr><th></th><th>Messenger Platform</th><th>WhatsApp Business Platform</th></tr></thead>
+  <tbody>
+    <tr><td>専用 Sandbox</td><td><strong>なし</strong></td><td>あり（テスト番号 + 5 件まで宛先登録）</td></tr>
+    <tr><td>テスト用の代替</td><td>Development Mode + App Roles で「app に role を持つ人だけが実 API を使える」状態を作る</td><td>Sandbox がそのまま使える</td></tr>
+    <tr><td>必要な実体</td><td>本物の Facebook Page（テスト用に作ったページでも可）+ 本物の FB アカウント</td><td>テスト番号は Meta が貸与、宛先電話番号は手動登録</td></tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  ネット上の記事で「Messenger サンドボックス」と書いてあるものは、ほぼ全部 <strong>Development Mode のことを指している</strong>か、WhatsApp Sandbox との混同。Meta の公式ドキュメントに <code>sandbox</code> という単語は Messenger 文脈ではほぼ出てこない。
+</div>
+
+<h2 id="facilities">2. Meta が提供している実機テスト用の仕組み 4 つ</h2>
+
+<p>「サンドボックス」という名前のものはないが、組み合わせるとサンドボックス相当になる仕組みは 4 つある。</p>
+
+<h3><span class="pill dev">2.1</span> Development Mode（最重要）</h3>
+<p>App Dashboard 左上の <code>App Mode</code> を <code>Development</code> にしている間は、<strong>App に Role を持つアカウントとのやり取りだけ</strong>が API / Webhook 経由で動く。第三者がそのページに DM を投げても webhook には来ない。これが事実上のサンドボックス境界。</p>
+<ul>
+  <li>新規作成した App はデフォルトで Development Mode。</li>
+  <li>App Review なしで <code>pages_messaging</code> 等の権限を <strong>roled user に対してだけ</strong>使える。</li>
+  <li>Live Mode に切り替えるのは App Review 通過後。fumireply の場合 MVP 申請を出すまでは Dev Mode のまま。</li>
+</ul>
+
+<h3><span class="pill role">2.2</span> App Roles（Admins / Developers / Testers）</h3>
+<p>App Dashboard → <code>Roles</code> → <code>App Roles</code> で実 FB アカウントに役割を付与する。Tester は招待 → 相手が承諾、で発効。</p>
+<ul>
+  <li><strong>Admin</strong>：自分。App 設定全権。</li>
+  <li><strong>Developer</strong>：実装者。Webhook / Token 設定可。</li>
+  <li><strong>Tester</strong>：実機テスター用。設定変更不可だが、Dev Mode の app と「実 API で」やりとりできる。</li>
+</ul>
+
+<h3><span class="pill meta">2.3</span> Test Users（自動生成 FB アカウント）</h3>
+<p>App Dashboard → <code>Roles</code> → <code>Test Users</code> から「FB 上に存在するが本物のユーザーではない」アカウントを生成できる。<strong>fumireply では基本的に使わない</strong>のが結論。理由は次のとおり：</p>
+<ul>
+  <li>Test User は <strong>Test User 同士か、その Test User が作った Test Page</strong> としか messaging の往復ができない（実 Page との DM 往復は安定しない）。</li>
+  <li>fumireply は「実 Page に DM が来る → 返信」を再現したい。<strong>本物のページ + 本物のテスター</strong>のほうが審査時の挙動と一致する。</li>
+  <li>Test User の用途は「Login Dialog の OAuth フロー単体テスト」「同意ダイアログ表示確認」などに限定。</li>
+</ul>
+
+<h3><span class="pill meta">2.4</span> Webhook の "Test" ボタン と Graph API Explorer</h3>
+<p>これは「往復テスト」ではなく「片方向テスト」。</p>
+<ul>
+  <li><strong>Webhooks → Test</strong>：App Dashboard の Webhooks 設定画面から、Meta が用意した<strong>サンプルペイロード</strong>を受信エンドポイントに POST してくれる。<code>X-Hub-Signature-256</code> も付いた状態でくる。<strong>受信 Lambda の署名検証 + DB INSERT までを単独で確認したい</strong>ときに最強。実 Page も実 DM も不要。</li>
+  <li><strong>Graph API Explorer</strong>：<code>POST /me/messages</code> を Page Access Token で叩いて Send API 単独テスト。返信側だけ確認したいときに使う。</li>
+</ul>
+
+<div class="callout note">
+  Webhooks の Test ボタンが投げるペイロードはダミー PSID なので、そのまま <code>connected_pages</code> 経由で本物の page_id 解決をやろうとすると外れる。本物の page を connect 済みなら、Test ボタンは sender / page を実値に書き換えてから投げる UI になっている（ものもある）。挙動は時期で変わるので「来たペイロードを log に出して中身を確認 → 必要なら手で修正したものを <code>curl</code> で送る」が確実。
+</div>
+
+<h2 id="actors">3. 登場人物（FB アカウントを 2 つ用意する）</h2>
+
+<p>これが地味に詰まるポイント。<strong>Page 管理者は自分の Page に DM を投げられない</strong>。なので最低 2 つの実 FB アカウントが必要。</p>
+
+<div class="actor-grid">
+  <div class="actor">
+    <h4>A. Page Owner（あなた）</h4>
+    <ul>
+      <li>App の <strong>Admin</strong> Role 持ち</li>
+      <li>Test 用 Facebook Page の <strong>管理者</strong></li>
+      <li>長期 Page Access Token を発行する側</li>
+      <li>fumireply 管理画面に <code>operator@…</code> でログインする想定の人</li>
+    </ul>
+  </div>
+  <div class="actor">
+    <h4>B. Customer Tester（顧客役）</h4>
+    <ul>
+      <li>App の <strong>Tester</strong> Role を承諾済み（Dev Mode 必須条件）</li>
+      <li>Page を一切管理していない別 FB アカウント</li>
+      <li>Messenger アプリ / m.me から Page に DM を投げる側</li>
+      <li>実機テスト中ずっとブラウザを開いて返信を待つ役</li>
+    </ul>
+  </div>
+</div>
+
+<div class="callout warn">
+  サブ FB アカウントが手元にないなら、家族・同僚に Tester ロールを依頼して借りるか、別ブラウザプロファイル + 別電話番号で用意する。Meta は同一人物の複数アカウントを規約上禁止しているので、本気でやるなら同僚案件。
+</div>
+
+<h2 id="prepare">4. 事前準備 — App / Page / Token / Webhook</h2>
+
+<p>fumireply で初回 E2E をやる前に最低限揃えておくものを <code>seed.html</code> の Review seed と並行で準備する。順番が重要。</p>
+
+<div class="flow">
+  <div class="step"><div class="num">1</div><div class="body"><strong>Test 用 Facebook Page を作成</strong>。Page Owner（A）の個人アカウントから新規 Page を作る。カテゴリは <code>ビジネス</code>系が無難。Page Username（<code>m.me/&lt;username&gt;</code> で使う）も設定。</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">2</div><div class="body"><strong>App Dashboard で Messenger プロダクトを追加</strong>。<code>Add Product → Messenger</code>。すでに追加済みならスキップ。</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">3</div><div class="body"><strong>Page を App に接続</strong>。Messenger 設定 → <code>Access Tokens</code> セクションで Test Page を選んで <code>Add or Remove Pages</code>。Page が一覧に出る。</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">4</div><div class="body"><strong>長期 Page Access Token を取得</strong>。詳細は <a href="./meta-tokens.html">meta-tokens.html</a>。Graph API Explorer で短期 User Token → <code>fb_exchange_token</code> で長期 User → <code>/me/accounts</code> で長期 Page Token を抜き出す。</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">5</div><div class="body"><strong>Review seed を流して DB 投入</strong>。<code>npm run db:seed:review</code> で <code>connected_pages</code> に Page Token を AES-256-GCM で暗号化保存。詳細は <a href="./seed.html">seed.html</a>。</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">6</div><div class="body"><strong>Webhook URL を Messenger に設定</strong>。Messenger → <code>Webhooks</code> → <code>Add Callback URL</code>。URL は API Gateway の <code>/api/webhook</code>、Verify Token は SSM の値。サブスクリプションフィールドは <code>messages</code>, <code>messaging_postbacks</code> の最低 2 つ。</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">7</div><div class="body"><strong>Test Page を Webhook 購読対象に追加</strong>。同じ画面の <code>Page</code> セレクタで Test Page を選び <code>Subscribe</code>。これを忘れると DM が来ても webhook が飛ばない。</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">8</div><div class="body"><strong>Customer Tester（B）を Tester Role に招待</strong>。App Dashboard → <code>Roles</code> → <code>App Roles</code> → <code>Add Testers</code>。B のアカウントで通知を承諾。</div></div>
+</div>
+
+<div class="callout danger">
+  <strong>App Mode が Development であること</strong>を最後に必ず確認する。Live Mode に切り替えてしまうと、App Review 未通過の権限で動かしているのが Meta に検知され、警告 → 機能停止のリスクがある。Development Mode のまま B が DM を投げる構成が「実 API + 安全範囲」の正解。
+</div>
+
+<h2 id="flow">5. E2E 実機テストの実行手順</h2>
+
+<p>準備が終わったら以下の流れを実機で 1 周する。これが App Review でレビュワーが再現するフローと同型。</p>
+
+<div class="flow">
+  <div class="step"><div class="num">1</div><div class="body"><strong>あなた（A）は管理画面にログイン</strong>。<code>https://&lt;cloudfront-domain&gt;/login</code> → Supabase Auth の <code>operator@malbek.co.jp</code>。受信一覧 (<code>/inbox</code>) を開いて待機。</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">2</div><div class="body"><strong>Customer Tester（B）が Page に DM を送る</strong>。スマホの Messenger アプリ or <code>m.me/&lt;page-username&gt;</code> から「テストメッセージです」など。</div></div>
+  <div class="arrow">↓ Meta → 30 秒以内</div>
+  <div class="step"><div class="num">3</div><div class="body"><strong>Webhook 受信 Lambda が POST を受ける</strong>。署名検証 → page_id から tenant_id 解決 → <code>messages</code> テーブル INSERT → SQS enqueue → 200 を返す。CloudWatch で <code>Webhook OK</code> ログを確認。</div></div>
+  <div class="arrow">↓ SQS → Worker</div>
+  <div class="step"><div class="num">4</div><div class="body"><strong>AI 下書き Worker が Anthropic を呼ぶ</strong>。Claude Haiku 4.5 が返信下書きを生成し、<code>ai_drafts</code> に <code>status='ready'</code> で保存。p95 60 秒以内。</div></div>
+  <div class="arrow">↓ A の画面を更新</div>
+  <div class="step"><div class="num">5</div><div class="body"><strong>受信一覧に新着が表示される</strong>。スレッドを開くと B のメッセージと AI 下書きがプレースホルダで入った返信欄が見える。</div></div>
+  <div class="arrow">↓</div>
+  <div class="step"><div class="num">6</div><div class="body"><strong>下書きを編集 or そのまま送信</strong>。送信ボタン → <code>createServerFn</code> 経由で Send API <code>POST /me/messages</code>。応答 200 で <code>messages.send_status='sent'</code> 更新。</div></div>
+  <div class="arrow">↓ 5 秒以内</div>
+  <div class="step"><div class="num">7</div><div class="body"><strong>B の Messenger アプリに返信が届く</strong>。これで往復完了。受信から返信 UI に反映、送信から相手着信、それぞれ p95 SLA 内に収まっているかを目視確認。</div></div>
+</div>
+
+<h2 id="observe">6. 各レイヤで何を観測するか</h2>
+
+<p>1 周しただけで OK とせず、<strong>各レイヤの「期待されるサイン」</strong>を必ず取りに行く。どこか 1 つでも欠けていれば審査でも落ちる。</p>
+
+<table>
+  <thead><tr><th>レイヤ</th><th>確認するもの</th><th>確認の仕方</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Webhook Lambda</td>
+      <td>署名検証 OK / 署名検証 NG が両方ログに出ること、<code>X-Hub-Signature-256</code> の不一致時 403 になること</td>
+      <td>CloudWatch Logs <code>/aws/lambda/fumireply-webhook</code>。一度わざと App Secret を間違えて NG ケースも見ておく</td>
+    </tr>
+    <tr>
+      <td>DB（Supabase）</td>
+      <td><code>messages</code>, <code>conversations</code>, <code>ai_drafts</code> に行が増えていること、<code>tenant_id</code> が正しく入っていること</td>
+      <td>Supabase Studio の Table Editor で <code>SELECT * ORDER BY created_at DESC LIMIT 5</code></td>
+    </tr>
+    <tr>
+      <td>SQS</td>
+      <td>Webhook → Worker の enqueue / dequeue カウントが一致</td>
+      <td>SQS Console のメトリクス。DLQ に落ちていないこと</td>
+    </tr>
+    <tr>
+      <td>Worker Lambda</td>
+      <td>Anthropic API 呼び出し成功、<code>ai_drafts.status</code> が <code>generating</code> → <code>ready</code></td>
+      <td>CloudWatch Logs <code>/aws/lambda/fumireply-ai-worker</code></td>
+    </tr>
+    <tr>
+      <td>UI</td>
+      <td>下書きが返信欄プレースホルダに入る、編集して送信ボタンで成功フィードバック</td>
+      <td>ブラウザで実操作。Network タブで <code>createServerFn</code> 呼び出しが 200</td>
+    </tr>
+    <tr>
+      <td>Send API</td>
+      <td>Meta の応答に <code>recipient_id</code> と <code>message_id</code></td>
+      <td><code>messages.meta_message_id</code> に <code>m_</code> プレフィクスの ID が入る</td>
+    </tr>
+    <tr>
+      <td>受信側 Messenger</td>
+      <td>B の Messenger アプリで返信が届く、5 秒以内</td>
+      <td>目視。スマホのプッシュ通知を切らない</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="vs-whatsapp">7. WhatsApp サンドボックスとの違い（混乱しがちなので）</h2>
+
+<p>調べているときに出てくる「Meta サンドボックス」記事は WhatsApp 由来のものが多いので、混同しないように整理しておく。</p>
+
+<div class="compare">
+  <div class="col">
+    <h4>WhatsApp Business Sandbox</h4>
+    <ul>
+      <li>Meta が貸与する <strong>専用テスト電話番号</strong>がある</li>
+      <li>事前に登録した最大 5 件の宛先電話番号にだけメッセージを送れる</li>
+      <li>App Review なしで <code>messages</code> API が叩ける</li>
+      <li>Production 番号への移行は別フロー</li>
+    </ul>
+  </div>
+  <div class="col">
+    <h4>Messenger Platform</h4>
+    <ul>
+      <li><strong>専用テストインフラはない</strong></li>
+      <li>本物の Page を 1 つ作って Dev Mode の App に紐付ける</li>
+      <li>App Roles を持つアカウントとだけ往復できる</li>
+      <li>Live Mode 切り替え = App Review 通過後</li>
+    </ul>
+  </div>
+</div>
+
+<div class="callout note">
+  fumireply は Messenger 側なので「専用番号もらえる」想定で動くと詰まる。<strong>本物の Page を 1 つ用意するのがスタートライン</strong>。
+</div>
+
+<h2 id="pitfalls">8. ハマりどころ集</h2>
+
+<table>
+  <thead><tr><th>症状</th><th>原因</th><th>対処</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>B が DM を送っても webhook が飛ばない</td>
+      <td>App が Dev Mode で、B が Tester Role を承諾していない</td>
+      <td>Roles 画面で Pending 状態を確認 → B 側の通知から承諾</td>
+    </tr>
+    <tr>
+      <td>同上、しかも Tester は承諾済み</td>
+      <td>Webhook の <code>Page</code> サブスクリプション漏れ</td>
+      <td>Messenger → Webhooks 画面で Test Page を選び <code>Subscribe</code></td>
+    </tr>
+    <tr>
+      <td>Webhook は 200 で返ったのに DB に行が増えない</td>
+      <td><code>page_id</code> から tenant 解決に失敗（<code>connected_pages</code> 未投入 or page_id ミスマッチ）</td>
+      <td>Review seed の <code>page_id</code> が Test Page の本物 ID と一致しているか確認。Graph API Explorer で <code>/me?fields=id</code> を Page Token で叩けば判る</td>
+    </tr>
+    <tr>
+      <td>Send API が <code>(#10) Application does not have permission for this action</code></td>
+      <td>Page Access Token の権限不足、または App が Dev Mode で recipient（B）が Tester でない</td>
+      <td>長期 Page Token を再発行（<code>pages_messaging</code> スコープ要）。B の Tester ロール承諾も再確認</td>
+    </tr>
+    <tr>
+      <td>Send API が <code>(#100) The thread owner has not given permission</code></td>
+      <td>24 時間メッセージ窓を超えている（B が最後に送ってから 24h 経過）</td>
+      <td>B からもう一度 DM を投げて窓をリセット。MVP は 24h 窓内のみ対応 (<code>messaging_type=RESPONSE</code>)</td>
+    </tr>
+    <tr>
+      <td>署名検証が NG になる</td>
+      <td>App Secret の SSM 値とアプリ設定の App ID が別 App のもの</td>
+      <td>App Dashboard の Settings → Basic で App Secret を確認、SSM <code>/fumireply/meta-app-secret</code> と一致させる</td>
+    </tr>
+    <tr>
+      <td>Page 管理者本人が DM を送ろうとすると Messenger が拒否する</td>
+      <td>Meta 仕様：Page admin が自 Page に DM 不可</td>
+      <td>必ず別アカウント（B）から送る。これが 2 アカウント必須の理由</td>
+    </tr>
+    <tr>
+      <td>Test User で Page に DM したら 何も起きない</td>
+      <td>Test User と実 Page の間は messaging が制限される</td>
+      <td>Test User は使わず、実 FB アカウント B を使う</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="review-handoff">9. App Review 提出時のテストアカウント引き渡し</h2>
+
+<p>E2E が回るようになったら、その同じ仕組みを<strong>レビュワーに使ってもらえる形に整える</strong>のが App Review 提出。fumireply の spec.md User Story 1〜2 がこれ。</p>
+
+<ul>
+  <li><strong>レビュワー用 FB アカウントは Meta が用意してくれない</strong>。レビュワーは自分の FB アカウントで B 役を演じる。fumireply 側は事前にレビュワーアカウントに Tester Role 招待 → 承諾してもらう、または App を Live Mode にする。MVP ではいったん <strong>Live Mode + 必要権限を Limited Use で申請</strong>するのが普通。</li>
+  <li><strong>管理画面ログイン用の専用アカウントは fumireply 側で発行</strong>して提出フォームに記載（<code>reviewer@malbek.co.jp</code>）。Supabase Auth 側で seed しておく（<a href="./seed.html">seed.html</a> 参照）。</li>
+  <li><strong>スクリーンキャスト動画</strong>もこの実機 E2E と同じフローを撮る。User Story 4 参照。</li>
+</ul>
+
+<div class="callout ok">
+  <strong>つまり「サンドボックス的な何か」の実体は</strong>：本物の Page + 本物の FB アカウント B + Dev Mode + Tester Role の組み合わせ。これで「実 API を叩いているが、限られた人にしか影響しない」状態になり、App Review 前でも安全に round-trip テストができる。レビュワーには Live Mode に切り替えた後の同じ仕組みをそのまま見せる。
+</div>
+
+</div>
+</body>
+</html>
