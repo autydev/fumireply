@@ -34,6 +34,11 @@ variable "static_s3_bucket_arn" {
   type        = string
 }
 
+variable "lambda_artifacts_bucket_arn" {
+  description = "ARN of the Lambda artifacts S3 bucket (CI uploads built Lambda zips here before update-function-code)"
+  type        = string
+}
+
 variable "cloudfront_distribution_arn" {
   description = "ARN of the CloudFront distribution (CI creates invalidations)"
   type        = string

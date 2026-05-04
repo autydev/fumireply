@@ -205,6 +205,7 @@ module "github_actions_oidc" {
   ]
 
   static_s3_bucket_arn        = module.static_site.s3_bucket_arn
+  lambda_artifacts_bucket_arn = aws_s3_bucket.lambda_artifacts.arn
   cloudfront_distribution_arn = module.static_site.cloudfront_distribution_arn
 }
 

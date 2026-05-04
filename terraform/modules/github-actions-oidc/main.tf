@@ -121,6 +121,20 @@ data "aws_iam_policy_document" "github_actions_policy" {
     ]
   }
 
+  # S3: upload Lambda zips to artifacts bucket (consumed by update-function-code)
+  statement {
+    sid = "LambdaArtifactsS3Upload"
+    actions = [
+      "s3:PutObject",
+      "s3:GetObject",
+      "s3:ListBucket",
+    ]
+    resources = [
+      var.lambda_artifacts_bucket_arn,
+      "${var.lambda_artifacts_bucket_arn}/*",
+    ]
+  }
+
   # CloudFront: cache invalidation
   statement {
     sid = "CloudFrontInvalidation"
