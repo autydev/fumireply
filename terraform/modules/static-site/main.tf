@@ -158,8 +158,16 @@ resource "aws_cloudfront_origin_request_policy" "dynamic" {
   cookies_config {
     cookie_behavior = "all"
   }
+  # Host ヘッダだけは除外する。API Gateway HTTP API はリクエストの Host ヘッダで
+  # API を識別するため、CloudFront のカスタムドメイン (review.fumireply.ecsuite.work)
+  # をそのまま転送すると ForbiddenException で 403 が返る。
+  # Host を落とすことで CloudFront がオリジン (execute-api.* ドメイン) の Host を
+  # 自動でセットし、API Gateway が正しくルーティングできるようになる。
   headers_config {
-    header_behavior = "allViewer"
+    header_behavior = "allExcept"
+    headers {
+      items = ["Host"]
+    }
   }
   query_strings_config {
     query_string_behavior = "all"
