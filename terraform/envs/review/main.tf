@@ -95,6 +95,31 @@ module "queue" {
 # App Lambda + API Gateway HTTP API (shared with webhook)
 ###############################################################################
 
+###############################################################################
+# Read SSM SecureString values to inject as Lambda env vars
+# (app の env.ts は process.env を直接読むため、起動時に値を持っている必要がある)
+###############################################################################
+
+data "aws_ssm_parameter" "supabase_url" {
+  name = "/fumireply/review/supabase/url"
+}
+
+data "aws_ssm_parameter" "supabase_publishable_key" {
+  name = "/fumireply/review/supabase/publishable-key"
+}
+
+data "aws_ssm_parameter" "supabase_secret_key" {
+  name = "/fumireply/review/supabase/secret-key"
+}
+
+data "aws_ssm_parameter" "supabase_db_url" {
+  name = "/fumireply/review/supabase/db-url"
+}
+
+data "aws_ssm_parameter" "supabase_db_url_service_role" {
+  name = "/fumireply/review/supabase/db-url-service-role"
+}
+
 module "app_lambda" {
   source = "../../modules/app-lambda"
 
@@ -102,6 +127,18 @@ module "app_lambda" {
   ssm_path_prefix          = module.secrets.ssm_path_prefix
   lambda_package_s3_bucket = aws_s3_bucket.lambda_artifacts.id
   lambda_package_s3_key    = aws_s3_object.placeholder.key
+
+  # 直接埋め込む値（SSM SecureString から復号して Lambda env vars に注入）
+  database_url              = data.aws_ssm_parameter.supabase_db_url.value
+  database_url_service_role = data.aws_ssm_parameter.supabase_db_url_service_role.value
+  supabase_url              = data.aws_ssm_parameter.supabase_url.value
+  supabase_publishable_key  = data.aws_ssm_parameter.supabase_publishable_key.value
+  supabase_secret_key       = data.aws_ssm_parameter.supabase_secret_key.value
+
+  # 値ではなく SSM のキーパス（コード側がランタイムで読む）
+  meta_app_secret_ssm_key      = "/fumireply/review/meta/app-secret"
+  webhook_verify_token_ssm_key = "/fumireply/review/meta/webhook-verify-token"
+  anthropic_api_key_ssm_key    = "/fumireply/review/anthropic/api-key"
 }
 
 ###############################################################################
