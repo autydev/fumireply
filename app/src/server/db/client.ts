@@ -24,8 +24,16 @@ function lazyDb(getUrl: () => string): Db {
   })
 }
 
-// anon role client — RLS enforced, used for all normal request handling
+// Tenant-scoped client — uses the regular Postgres role from DATABASE_URL
+// (no BYPASSRLS attribute), so the tenant_isolation RLS policies apply.
+// Always wrap queries in withTenant(tenantId, ...) so SET LOCAL app.tenant_id
+// activates the policy. Despite the historical "anon" naming used elsewhere,
+// no PostgREST role switching happens here — Drizzle talks to Postgres
+// directly with whatever single role DATABASE_URL specifies.
 export const db = lazyDb(() => env.DATABASE_URL)
 
-// service role client — bypasses RLS, used only for migrations, webhook page_id→tenant_id resolution, and system ops
+// System ops client — uses the service_role connection (BYPASSRLS).
+// Use only for privileged paths that must read/write across tenants:
+// the auth middleware's tenants.status lookup, the webhook's
+// page_id → tenant_id resolution, data-deletion admin, and migrations.
 export const dbAdmin = lazyDb(() => env.DATABASE_URL_SERVICE_ROLE)
