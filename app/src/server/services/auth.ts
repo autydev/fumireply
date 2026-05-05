@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js'
 
-const AUTH_REQUEST_TIMEOUT_MS = 5000
+const AUTH_REQUEST_TIMEOUT_MS = 15000
 
 let supabaseInstance: SupabaseClient | null = null
 

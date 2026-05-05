@@ -27,10 +27,20 @@ export async function performLogin(data: {
       password: data.password,
     })
     if (error || !d.session || !d.user) {
+      console.warn('[login] signInWithPassword rejected', {
+        email: data.email,
+        supabaseError: error?.message,
+        status: error?.status,
+      })
       return { ok: false, error: 'invalid_credentials' }
     }
     authData = d
-  } catch {
+  } catch (err) {
+    console.error('[login] signInWithPassword threw', {
+      email: data.email,
+      name: err instanceof Error ? err.name : 'unknown',
+      message: err instanceof Error ? err.message : String(err),
+    })
     return { ok: false, error: 'invalid_credentials' }
   }
 

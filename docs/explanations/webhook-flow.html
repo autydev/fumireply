@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Webhook リクエスト/レスポンスの流れと bring-up 現在地 — fumireply</title>
+<style>
+  :root {
+    --fg: #1f2328; --muted: #57606a;
+    --bg: #ffffff; --bg-soft: #f6f8fa;
+    --bg-code: #0d1117; --fg-code: #e6edf3;
+    --accent: #0969da; --accent-soft: #ddf4ff;
+    --border: #d0d7de;
+    --warn: #9a6700; --warn-soft: #fff8c5;
+    --danger: #cf222e; --danger-soft: #ffebe9;
+    --success: #1a7f37; --success-soft: #dafbe1;
+    --purple: #8250df; --purple-soft: #fbefff;
+    --orange: #b8740c; --orange-soft: #fff5e1;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; color: var(--fg); background: var(--bg); line-height: 1.75; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 28px 24px 80px; }
+  nav.crumb { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  nav.crumb a { color: var(--accent); text-decoration: none; }
+  nav.crumb a:hover { text-decoration: underline; }
+  h1 { font-size: 28px; margin: 0 0 6px; line-height: 1.3; }
+  h2 { font-size: 20px; margin: 40px 0 10px; padding-top: 18px; border-top: 1px solid var(--border); }
+  h3 { font-size: 15px; margin: 22px 0 6px; }
+  p { margin: 8px 0; }
+  .lead { color: var(--muted); margin: 4px 0 24px; }
+  code { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 0.9em; background: var(--bg-soft); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); }
+  pre { background: var(--bg-code); color: var(--fg-code); padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 12.5px; line-height: 1.6; }
+  pre code { background: transparent; padding: 0; border: 0; color: inherit; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--bg-soft); }
+  td code, th code { background: #fff; }
+  .callout { padding: 10px 14px; border-radius: 6px; margin: 14px 0; border-left: 4px solid var(--accent); background: var(--accent-soft); font-size: 14px; }
+  .callout.warn   { border-left-color: var(--warn);   background: var(--warn-soft); }
+  .callout.danger { border-left-color: var(--danger); background: var(--danger-soft); }
+  .callout.note   { border-left-color: var(--muted);  background: var(--bg-soft); }
+  .callout.ok     { border-left-color: var(--success); background: var(--success-soft); }
+  ul, ol { margin: 6px 0 10px; padding-left: 22px; }
+  li { margin: 3px 0; }
+  .toc { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; font-size: 14px; }
+  .toc ul { padding-left: 20px; margin: 4px 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--bg-soft); color: var(--muted); border: 1px solid var(--border); margin-right: 4px; vertical-align: middle; font-family: ui-monospace, monospace; }
+  .pill.get  { background: var(--success-soft); color: var(--success); border-color: #91d29c; }
+  .pill.post { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .pill.ok   { background: var(--success-soft); color: var(--success); border-color: #91d29c; }
+  .pill.err  { background: var(--danger-soft);  color: var(--danger);  border-color: #f1a8a8; }
+  .pill.cf   { background: var(--purple-soft); color: var(--purple); border-color: #d8b9ff; }
+  .pill.lambda { background: var(--orange-soft); color: var(--orange); border-color: #f1c98a; }
+
+  /* ───── システム全体図 ───── */
+  .arch { margin: 18px 0; }
+  .arch .row { display: grid; grid-template-columns: 200px 60px 1fr; align-items: center; gap: 0; margin: 0; }
+  .arch .actor { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; text-align: center; font-size: 13.5px; font-weight: 600; }
+  .arch .actor .sub { display: block; font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; font-family: ui-monospace, monospace; }
+  .arch .actor.meta   { background: #f6f8fa; }
+  .arch .actor.cf     { background: var(--purple-soft); border-color: #d8b9ff; }
+  .arch .actor.apigw  { background: var(--accent-soft); border-color: var(--accent); }
+  .arch .actor.lambda { background: var(--orange-soft); border-color: #f1c98a; }
+  .arch .actor.ssm    { background: var(--success-soft); border-color: #91d29c; }
+  .arch .arrow { padding: 8px 0; color: var(--muted); font-size: 13px; text-align: center; }
+  .arch .arrow .label { display: inline-block; background: var(--bg); padding: 2px 6px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 11px; }
+  .arch .note { font-size: 12.5px; color: var(--muted); padding: 0 10px; }
+
+  /* ───── シーケンス図 ───── */
+  .seq { margin: 16px 0; border: 1px solid var(--border); border-radius: 8px; padding: 0; overflow-x: auto; }
+  .seq table { margin: 0; font-size: 12.5px; border: 0; }
+  .seq table th { background: var(--bg-soft); border: 0; border-bottom: 1px solid var(--border); padding: 8px 10px; font-weight: 600; text-align: center; font-size: 12px; }
+  .seq table td { border: 0; border-bottom: 1px dashed var(--border); padding: 5px 10px; vertical-align: middle; }
+  .seq table tr:last-child td { border-bottom: 0; }
+  .seq .lane { width: 17%; text-align: center; }
+  .seq .msg  { width: 32%; }
+  .seq .arr  { color: var(--muted); font-family: ui-monospace, monospace; }
+  .seq .note { color: var(--muted); font-style: italic; }
+  .seq .ok    { color: var(--success); font-weight: 600; }
+  .seq .err   { color: var(--danger); font-weight: 600; }
+  .seq .body  { font-family: ui-monospace, monospace; font-size: 11.5px; background: var(--bg-soft); padding: 1px 6px; border-radius: 4px; }
+
+  /* ───── 現状診断ボックス ───── */
+  .diag { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0; }
+  .diag .col { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .diag .col.bad { border-color: #f1a8a8; background: var(--danger-soft); }
+  .diag .col.good { border-color: #91d29c; background: var(--success-soft); }
+  .diag h4 { margin: 0 0 8px; font-size: 14px; }
+
+  @media (max-width: 720px) {
+    .arch .row { grid-template-columns: 1fr; }
+    .arch .arrow { padding: 4px 0; }
+    .diag { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="crumb">
+  fumireply / docs / explanations /
+  <a href="./supabase-auth.html">supabase-auth</a> ·
+  <a href="./meta-tokens.html">meta-tokens</a> ·
+  <a href="./webhook.html">webhook</a> ·
+  <a href="./seed.html">seed</a> ·
+  <a href="./e2e-meta-testing.html">e2e-meta-testing</a> ·
+  <a href="./webhook-flow.html">webhook-flow</a>
+</nav>
+
+<h1>Webhook リクエスト/レスポンスの流れと bring-up 現在地</h1>
+<p class="lead">Meta App Dashboard で Webhook の Callback URL 登録が通らない問題を直すため、リクエストがどこを通って何を返すかをシーケンスで可視化し、現在地と次の一手を整理する。</p>
+
+<section class="toc">
+  <strong>目次</strong>
+  <ul>
+    <li><a href="#summary">1. 一言まとめ</a></li>
+    <li><a href="#system">2. システム全体図 — リクエストはどの箱を通るか</a></li>
+    <li><a href="#two-types">3. Meta が叩く Webhook には 2 種類ある</a></li>
+    <li><a href="#get-flow">4. GET 検証ハンドシェイクのシーケンス</a></li>
+    <li><a href="#post-flow">5. POST イベント受信のシーケンス</a></li>
+    <li><a href="#current">6. 現在の症状 — どこで詰まっているか</a></li>
+    <li><a href="#hypotheses">7. 仮説 A / B</a></li>
+    <li><a href="#next-actions">8. 次にやることの順序</a></li>
+    <li><a href="#after">9. Webhook 登録後にやること</a></li>
+  </ul>
+</section>
+
+<h2 id="summary">1. 一言まとめ</h2>
+
+<p>Meta UI で「<strong>コールバックURLまたは認証トークンが確認できませんでした</strong>」のエラーが出る状態。原因は Meta が GET ハンドシェイクを叩いたときに 200 が返らないこと。<strong>API Gateway 直叩きは 200 で正常</strong>、<strong>CloudFront 経由のときだけ 403</strong> なので、CloudFront 側だけが問題で残っている。Invalidation で治る可能性が高い。</p>
+
+<h2 id="system">2. システム全体図 — リクエストはどの箱を通るか</h2>
+
+<p>Meta から飛んできたリクエストは次の順で各箱を通って Lambda に到達し、そこで処理される。</p>
+
+<div class="arch">
+  <div class="row">
+    <div class="actor meta">Meta<span class="sub">graph.facebook.com</span></div>
+    <div class="arrow">↓<br><span class="label">HTTPS</span></div>
+    <div class="note">SSL/TLS 1.2+ 必須。Meta 側からは Callback URL に POST/GET。</div>
+  </div>
+  <div class="row">
+    <div class="actor cf">CloudFront<span class="sub">E1BVZ9FF47RUPT<br>review.fumireply.ecsuite.work</span></div>
+    <div class="arrow">↓<br><span class="label">/api/*</span></div>
+    <div class="note">Distribution の ordered_cache_behavior <code>/api/*</code> が APIGW オリジンへ転送。Cache TTL = 0、QueryString = all。</div>
+  </div>
+  <div class="row">
+    <div class="actor apigw">API Gateway HTTP API<span class="sub">u4lf09r4ck.execute-api...</span></div>
+    <div class="arrow">↓<br><span class="label">route</span></div>
+    <div class="note">ルート <code>GET /api/webhook</code> / <code>POST /api/webhook</code> がそれぞれ Lambda 統合に向く。Stage は <code>$default</code> (auto_deploy)。</div>
+  </div>
+  <div class="row">
+    <div class="actor lambda">Webhook Lambda<span class="sub">fumireply-review-webhook</span></div>
+    <div class="arrow">↓<br><span class="label">SSM</span></div>
+    <div class="note">handler.handler が APIGatewayProxyEventV2 を受けて GET/POST で分岐。</div>
+  </div>
+  <div class="row">
+    <div class="actor ssm">SSM Parameter Store<span class="sub">/fumireply/review/meta/<br>webhook-verify-token</span></div>
+    <div class="arrow">·</div>
+    <div class="note">Lambda が verify_token / app_secret を取得。SecureString は IAM に閉じる（Lambda 実行ロールが GetParameter 権限保有）。</div>
+  </div>
+</div>
+
+<h2 id="two-types">3. Meta が叩く Webhook には 2 種類ある</h2>
+
+<p>同じ URL を <strong>登録時と運用時で違う方法</strong>で叩く。Lambda の処理も両方を 1 ハンドラで分岐する形になっている (<code>webhook/src/handler.ts</code>)。</p>
+
+<table>
+  <thead>
+    <tr><th>場面</th><th>HTTP</th><th>来るもの</th><th>返すもの</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>URL 登録 / 更新時の <strong>1 回だけ</strong></td>
+      <td><span class="pill get">GET</span></td>
+      <td>QueryString に <code>hub.mode=subscribe</code> + <code>hub.verify_token</code> + <code>hub.challenge</code></td>
+      <td><span class="pill ok">200</span> + body <code>hub.challenge</code> の値そのまま (text/plain)</td>
+    </tr>
+    <tr>
+      <td><strong>以降ずっと</strong> (DM 等のイベント受信)</td>
+      <td><span class="pill post">POST</span></td>
+      <td>JSON body + <code>X-Hub-Signature-256</code> header</td>
+      <td><span class="pill ok">200</span> (空 body 可)。Meta は 20 秒以内必須</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout note">
+  Meta UI の登録画面に「メソッドを選ぶ欄」はない。<strong>同じ Callback URL に対して Meta 側が GET と POST を投げ分ける</strong>。Lambda 側で両方のルートを API Gateway に登録する必要があるのはそのため。
+</div>
+
+<h2 id="get-flow">4. GET 検証ハンドシェイクのシーケンス</h2>
+
+<p>Meta UI の「Verify and Save」ボタンを押した瞬間、Meta が裏でやる動き。今これが 200 を返せていないので Meta UI が「URL またはトークンが確認できない」エラーを出している。</p>
+
+<div class="seq">
+  <table>
+    <thead>
+      <tr>
+        <th class="lane">Meta</th>
+        <th class="lane">CloudFront</th>
+        <th class="lane">API Gateway</th>
+        <th class="lane">Lambda</th>
+        <th class="lane">SSM</th>
+        <th class="msg">処理 / レスポンス</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="arr">●</td><td class="arr">→</td><td class="arr"></td><td class="arr"></td><td class="arr"></td>
+        <td><span class="pill get">GET</span> <code>/api/webhook?hub.mode=subscribe&amp;hub.verify_token=XXX&amp;hub.challenge=YYY</code></td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr">●</td><td class="arr">→</td><td class="arr"></td><td class="arr"></td>
+        <td>CloudFront <code>/api/*</code> behavior → APIGW オリジンに転送。query string そのまま forward。</td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr"></td><td class="arr">●</td><td class="arr">→</td><td class="arr"></td>
+        <td>route <code>GET /api/webhook</code> 一致 → Lambda invoke (proxy v2)。</td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr"></td><td class="arr"></td><td class="arr">●</td><td class="arr">→</td>
+        <td>handler 内 <code>handleGet(event)</code>。<code>hub.mode==='subscribe'</code> 確認 → SSM から verify_token 取得。</td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr"></td><td class="arr"></td><td class="arr">●</td><td class="arr">←</td>
+        <td>SSM が SecureString を復号して返す。</td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr"></td><td class="arr"></td><td class="arr">●</td><td class="arr"></td>
+        <td><span class="ok">一致</span>: <span class="pill ok">200</span> body <span class="body">YYY</span> を返す。<br><span class="err">不一致</span>: <span class="pill err">403</span> Forbidden を返す。</td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr"></td><td class="arr">←</td><td class="arr">●</td><td class="arr"></td>
+        <td>API Gateway 経由で CloudFront に戻る。</td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr">←</td><td class="arr">●</td><td class="arr"></td><td class="arr"></td>
+        <td>CloudFront はキャッシュせず（TTL=0）そのまま返す。</td>
+      </tr>
+      <tr>
+        <td class="arr">●</td><td class="arr">←</td><td class="arr"></td><td class="arr"></td><td class="arr"></td>
+        <td>Meta が <span class="body">YYY</span> を受信 → 検証成功 → URL 登録完了。</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="callout">
+  <strong>このフローを手元で再現するコマンド</strong>:
+  <pre><code>TOKEN=$(aws ssm get-parameter \
+  --name /fumireply/review/meta/webhook-verify-token \
+  --with-decryption --query Parameter.Value --output text)
+
+curl -i "https://review.fumireply.ecsuite.work/api/webhook?hub.mode=subscribe&hub.verify_token=$TOKEN&hub.challenge=test123"
+
+# 期待: HTTP/2 200 + body test123</code></pre>
+</div>
+
+<h2 id="post-flow">5. POST イベント受信のシーケンス</h2>
+
+<p>登録が通ったあと、実際に DM が来たときの流れ。Meta は 20 秒以内に 200 を返さないと「届かなかった」と判断して再送するため、AI 呼び出しなど重い処理は SQS に逃がす設計。</p>
+
+<div class="seq">
+  <table>
+    <thead>
+      <tr>
+        <th class="lane">Meta</th>
+        <th class="lane">CloudFront</th>
+        <th class="lane">API Gateway</th>
+        <th class="lane">Lambda</th>
+        <th class="lane">DB / SQS</th>
+        <th class="msg">処理 / レスポンス</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="arr">●</td><td class="arr">→</td><td class="arr"></td><td class="arr"></td><td class="arr"></td>
+        <td><span class="pill post">POST</span> <code>/api/webhook</code> + JSON body + <code>X-Hub-Signature-256</code></td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr">●</td><td class="arr">→</td><td class="arr"></td><td class="arr"></td>
+        <td>同 behavior 経由で APIGW へ転送。</td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr"></td><td class="arr">●</td><td class="arr">→</td><td class="arr"></td>
+        <td>route <code>POST /api/webhook</code> 一致 → Lambda invoke。</td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr"></td><td class="arr"></td><td class="arr">●</td><td class="arr"></td>
+        <td>handler 内 <code>handlePost(event)</code>。SSM から App Secret を取得 → HMAC-SHA256 で署名検証。</td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr"></td><td class="arr"></td><td class="arr">●</td><td class="arr"></td>
+        <td><span class="err">署名不一致</span>: <span class="pill err">403</span> 即返却。<span class="note">攻撃者・誤設定の防御線。</span></td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr"></td><td class="arr"></td><td class="arr">●</td><td class="arr">→</td>
+        <td><span class="ok">署名一致</span>: page_id → tenant_id 解決 → <code>messages</code> テーブル INSERT → SQS enqueue (AI Worker 用)。</td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr">←</td><td class="arr">←</td><td class="arr">●</td><td class="arr"></td>
+        <td><span class="pill ok">200</span> empty body を即返却。p95 &lt; 2 秒、p99 &lt; 5 秒 (Meta の 20 秒 SLA 内)。</td>
+      </tr>
+      <tr>
+        <td class="arr">●</td><td class="arr">←</td><td class="arr"></td><td class="arr"></td><td class="arr"></td>
+        <td>Meta は 200 を受領 → イベント配信成功 → 同イベントは再送しない。</td>
+      </tr>
+      <tr>
+        <td class="arr"></td><td class="arr"></td><td class="arr"></td><td class="arr">·</td><td class="arr">·</td>
+        <td><span class="note">非同期: AI Worker Lambda が SQS dequeue → Anthropic API → <code>ai_drafts</code> 保存 (status='ready')。</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="callout warn">
+  Webhook 受信 Lambda は <strong>AI 呼び出しを含めない</strong>。Anthropic API は p95 数秒〜数十秒かかるので、含めると Meta の 20 秒タイムアウトに当たって再送が暴発する。SQS で分離しているのはそのため。
+</div>
+
+<h2 id="current">6. 現在の症状 — どこで詰まっているか</h2>
+
+<p>同じパスを 2 つの経路で叩いた結果が真逆。</p>
+
+<div class="diag">
+  <div class="col good">
+    <h4><span class="pill ok">200</span> API Gateway 直叩き</h4>
+    <pre><code>curl -i "$APIGW_URL/api/webhook?hub.mode=subscribe&hub.verify_token=$TOKEN&hub.challenge=test123"
+
+HTTP/2 200
+content-type: text/plain; charset=utf-8
+content-length: 7
+
+test123</code></pre>
+    <p>→ <strong>Lambda は正しく動作している</strong>。SSM 取得・token 比較・200 返却すべて OK。</p>
+  </div>
+  <div class="col bad">
+    <h4><span class="pill err">403</span> CloudFront 経由</h4>
+    <pre><code>curl -i "https://review.fumireply.ecsuite.work/api/webhook?hub.mode=subscribe&hub.verify_token=$TOKEN&hub.challenge=test123"
+
+HTTP/2 403
+x-amzn-errortype: ForbiddenException
+x-cache: Error from cloudfront
+
+{"message":"Forbidden"}</code></pre>
+    <p>→ <strong>CloudFront → API Gateway の経路に何か起きている</strong>。Lambda には到達していない（CloudWatch Logs に記録なし）。</p>
+  </div>
+</div>
+
+<div class="callout">
+  <strong>注目ポイント</strong>: <code>{"message":"Forbidden"}</code> + <code>x-amzn-errortype: ForbiddenException</code> は API Gateway HTTP API が「ルート未マッチ」で返すデフォルト応答の形。<code>x-cache: Error from cloudfront</code> から、CloudFront が「オリジンからエラーが返ったので返す」状態であることがわかる（=オリジンが APIGW のエラーレスポンスを CloudFront に返している）。
+</div>
+
+<h2 id="hypotheses">7. 仮説 A / B</h2>
+
+<h3>仮説 A: CloudFront に古い 403 が残留している</h3>
+
+<p>過去に Lambda が <code>Cannot find module 'handler'</code> で初期化に失敗していた時期に、CloudFront 経由で 403 が返り続けていた。CloudFront はデフォルトで <strong>4xx エラーレスポンスを最大 10 秒間ネガティブキャッシュ</strong>するが、より長く残るケースもある。Cache-Control / TTL の挙動によっては古いレスポンスが見えてしまう。</p>
+
+<p>確認・治療: <code>create-invalidation</code> でキャッシュを強制クリア（即効性あり）。</p>
+
+<h3>仮説 B: CloudFront のオリジン設定が古い API Gateway を指している</h3>
+
+<p>terraform apply のタイミングのズレで、CloudFront に登録された APIGW オリジンの DomainName が、現在動いている API Gateway とは別のもの（過去に作られて消された API）を指している可能性。その場合 CloudFront は誰もいないオリジンに転送 → APIGW がデフォルトの「ルート未マッチ」を返す。</p>
+
+<p>確認: <code>aws cloudfront get-distribution</code> で取得した origin と <code>terraform output api_gateway_invoke_url</code> を文字列比較。</p>
+
+<h2 id="next-actions">8. 次にやることの順序</h2>
+
+<p>仮説 A は即効・低リスクなので先に試す。</p>
+
+<div class="callout ok">
+  <strong>Step 1: CloudFront キャッシュ強制クリア</strong>
+  <pre><code>aws cloudfront create-invalidation \
+  --distribution-id E1BVZ9FF47RUPT \
+  --paths "/api/*"</code></pre>
+  <p>30 秒〜2 分待ってから再試行:</p>
+  <pre><code>TOKEN=$(aws ssm get-parameter \
+  --name /fumireply/review/meta/webhook-verify-token \
+  --with-decryption --query Parameter.Value --output text)
+
+curl -i "https://review.fumireply.ecsuite.work/api/webhook?hub.mode=subscribe&hub.verify_token=$TOKEN&hub.challenge=test123"</code></pre>
+  <p><span class="pill ok">200</span> + <code>test123</code> なら原因 A 確定 → そのまま Meta UI で <strong>Verify and Save</strong>。</p>
+</div>
+
+<div class="callout warn">
+  <strong>Step 2: A で治らなかった場合 — オリジン設定の確認</strong>
+  <pre><code># CloudFront が見ているオリジン
+CF_ORIGIN=$(aws cloudfront get-distribution \
+  --id E1BVZ9FF47RUPT \
+  --query "Distribution.DistributionConfig.Origins.Items[?Id=='APIGW-fumireply-review'].DomainName | [0]" \
+  --output text)
+echo "CloudFront origin: $CF_ORIGIN"
+
+# 直叩きで通った API Gateway
+cd /Users/ssdef/program/fumireply/terraform/envs/review
+APIGW_HOST=$(terraform output -raw api_gateway_invoke_url | sed -E 's|https://||')
+echo "Terraform: $APIGW_HOST"</code></pre>
+  <p>2 値が違う場合:</p>
+  <pre><code>cd /Users/ssdef/program/fumireply/terraform/envs/review
+terraform apply -target=module.static_site</code></pre>
+  <p>これで CloudFront のオリジンが正しい APIGW に揃う。</p>
+</div>
+
+<div class="callout danger">
+  <strong>Step 3: それでも治らなかった場合 — Lambda ログ確認</strong>
+  <pre><code>aws logs tail /aws/lambda/fumireply-review-webhook --since 10m</code></pre>
+  <p>ログに <code>START RequestId:...</code> があれば Lambda には届いている → Lambda 内部の挙動を疑う。ログが空なら経路（CloudFront / APIGW）の問題が継続中。</p>
+</div>
+
+<h2 id="after">9. Webhook 登録後にやること</h2>
+
+<p>Meta UI で <strong>Verify and Save</strong> が通ったあとの流れ。詳細は <a href="./e2e-meta-testing.html">e2e-meta-testing.html</a> §4 以降。</p>
+
+<ol>
+  <li><strong>Page を Webhook 購読対象に追加</strong> — Messenger → Webhooks 設定画面で Test Page を選んで <code>Subscribe</code>。Subscription Fields は <code>messages</code>, <code>messaging_postbacks</code></li>
+  <li><strong>Customer Tester（B 役）を Tester Role に招待</strong> — App Dashboard → Roles → Add Testers。B のアカウントで通知を承諾</li>
+  <li><strong>実機 E2E</strong> — B から Page に DM → 受信一覧に表示 → スレッドを開いて AI 下書き確認 → 編集して送信 → B の Messenger に着信</li>
+  <li><strong>各レイヤの観測ポイント確認</strong> — CloudWatch Logs / DB の <code>messages</code>, <code>conversations</code>, <code>ai_drafts</code> / SQS メトリクス / Send API レスポンスの <code>meta_message_id</code></li>
+</ol>
+
+<div class="callout note">
+  Webhook 登録が通ったあと、<strong>POST 用に署名検証が機能するかも追加で curl 検証</strong>しておくと安心。<a href="./webhook.html">webhook.html</a> §署名検証 を参照。署名検証が通っていない POST には Lambda が 403 を返す設計なので、初動でうっかり通る方が事故。
+</div>
+
+</div>
+</body>
+</html>
