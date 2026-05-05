@@ -263,6 +263,19 @@ resource "aws_cloudfront_distribution" "app" {
     origin_request_policy_id = aws_cloudfront_origin_request_policy.dynamic.id
   }
 
+  # /login* → API Gateway (TanStack Start hosts the login page; ssr:false シェルを Lambda が返す)
+  ordered_cache_behavior {
+    path_pattern           = "/login*"
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "APIGW-${var.name_prefix}"
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
+
+    cache_policy_id          = aws_cloudfront_cache_policy.dynamic.id
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.dynamic.id
+  }
+
   # /threads/* → API Gateway (authenticated SSR)
   ordered_cache_behavior {
     path_pattern           = "/threads/*"
