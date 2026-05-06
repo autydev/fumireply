@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { setCookie } from '@tanstack/react-start/server'
 import { z } from 'zod'
+import { COOKIE_NAME } from './locale'
 
 const SetLocaleInput = z.object({
   locale: z.enum(['en', 'ja']),
@@ -8,7 +9,7 @@ const SetLocaleInput = z.object({
 
 export async function performSetLocale(data: z.infer<typeof SetLocaleInput>) {
   // HttpOnly is intentionally NOT set — client-side Paraglide reads this cookie
-  setCookie('fumireply_locale', data.locale, {
+  setCookie(COOKIE_NAME, data.locale, {
     path: '/',
     maxAge: 31536000,
     sameSite: 'lax',
