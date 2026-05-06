@@ -33,6 +33,35 @@ export function ReplyForm({
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveInnerTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const bodyRef = useRef(body)
+  // Tracks the inbound message id whose draft we've already filled into the
+  // textarea, so polling re-fetches don't repeatedly overwrite or re-show it
+  // (especially after the user sends a reply).
+  const filledForInboundIdRef = useRef<string | null>(
+    latestDraft?.status === 'ready' ? latestInboundMessageId : null,
+  )
+
+  useEffect(() => {
+    bodyRef.current = body
+  }, [body])
+
+  // Sync latestDraft prop into local state when polling fetches a new value.
+  useEffect(() => {
+    if (!latestDraft) {
+      if (draftStatus !== null) setDraftStatus(null)
+      return
+    }
+    if (latestDraft.status !== 'ready') {
+      if (latestDraft.status !== draftStatus) setDraftStatus(latestDraft.status)
+      return
+    }
+    if (latestInboundMessageId === filledForInboundIdRef.current) return
+    setDraftStatus('ready')
+    if (!bodyRef.current.trim()) {
+      setBody(latestDraft.body)
+    }
+    filledForInboundIdRef.current = latestInboundMessageId
+  }, [latestDraft, latestInboundMessageId, draftStatus])
 
   const isWindowClosed = !conversation.within_24h_window
   const hoursRemaining = conversation.hours_remaining_in_window
@@ -195,7 +224,7 @@ export function ReplyForm({
               }}
             >
               <SparkleIcon size={11} />
-              Claude ドラフト
+              AI suggestion
             </span>
 
             {/* Feedback buttons */}
