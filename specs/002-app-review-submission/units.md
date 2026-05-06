@@ -37,7 +37,7 @@ Routine は `ready` の中から自動選定する。`manual` は Routine が選
 | Unit | tasks | scope | deps | files | automation | 概要 |
 |------|-------|-------|------|-------|------------|------|
 | U1.1 | T001 | infra | none | 0 | auto | ブランチ確認 + npm ci |
-| U1.2 | T002–T006 | frontend | U1.1 | ~5 | auto | Paraglide インストール + inlang 設定 + メッセージ JSON 骨格 + Vite plugin |
+| U1.2 | T002–T006 | frontend | U1.1 | ~5 | auto | Paraglide インストール + inlang 設定 + メッセージ JSON 骨格 + predev/prebuild compile スクリプト |
 | U1.3 | T007–T009 | infra | none | ~1 | manual | VITE_FB_APP_ID env 設定 + Meta App Settings 確認 + FB Test User 作成 |
 
 ## Phase 2: Foundational (Blocking Prerequisites)
@@ -55,7 +55,7 @@ Routine は `ready` の中から自動選定する。`manual` は Routine が選
 | U3.2 | T021–T024 | frontend | U2.1 | ~2 | auto | 翻訳キー追加（login/inbox/thread/reply）+ paraglide compile |
 | U3.3 | T025–T027 | frontend | U2.1,U3.2 | ~3 | auto | LanguageToggle コンポーネント + Header/Login への挿入 |
 | U3.4 | T028–T032 | frontend | U3.2 | ~5 | auto | 既存 JA ハードコード文字列を m.xxx() 呼び出しへ置換 |
-| U3.5 | T033 | infra | U3.2 | ~1 | auto | paraglide-js compile を Vite dev/build フローに統合 |
+| U3.5 | T033 | infra | U3.2 | ~1 | auto | CI に paraglide-js compile diff チェックを追加（未コンパイル状態を PR で検出）|
 | U3.6 | T034 | frontend | U3.3,U3.4 | 0 | manual | LanguageToggle screencast 撮影 |
 
 ## Phase 4: US1 — Connect Page UI
