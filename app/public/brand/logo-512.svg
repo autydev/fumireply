@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Fumireply">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4F5BC5"/>
+      <stop offset="100%" stop-color="#A056C5"/>
+    </linearGradient>
+    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
+      <feOffset dx="0" dy="4" result="offsetBlur"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.18"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Rounded square background (108px radius follows iOS/Android app icon convention) -->
+  <rect x="0" y="0" width="512" height="512" rx="108" ry="108" fill="url(#bg)"/>
+
+  <!-- Speech bubble (centered, slightly offset upward to leave room for tail) -->
+  <g filter="url(#softShadow)">
+    <path d="
+      M 138 156
+      Q 138 124 170 124
+      L 342 124
+      Q 374 124 374 156
+      L 374 296
+      Q 374 328 342 328
+      L 244 328
+      L 196 372
+      L 196 328
+      L 170 328
+      Q 138 328 138 296
+      Z
+    " fill="#FFFFFF"/>
+
+    <!-- Two-line dot pattern inside bubble (suggests text content) -->
+    <circle cx="190" cy="206" r="14" fill="#4F5BC5"/>
+    <circle cx="234" cy="206" r="14" fill="#4F5BC5" opacity="0.6"/>
+    <circle cx="278" cy="206" r="14" fill="#4F5BC5" opacity="0.35"/>
+
+    <rect x="178" y="248" width="148" height="20" rx="10" fill="#A056C5" opacity="0.55"/>
+  </g>
+
+  <!-- AI sparkle accent (top-right of bubble) -->
+  <g transform="translate(376 132)">
+    <!-- 4-point sparkle -->
+    <path d="
+      M 0 -38
+      L 8 -8
+      L 38 0
+      L 8 8
+      L 0 38
+      L -8 8
+      L -38 0
+      L -8 -8
+      Z
+    " fill="#FFFFFF"/>
+    <!-- Small secondary sparkle -->
+    <path d="
+      M 36 32
+      L 40 18
+      L 54 22
+      L 40 26
+      L 36 40
+      L 32 26
+      L 18 22
+      L 32 18
+      Z
+    " fill="#FFFFFF" opacity="0.85"/>
+  </g>
+</svg>
