@@ -37,9 +37,10 @@ $CLEANUP_DATA && log "  --cleanup-recording-data: 撮影データを削除しま
 
 # ── 事前チェック ──────────────────────────────────────────────────────────────
 log "依存ツールの確認..."
-for cmd in aws curl jq openssl psql; do
+for cmd in aws curl jq psql; do
   command -v "$cmd" &>/dev/null || { log "ERROR: '$cmd' が見つかりません。インストールしてください。"; exit 1; }
 done
+$ROTATE_PASSWORD && { command -v openssl &>/dev/null || { log "ERROR: 'openssl' が見つかりません (--rotate-password に必要)。インストールしてください。"; exit 1; }; }
 
 [[ -n "${AWS_PROFILE:-}" ]] || { log "ERROR: AWS_PROFILE 環境変数が未設定です。"; exit 1; }
 log "AWS_PROFILE=$AWS_PROFILE"
@@ -180,13 +181,13 @@ if $CLEANUP_DATA; then
 DO \$\$
 DECLARE
   v_tenant_id uuid;
-  v_page_id uuid;
 BEGIN
   SELECT id INTO v_tenant_id FROM tenants WHERE slug = '${TENANT_SLUG}' LIMIT 1;
   IF v_tenant_id IS NULL THEN RAISE NOTICE 'tenant not found'; RETURN; END IF;
 
-  SELECT id INTO v_page_id FROM connected_pages WHERE tenant_id = v_tenant_id LIMIT 1;
-  IF v_page_id IS NULL THEN RAISE NOTICE 'no connected_page to clean up'; RETURN; END IF;
+  IF NOT EXISTS (SELECT 1 FROM connected_pages WHERE tenant_id = v_tenant_id) THEN
+    RAISE NOTICE 'no connected_page to clean up'; RETURN;
+  END IF;
 
   DELETE FROM messages
     WHERE conversation_id IN (
