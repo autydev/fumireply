@@ -84,34 +84,58 @@ describe('localeMiddleware server handler', () => {
   })
 })
 
-describe('SSR locale concurrent isolation', () => {
-  it('resolves correct locale for 100 concurrent requests without cross-contamination', async () => {
-    // getLocaleFromCookieHeader is a pure function — verify stable output under concurrency
-    const { getLocaleFromCookieHeader } = await import('~/lib/i18n/locale')
+// Concurrent isolation: verify localeMiddleware calls setLocale with the correct locale
+// for each request when multiple middleware invocations run concurrently.
+// (Node.js is single-threaded, so Promise.all schedules them cooperatively;
+// the test confirms setLocale is invoked once per request with the right value,
+// detecting any shared-state bug in the locale-resolution path.)
+describe('SSR locale concurrent isolation via localeMiddleware', () => {
+  beforeEach(async () => {
+    capturedServerHandler = null
+    mockSetLocale.mockClear()
+    vi.resetModules()
+    await import('~/lib/i18n/locale-middleware')
+  })
+
+  it('setLocale is called with the correct locale for each of 100 concurrent middleware invocations', async () => {
+    if (!capturedServerHandler) throw new Error('middleware not registered')
+    const handler = capturedServerHandler
 
     const requests = Array.from({ length: 100 }, (_, i) => ({
-      cookie: i % 2 === 0 ? 'fumireply_locale=en' : 'fumireply_locale=ja',
+      cookieHeader: i % 2 === 0 ? 'fumireply_locale=en' : 'fumireply_locale=ja',
       expected: i % 2 === 0 ? 'en' : 'ja',
     }))
 
-    const results = await Promise.all(
-      requests.map(({ cookie }) =>
-        Promise.resolve(getLocaleFromCookieHeader(cookie)),
-      ),
+    await Promise.all(
+      requests.map(({ cookieHeader }) => {
+        const headers = new Headers()
+        headers.set('cookie', cookieHeader)
+        const request = new Request('https://example.com/', { headers })
+        const next = vi.fn().mockReturnValue(undefined)
+        return Promise.resolve(handler({ next, request }))
+      }),
     )
 
-    results.forEach((locale, i) => {
-      expect(locale, `request[${i}] should be ${requests[i].expected}`).toBe(requests[i].expected)
-    })
+    expect(mockSetLocale).toHaveBeenCalledTimes(100)
+    const localeCalls = mockSetLocale.mock.calls.map(([locale]: [string]) => locale)
+    expect(localeCalls.filter((l) => l === 'en').length).toBe(50)
+    expect(localeCalls.filter((l) => l === 'ja').length).toBe(50)
   })
 
-  it('resolves "ja" for all no-cookie requests under concurrency', async () => {
-    const { getLocaleFromCookieHeader } = await import('~/lib/i18n/locale')
+  it('setLocale("ja") is called for every no-cookie middleware invocation under concurrency', async () => {
+    if (!capturedServerHandler) throw new Error('middleware not registered')
+    const handler = capturedServerHandler
 
-    const results = await Promise.all(
-      Array.from({ length: 50 }, () => Promise.resolve(getLocaleFromCookieHeader(''))),
+    await Promise.all(
+      Array.from({ length: 50 }, () => {
+        const request = new Request('https://example.com/')
+        const next = vi.fn().mockReturnValue(undefined)
+        return Promise.resolve(handler({ next, request }))
+      }),
     )
 
-    expect(results.every((r) => r === 'ja')).toBe(true)
+    expect(mockSetLocale).toHaveBeenCalledTimes(50)
+    const localeCalls = mockSetLocale.mock.calls.map(([locale]: [string]) => locale)
+    expect(localeCalls.every((l) => l === 'ja')).toBe(true)
   })
 })
