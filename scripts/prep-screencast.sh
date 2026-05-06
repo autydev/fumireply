@@ -29,7 +29,7 @@ $DRY_RUN && log "*** DRY-RUN MODE: 本番への副作用はありません ***"
 
 # ── 事前チェック ──────────────────────────────────────────────────────────────
 log "依存ツールの確認..."
-for cmd in aws curl jq; do
+for cmd in aws curl jq psql; do
   command -v "$cmd" &>/dev/null || { log "ERROR: '$cmd' が見つかりません。インストールしてください。"; exit 1; }
 done
 
@@ -54,6 +54,42 @@ DATABASE_URL="$(get_ssm "${SSM_PREFIX}/db-url")"
 
 log "SSM 取得完了。"
 
+# ── curl helper: service role key を ps に露出させない ───────────────────────
+# SERVICE_ROLE_KEY をコマンドライン引数に載せないよう --config ファイル経由で渡す
+CURL_CFG=$(mktemp)
+trap 'rm -f "$CURL_CFG"' EXIT
+printf 'header = "Authorization: Bearer %s"\nheader = "apikey: %s"\n' \
+  "$SERVICE_ROLE_KEY" "$SERVICE_ROLE_KEY" > "$CURL_CFG"
+
+supabase_curl() {
+  # supabase_curl [extra curl args...] URL
+  curl -sf --config "$CURL_CFG" --max-time 30 "$@"
+}
+
+# ── psql helper: DATABASE_URL を引数に露出させない ───────────────────────────
+# DATABASE_URL をコマンドライン引数に載せないよう PG* 環境変数で渡す
+parse_db_url() {
+  local url="${DATABASE_URL}"
+  url="${url#postgres://}"
+  url="${url#postgresql://}"
+  local userinfo="${url%%@*}"
+  local hostinfo="${url#*@}"
+  export PGUSER="${userinfo%%:*}"
+  export PGPASSWORD="${userinfo#*:}"
+  local hostport="${hostinfo%%/*}"
+  export PGDATABASE="${hostinfo#*/}"
+  export PGDATABASE="${PGDATABASE%%\?*}"
+  if [[ "$hostport" =~ :[0-9]+$ ]]; then
+    export PGHOST="${hostport%:*}"
+    export PGPORT="${hostport##*:}"
+  else
+    export PGHOST="$hostport"
+    export PGPORT="5432"
+  fi
+}
+
+parse_db_url
+
 # ── (c) パスワードをクリップボードにコピー ──────────────────────────────────
 log "(c) reviewer パスワードをクリップボードへ..."
 log "    password: ${REVIEWER_PASSWORD:0:4}****${REVIEWER_PASSWORD: -2} (先頭4文字+末尾2文字のみ表示)"
@@ -76,9 +112,7 @@ find_reviewer_id() {
   local page=1
   while true; do
     local resp
-    resp="$(curl -sf \
-      -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" \
-      -H "apikey: ${SERVICE_ROLE_KEY}" \
+    resp="$(supabase_curl \
       "${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=100")" || {
         log "ERROR: Supabase Admin API (/auth/v1/admin/users) の呼び出しに失敗しました。"
         exit 1
@@ -96,15 +130,13 @@ find_reviewer_id() {
 }
 
 if $DRY_RUN; then
-  dryrun_note "PATCH ${SUPABASE_URL}/auth/v1/admin/users/{user_id} ban_duration=none をスキップ"
+  dryrun_note "PUT ${SUPABASE_URL}/auth/v1/admin/users/{user_id} ban_duration=none をスキップ"
 else
   REVIEWER_ID="$(find_reviewer_id)"
   [[ -n "$REVIEWER_ID" ]] || { log "ERROR: reviewer ($REVIEWER_EMAIL) がユーザーリストに見つかりません。"; exit 1; }
   log "    reviewer user_id=$REVIEWER_ID"
   confirm "reviewer ($REVIEWER_EMAIL) の ban を解除しますか？"
-  curl -sf -X PUT \
-    -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" \
-    -H "apikey: ${SERVICE_ROLE_KEY}" \
+  supabase_curl -X PUT \
     -H "Content-Type: application/json" \
     -d '{"ban_duration":"none"}' \
     "${SUPABASE_URL}/auth/v1/admin/users/${REVIEWER_ID}" \
@@ -115,17 +147,16 @@ fi
 
 # ── (b) connected_pages 削除 (Malbek tenant) ─────────────────────────────────
 log "(b) connected_pages から Malbek テナントの行を削除中..."
-DELETE_SQL="
-DELETE FROM connected_pages
-WHERE tenant_id = (SELECT id FROM tenants WHERE slug = '${TENANT_SLUG}' LIMIT 1);
-"
 if $DRY_RUN; then
-  dryrun_note "psql: $DELETE_SQL"
+  dryrun_note "psql: DELETE FROM connected_pages WHERE tenant_id = (SELECT id FROM tenants WHERE slug = '${TENANT_SLUG}')"
 else
   confirm "connected_pages から slug='${TENANT_SLUG}' のテナント行を削除しますか？（撮影後に再接続します）"
-  DELETED_COUNT="$(psql "$DATABASE_URL" -At -c \
-    "DELETE FROM connected_pages WHERE tenant_id = (SELECT id FROM tenants WHERE slug = '${TENANT_SLUG}' LIMIT 1); SELECT ROW_COUNT();" \
-    2>/dev/null || echo "?")"
+  DELETED_COUNT="$(psql -v ON_ERROR_STOP=1 -At -c \
+    "WITH deleted AS (
+       DELETE FROM connected_pages
+       WHERE tenant_id = (SELECT id FROM tenants WHERE slug = '${TENANT_SLUG}' LIMIT 1)
+       RETURNING id
+     ) SELECT count(*) FROM deleted;")"
   log "    → 削除完了 (affected rows: ${DELETED_COUNT})。"
 fi
 

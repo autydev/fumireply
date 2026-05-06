@@ -37,7 +37,7 @@ $CLEANUP_DATA && log "  --cleanup-recording-data: 撮影データを削除しま
 
 # ── 事前チェック ──────────────────────────────────────────────────────────────
 log "依存ツールの確認..."
-for cmd in aws curl jq openssl; do
+for cmd in aws curl jq openssl psql; do
   command -v "$cmd" &>/dev/null || { log "ERROR: '$cmd' が見つかりません。インストールしてください。"; exit 1; }
 done
 
@@ -60,14 +60,45 @@ SERVICE_ROLE_KEY="$(get_ssm "${SSM_PREFIX}/secret-key")"
 DATABASE_URL="$(get_ssm "${SSM_PREFIX}/db-url")"
 log "SSM 取得完了。"
 
+# ── curl helper: service role key を ps に露出させない ───────────────────────
+CURL_CFG=$(mktemp)
+trap 'rm -f "$CURL_CFG"' EXIT
+printf 'header = "Authorization: Bearer %s"\nheader = "apikey: %s"\n' \
+  "$SERVICE_ROLE_KEY" "$SERVICE_ROLE_KEY" > "$CURL_CFG"
+
+supabase_curl() {
+  curl -sf --config "$CURL_CFG" --max-time 30 "$@"
+}
+
+# ── psql helper: DATABASE_URL を引数に露出させない ───────────────────────────
+parse_db_url() {
+  local url="${DATABASE_URL}"
+  url="${url#postgres://}"
+  url="${url#postgresql://}"
+  local userinfo="${url%%@*}"
+  local hostinfo="${url#*@}"
+  export PGUSER="${userinfo%%:*}"
+  export PGPASSWORD="${userinfo#*:}"
+  local hostport="${hostinfo%%/*}"
+  export PGDATABASE="${hostinfo#*/}"
+  export PGDATABASE="${PGDATABASE%%\?*}"
+  if [[ "$hostport" =~ :[0-9]+$ ]]; then
+    export PGHOST="${hostport%:*}"
+    export PGPORT="${hostport##*:}"
+  else
+    export PGHOST="$hostport"
+    export PGPORT="5432"
+  fi
+}
+
+parse_db_url
+
 # ── reviewer user_id 取得 ────────────────────────────────────────────────────
 find_reviewer_id() {
   local page=1
   while true; do
     local resp
-    resp="$(curl -sf \
-      -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" \
-      -H "apikey: ${SERVICE_ROLE_KEY}" \
+    resp="$(supabase_curl \
       "${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=100")" || {
         log "ERROR: Supabase Admin API の呼び出しに失敗しました。"
         exit 1
@@ -95,7 +126,7 @@ fi
 # ── (1) reviewer を再 ban ─────────────────────────────────────────────────────
 log "(1) reviewer を再無効化 (banned_until=$BAN_UNTIL_DEFAULT)..."
 if $DRY_RUN; then
-  dryrun_note "PATCH ${SUPABASE_URL}/auth/v1/admin/users/{user_id} ban_duration=876000h をスキップ"
+  dryrun_note "PUT ${SUPABASE_URL}/auth/v1/admin/users/{user_id} ban_duration=876000h をスキップ"
 else
   confirm "reviewer ($REVIEWER_EMAIL) を再度 ban しますか？"
   # Supabase ban_duration は Go duration 形式。2099-12-31 相当は ~876000h（≈100年）
@@ -106,9 +137,7 @@ now = datetime.now(timezone.utc)
 diff_hours = int((target - now).total_seconds() / 3600)
 print(f'{diff_hours}h')
 " 2>/dev/null || echo "876000h")"
-  curl -sf -X PUT \
-    -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" \
-    -H "apikey: ${SERVICE_ROLE_KEY}" \
+  supabase_curl -X PUT \
     -H "Content-Type: application/json" \
     -d "{\"ban_duration\":\"${BAN_HOURS}\"}" \
     "${SUPABASE_URL}/auth/v1/admin/users/${REVIEWER_ID}" \
@@ -128,16 +157,12 @@ if $ROTATE_PASSWORD; then
     dryrun_note "SSM put-parameter: /fumireply/review/supabase/reviewer-password スキップ"
   else
     confirm "パスワードをローテーションしますか？（Meta 審査中は変更しないこと）"
-    # Supabase Admin API でパスワード更新
-    curl -sf -X PUT \
-      -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" \
-      -H "apikey: ${SERVICE_ROLE_KEY}" \
+    supabase_curl -X PUT \
       -H "Content-Type: application/json" \
       -d "{\"password\":\"${NEW_PASSWORD}\"}" \
       "${SUPABASE_URL}/auth/v1/admin/users/${REVIEWER_ID}" \
       | jq '.updated_at' \
       || { log "ERROR: パスワード更新 API の呼び出しに失敗しました。"; exit 1; }
-    # SSM に書き込み
     aws ssm put-parameter \
       --name "${SSM_PREFIX}/reviewer-password" \
       --value "$NEW_PASSWORD" \
@@ -177,7 +202,7 @@ END;
     dryrun_note "psql cleanup SQL スキップ"
   else
     confirm "撮影データ (connected_pages + conversations + messages for tenant '${TENANT_SLUG}') を削除しますか？"
-    psql "$DATABASE_URL" -c "$CLEANUP_SQL"
+    psql -v ON_ERROR_STOP=1 -c "$CLEANUP_SQL"
     log "    → 撮影データを削除しました。"
   fi
 fi
