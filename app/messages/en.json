@@ -21,5 +21,6 @@
   "reply_error_outside_window": "The 24-hour window is closed. You cannot reply.",
   "reply_error_token_expired": "Page access token has expired. Please contact your administrator.",
   "reply_error_meta_failed": "Failed to send to Meta. Please wait and try again.",
-  "reply_error_generic": "Send failed."
+  "reply_error_generic": "Send failed.",
+  "reply_draft_generating": "Generating draft..."
 }
