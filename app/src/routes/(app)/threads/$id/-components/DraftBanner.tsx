@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getDraftStatusFn } from '../-lib/get-draft-status.fn'
 import { SparkleIcon } from '~/components/ui/icons'
+import { m } from '~/paraglide/messages'
 
 const POLL_INTERVAL_MS = 3000
 const MAX_POLL_MS = 60_000
@@ -91,7 +92,7 @@ export function DraftBanner({
       }}
     >
       <SparkleIcon size={12} />
-      下書き生成中…
+      {m.reply_draft_generating()}
     </div>
   )
 }

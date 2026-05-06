@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { loginFn } from '../-lib/login.fn'
+import { m } from '~/paraglide/messages'
 
 export function LoginForm({ returnTo }: { returnTo?: string }) {
   const navigate = useNavigate()
@@ -19,7 +20,7 @@ export function LoginForm({ returnTo }: { returnTo?: string }) {
       if (result.ok) {
         await navigate({ to: returnTo ?? '/inbox' })
       } else {
-        setError('Invalid email or password')
+        setError(m.login_error_invalid_credentials())
       }
     } catch {
       setError('Login failed. Please try again.')
@@ -99,7 +100,7 @@ export function LoginForm({ returnTo }: { returnTo?: string }) {
               htmlFor="login-email"
               style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--color-ink-2)', marginBottom: 5, letterSpacing: '0.03em' }}
             >
-              Email
+              {m.login_email_label()}
             </label>
             <input
               id="login-email"
@@ -127,7 +128,7 @@ export function LoginForm({ returnTo }: { returnTo?: string }) {
               htmlFor="login-password"
               style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--color-ink-2)', marginBottom: 5, letterSpacing: '0.03em' }}
             >
-              Password
+              {m.login_password_label()}
             </label>
             <input
               id="login-password"
@@ -184,7 +185,7 @@ export function LoginForm({ returnTo }: { returnTo?: string }) {
               transition: 'opacity 120ms',
             }}
           >
-            {loading ? 'Logging in…' : 'Login'}
+            {loading ? 'Logging in…' : m.login_submit_button()}
           </button>
         </form>
 
