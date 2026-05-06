@@ -21,7 +21,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed:review": "tsx src/server/db/seed/review.ts",
     "db:seed:e2e": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/server/db/seed/e2e.ts",
-    "paraglide:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide",
+    "paraglide:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --emit-ts-declarations",
     "predev": "npm run paraglide:compile",
     "prebuild": "npm run paraglide:compile"
   },
