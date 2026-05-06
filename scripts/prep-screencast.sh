@@ -179,11 +179,11 @@ for url in "${HEALTH_URLS[@]}"; do
   if [[ "$status" == "200" || "$status" == "301" || "$status" == "302" ]]; then
     log "    ✓ $url → $status"
   else
-    log "    ✗ $url → $status (期待値: 200)"
+    log "    ✗ $url → $status (期待値: 200/301/302)"
     HEALTH_FAILED=true
   fi
 done
-$HEALTH_FAILED && { log "ERROR: 一部 URL が 200 を返していません。本番の状態を確認してください。"; exit 1; } || true
+$HEALTH_FAILED && { log "ERROR: 一部 URL が 200/301/302 を返していません。本番の状態を確認してください。"; exit 1; } || true
 
 # ── (e) 監査ログ append ────────────────────────────────────────────────────────
 log "(e) 監査ログを追記中..."
