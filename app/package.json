@@ -38,6 +38,8 @@
   "devDependencies": {
     "@aws-sdk/client-sqs": "^3.1040.0",
     "@eslint/js": "^10.0.1",
+    "@inlang/paraglide-js": "^2.18.0",
+    "@inlang/paraglide-unplugin": "^1.9.5",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.2.4",
     "@tanstack/router-cli": "^1.166.33",
