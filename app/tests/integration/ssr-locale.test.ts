@@ -1,6 +1,8 @@
 // @vitest-environment node
-// Integration: SSR locale resolution — localeMiddleware sets Paraglide locale from Cookie
-// Also verifies concurrent request isolation (AsyncLocalStorage safety)
+// Integration: SSR locale resolution — localeMiddleware sets Paraglide locale from Cookie.
+// Concurrent tests run capturedServerHandler in parallel to verify no shared state in the
+// middleware's locale-resolution path (setLocale mock is called once per invocation with
+// the correct locale; Paraglide runtime AsyncLocalStorage isolation is out of scope here).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
