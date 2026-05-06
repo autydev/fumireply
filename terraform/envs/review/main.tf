@@ -170,6 +170,9 @@ module "ai_worker_lambda" {
   sqs_queue_arn            = module.queue.queue_arn
   lambda_package_s3_bucket = aws_s3_bucket.lambda_artifacts.id
   lambda_package_s3_key    = aws_s3_object.placeholder.key
+
+  database_url              = data.aws_ssm_parameter.supabase_db_url.value
+  database_url_service_role = data.aws_ssm_parameter.supabase_db_url_service_role.value
 }
 
 ###############################################################################

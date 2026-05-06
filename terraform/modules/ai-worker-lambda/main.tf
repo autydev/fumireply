@@ -106,8 +106,10 @@ resource "aws_lambda_function" "ai_worker" {
 
   environment {
     variables = {
-      SSM_PATH_PREFIX = var.ssm_path_prefix
-      ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
+      SSM_PATH_PREFIX           = var.ssm_path_prefix
+      ANTHROPIC_MODEL           = "claude-haiku-4-5-20251001"
+      DATABASE_URL              = var.database_url
+      DATABASE_URL_SERVICE_ROLE = var.database_url_service_role
     }
   }
 
