@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { useRouter } from '@tanstack/react-router'
 import { sendReplyFn } from '../-lib/send-reply.fn'
 import { DraftBanner } from './DraftBanner'
 import type { ConversationDetail } from '../-lib/get-conversation.fn'
@@ -21,6 +22,7 @@ export function ReplyForm({
   latestDraft,
   latestInboundMessageId,
 }: Props) {
+  const router = useRouter()
   const [body, setBody] = useState(
     latestDraft?.status === 'ready' ? (latestDraft.body ?? '') : '',
   )
@@ -75,6 +77,7 @@ export function ReplyForm({
         setDraftStatus(null)
         setFeedback(null)
         setSaveState('saved')
+        await router.invalidate()
       } else {
         const errorMessages: Record<string, string> = {
           outside_window: '24時間窓が閉じています。返信できません。',

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
+import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import type { MessageWithDraft } from './-lib/get-conversation.fn'
 import { getConversationFn } from './-lib/get-conversation.fn'
 import { ThreadMessages } from './-components/ThreadMessages'
@@ -10,6 +10,8 @@ import { listConversationsFn } from '../../inbox/-lib/list-conversations.fn'
 import { ChevronLeftIcon, MoreHorizIcon, StarIcon } from '~/components/ui/icons'
 
 type FilterKey = 'all' | 'unread' | 'draft' | 'overdue'
+
+const POLL_INTERVAL_MS = 7000
 
 export const Route = createFileRoute('/(app)/threads/$id/')({
   loader: async ({ params }) => {
@@ -25,7 +27,18 @@ export const Route = createFileRoute('/(app)/threads/$id/')({
 function ThreadPage() {
   const { conversation, messages, latest_draft, conversations } = Route.useLoaderData()
   const { id } = Route.useParams()
+  const router = useRouter()
   const [filter, setFilter] = useState<FilterKey>('all')
+
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === 'visible') {
+        void router.invalidate()
+      }
+    }
+    const timer = setInterval(tick, POLL_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [router])
 
   const latestInboundMessageId =
     messages
