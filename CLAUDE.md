@@ -1,12 +1,14 @@
 <!-- SPECKIT START -->
-Active feature plan: [specs/001-mvp-app-review/plan.md](specs/001-mvp-app-review/plan.md)
+Active feature plan: [specs/002-app-review-submission/plan.md](specs/002-app-review-submission/plan.md)
 
 Related artifacts (same directory):
 - spec.md — feature specification
-- research.md — technology decisions
-- data-model.md — Drizzle schema design
-- contracts/ — external/internal API contracts
-- quickstart.md — setup + review submission walkthrough
+- research.md — technology decisions (Paraglide JS, FB JS SDK, Cookie-based locale)
+- data-model.md — connected_pages reuse + Cookie-based Language Preference
+- contracts/ — Facebook Graph API, Connect Page server fns, Locale fn + SSR middleware
+- quickstart.md — diff setup vs 001 (Paraglide install, FB App settings, recording prep)
+
+Predecessor: [specs/001-mvp-app-review/plan.md](specs/001-mvp-app-review/plan.md) — MVP for the underlying Messenger inbox + AI draft pipeline; assumed deployed and stable.
 
 Read the current plan for technology stack, project structure, and workflow conventions before starting implementation work.
 <!-- SPECKIT END -->
