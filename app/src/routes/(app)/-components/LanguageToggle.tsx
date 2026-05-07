@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { getLocale, setLocale } from '~/paraglide/runtime'
-import { serializeLocaleCookie } from '~/lib/i18n/locale'
+import { COOKIE_NAME } from '~/lib/i18n/locale'
 
 export function LanguageToggle() {
   const [locale, setLocaleState] = useState<'en' | 'ja'>(() => {
@@ -13,8 +13,10 @@ export function LanguageToggle() {
     // Optimistic update: Paraglide switches locale immediately in-process
     setLocaleState(newLocale)
     setLocale(newLocale)
-    // Persist locale preference in cookie (non-HttpOnly, safe to set client-side)
-    document.cookie = serializeLocaleCookie(newLocale)
+    // Persist locale preference in cookie (non-HttpOnly, safe to set client-side).
+    // Omit Secure on HTTP so localhost dev works; Secure is set by SSR setCookie in production.
+    const isHttps = typeof location !== 'undefined' && location.protocol === 'https:'
+    document.cookie = `${COOKIE_NAME}=${newLocale}; Path=/; Max-Age=31536000; SameSite=Lax${isHttps ? '; Secure' : ''}`
   }
 
   const btnStyle = (active: boolean) =>
@@ -39,11 +41,11 @@ export function LanguageToggle() {
         padding: '4px 10px',
       }}
     >
-      <button aria-pressed={locale === 'en'} onClick={() => handleClick('en')} style={btnStyle(locale === 'en')}>
+      <button type="button" aria-pressed={locale === 'en'} onClick={() => handleClick('en')} style={btnStyle(locale === 'en')}>
         EN
       </button>
       <span aria-hidden="true" style={{ color: 'var(--color-ink-3)', fontSize: 10, userSelect: 'none' }}>|</span>
-      <button aria-pressed={locale === 'ja'} onClick={() => handleClick('ja')} style={btnStyle(locale === 'ja')}>
+      <button type="button" aria-pressed={locale === 'ja'} onClick={() => handleClick('ja')} style={btnStyle(locale === 'ja')}>
         JA
       </button>
     </div>
