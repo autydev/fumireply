@@ -22,7 +22,7 @@ const FB_APP_ID = (import.meta.env.VITE_FB_APP_ID as string | undefined) ?? ''
 
 function ConnectPageRoute() {
   const [state, setState] = useState<FlowState>('initial')
-  const [pages, setPages] = useState<Array<{ id: string; name: string; pageAccessToken: string }>>([])
+  const [pages, setPages] = useState<Array<{ id: string; name: string }>>([])
   const [error, setError] = useState<string | null>(null)
 
   function handlePagesLoaded(loaded: typeof pages) {

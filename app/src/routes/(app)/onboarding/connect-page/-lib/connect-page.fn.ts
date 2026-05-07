@@ -1,17 +1,17 @@
 import { createServerFn } from '@tanstack/react-start'
+import { getCookie, setCookie } from '@tanstack/react-start/server'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { authMiddleware } from '~/server/middleware/auth-middleware'
 import { connectedPages } from '~/server/db/schema'
 import { withTenant } from '~/server/db/with-tenant'
-import { encryptToken, getMasterKey } from '~/server/services/crypto'
-import { subscribePageWebhook } from '~/server/services/facebook'
+import { decryptToken, encryptToken, getMasterKey } from '~/server/services/crypto'
+import { listPages, subscribePageWebhook } from '~/server/services/facebook'
 import { env } from '~/server/env'
 
 const Input = z.object({
   pageId: z.string().regex(/^\d+$/).min(5).max(20),
   pageName: z.string().min(1).max(200),
-  pageAccessToken: z.string().min(20).max(2000),
 })
 
 export type ConnectPageResult =
@@ -40,8 +40,32 @@ export const connectPageFn = createServerFn({ method: 'POST' })
       return { ok: false, error: 'db_failed', message: 'DB check failed.' }
     }
 
+    // Retrieve the long user token stored server-side by exchangeAndListFn.
+    // The page access token never travels through the browser.
+    const encodedSession = getCookie('fb_connect_session')
+    if (!encodedSession) {
+      return { ok: false, error: 'token_invalid', message: 'Session expired. Please reconnect.' }
+    }
+
+    let pageAccessToken: string
     try {
-      await subscribePageWebhook(data.pageId, data.pageAccessToken)
+      const masterKey = await getMasterKey()
+      const longToken = decryptToken(Buffer.from(encodedSession, 'base64'), masterKey)
+      const pages = await listPages(longToken)
+      const page = pages.find((p) => p.id === data.pageId)
+      if (!page) {
+        return { ok: false, error: 'token_invalid', message: 'Selected page not found. Please reconnect.' }
+      }
+      pageAccessToken = page.pageAccessToken
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown'
+      if (msg === 'token_expired') return { ok: false, error: 'token_invalid', message: 'Session expired. Please reconnect.' }
+      if (msg === 'permission_missing') return { ok: false, error: 'permission_missing', message: 'Missing pages_show_list permission.' }
+      return { ok: false, error: 'internal_error', message: 'Failed to retrieve page token.' }
+    }
+
+    try {
+      await subscribePageWebhook(data.pageId, pageAccessToken)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown'
       if (msg === 'token_invalid') return { ok: false, error: 'token_invalid', message: 'Invalid page access token.' }
@@ -53,7 +77,7 @@ export const connectPageFn = createServerFn({ method: 'POST' })
     let encryptedToken: Buffer
     try {
       const masterKey = await getMasterKey()
-      encryptedToken = encryptToken(data.pageAccessToken, masterKey)
+      encryptedToken = encryptToken(pageAccessToken, masterKey)
     } catch {
       return { ok: false, error: 'encryption_failed', message: 'Encryption failed.' }
     }
@@ -81,6 +105,9 @@ export const connectPageFn = createServerFn({ method: 'POST' })
     } catch {
       return { ok: false, error: 'db_failed', message: 'DB upsert failed.' }
     }
+
+    // Clear the session cookie — the long user token is no longer needed
+    setCookie('fb_connect_session', '', { maxAge: 0 })
 
     return { ok: true, pageId: data.pageId, pageName: data.pageName }
   })

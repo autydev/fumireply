@@ -5,7 +5,7 @@ import { exchangeAndListFn, type ExchangeAndListResult } from '../-lib/exchange-
 
 interface Props {
   fbAppId: string
-  onPagesLoaded: (pages: Array<{ id: string; name: string; pageAccessToken: string }>) => void
+  onPagesLoaded: (pages: Array<{ id: string; name: string }>) => void
   onError: (error: string) => void
 }
 

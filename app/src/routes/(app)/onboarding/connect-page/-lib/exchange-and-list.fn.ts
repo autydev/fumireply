@@ -1,16 +1,18 @@
 import { createServerFn } from '@tanstack/react-start'
+import { setCookie } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { authMiddleware } from '~/server/middleware/auth-middleware'
 import { env } from '~/server/env'
 import { getSsmParameter } from '~/server/services/ssm'
 import { exchangeUserToken, listPages } from '~/server/services/facebook'
+import { encryptToken, getMasterKey } from '~/server/services/crypto'
 
 const Input = z.object({
   shortLivedUserToken: z.string().min(20).max(2000),
 })
 
 export type ExchangeAndListResult =
-  | { ok: true; pages: Array<{ id: string; name: string; pageAccessToken: string }> }
+  | { ok: true; pages: Array<{ id: string; name: string }> }
   | { ok: false; error: 'token_expired' | 'permission_missing' | 'no_pages' | 'rate_limited' | 'meta_unavailable' | 'internal_error'; message: string }
 
 export const exchangeAndListFn = createServerFn({ method: 'POST' })
@@ -31,7 +33,19 @@ export const exchangeAndListFn = createServerFn({ method: 'POST' })
         return { ok: false, error: 'no_pages', message: 'No Facebook Pages found.' }
       }
 
-      return { ok: true, pages }
+      // Store the long user token server-side only — never send it to the browser.
+      // connectPageFn will read this cookie to retrieve the page access token.
+      const masterKey = await getMasterKey()
+      const encryptedLongToken = encryptToken(longToken, masterKey)
+      setCookie('fb_connect_session', encryptedLongToken.toString('base64'), {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 600, // 10 minutes — long enough for the user to pick a page
+      })
+
+      return { ok: true, pages: pages.map(({ id, name }) => ({ id, name })) }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown'
       if (msg === 'token_expired') return { ok: false, error: 'token_expired', message: 'Token expired.' }

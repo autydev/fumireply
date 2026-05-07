@@ -6,7 +6,6 @@ import { useRouter } from '@tanstack/react-router'
 interface Page {
   id: string
   name: string
-  pageAccessToken: string
 }
 
 interface Props {
@@ -33,7 +32,6 @@ export function PageList({ pages, onError, onConnecting }: Props) {
         data: {
           pageId: page.id,
           pageName: page.name,
-          pageAccessToken: page.pageAccessToken,
         },
       })
 
