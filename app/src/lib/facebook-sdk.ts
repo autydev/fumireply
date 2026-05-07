@@ -38,7 +38,17 @@ export function loadFbSdk(appId: string): Promise<void> {
   if (loadPromise) return loadPromise
 
   loadPromise = new Promise((resolve, reject) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (!settled) {
+        loadPromise = undefined
+        reject(new Error('Facebook SDK load timeout'))
+      }
+    }, FB_LOAD_TIMEOUT_MS)
+
     window.fbAsyncInit = () => {
+      settled = true
+      clearTimeout(timer)
       window.FB.init({ appId, cookie: true, xfbml: false, version: 'v19.0' })
       resolve()
     }
@@ -46,17 +56,9 @@ export function loadFbSdk(appId: string): Promise<void> {
     if (document.getElementById('facebook-jssdk')) {
       if (window.FB) {
         window.fbAsyncInit()
-      } else {
-        // Script tag exists but SDK hasn't initialised yet (still loading, or blocked by
-        // an ad-blocker). fbAsyncInit is set above; add a safety timeout so the promise
-        // doesn't hang forever if the SDK never calls it.
-        setTimeout(() => {
-          if (!window.FB) {
-            loadPromise = undefined
-            reject(new Error('Facebook SDK load timeout'))
-          }
-        }, FB_LOAD_TIMEOUT_MS)
       }
+      // Script tag exists but SDK hasn't initialised yet — fbAsyncInit above will fire
+      // when it does; the shared timer handles the hang-forever case.
       return
     }
 
@@ -66,6 +68,8 @@ export function loadFbSdk(appId: string): Promise<void> {
     script.async = true
     script.defer = true
     script.onerror = () => {
+      settled = true
+      clearTimeout(timer)
       loadPromise = undefined
       reject(new Error('Failed to load Facebook SDK'))
     }

@@ -11,14 +11,15 @@ async function fetchWithRetry(url: string, init?: RequestInit): Promise<Response
   const delays = [1000, 2000, 4000]
   let lastError: Error | undefined
 
-  // Compose the per-request timeout with any caller-supplied abort signal
-  const timeoutSignal = AbortSignal.timeout(TIMEOUT_MS)
-  const signal: AbortSignal =
-    init?.signal && typeof AbortSignal.any === 'function'
-      ? AbortSignal.any([timeoutSignal, init.signal])
-      : timeoutSignal
-
   for (let attempt = 0; attempt <= delays.length; attempt++) {
+    if (init?.signal?.aborted) throw init.signal.reason ?? new Error('Request aborted')
+
+    const timeoutSignal = AbortSignal.timeout(TIMEOUT_MS)
+    const signal: AbortSignal =
+      init?.signal && typeof AbortSignal.any === 'function'
+        ? AbortSignal.any([timeoutSignal, init.signal])
+        : timeoutSignal
+
     try {
       const res = await fetch(url, { ...init, signal })
 
@@ -29,6 +30,7 @@ async function fetchWithRetry(url: string, init?: RequestInit): Promise<Response
       lastError = new Error(`HTTP ${res.status}`)
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err))
+      if (init?.signal?.aborted) throw lastError
     }
 
     if (attempt < delays.length) {

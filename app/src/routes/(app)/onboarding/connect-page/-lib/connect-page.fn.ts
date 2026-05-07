@@ -121,8 +121,12 @@ export const connectPageFn = createServerFn({ method: 'POST' })
           await tx.insert(connectedPages).values({ tenantId, pageId: data.pageId, ...rowValues })
         }
       })
-    } catch {
-      return { ok: false, error: 'already_connected', message: 'This page is already connected to another account.' }
+    } catch (err) {
+      const pgCode = (err as { code?: string })?.code
+      if (pgCode === '23505') {
+        return { ok: false, error: 'already_connected', message: 'This page is already connected to another account.' }
+      }
+      return { ok: false, error: 'db_failed', message: 'DB upsert failed.' }
     }
 
     // Clear the session cookie using the same attributes as set to ensure reliable deletion
