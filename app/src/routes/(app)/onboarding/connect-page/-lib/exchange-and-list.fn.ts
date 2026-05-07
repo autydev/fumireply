@@ -39,7 +39,8 @@ export const exchangeAndListFn = createServerFn({ method: 'POST' })
       const encryptedLongToken = encryptToken(longToken, masterKey)
       setCookie('fb_connect_session', encryptedLongToken.toString('base64'), {
         httpOnly: true,
-        secure: true,
+        // secure:true requires HTTPS; disable on non-production to allow localhost dev
+        secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         path: '/',
         maxAge: 600, // 10 minutes — long enough for the user to pick a page

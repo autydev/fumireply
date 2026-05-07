@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { count, eq } from 'drizzle-orm'
+import { and, count, eq } from 'drizzle-orm'
 import { authMiddleware } from '~/server/middleware/auth-middleware'
 import { connectedPages } from '~/server/db/schema'
 import { withTenant } from '~/server/db/with-tenant'
@@ -7,11 +7,12 @@ import { withTenant } from '~/server/db/with-tenant'
 export const checkConnectedPagesFn = createServerFn({ method: 'POST' })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const rows = await withTenant(context.user.tenantId, async (tx) => {
+    const { tenantId } = context.user
+    const rows = await withTenant(tenantId, async (tx) => {
       return tx
         .select({ count: count() })
         .from(connectedPages)
-        .where(eq(connectedPages.isActive, true))
+        .where(and(eq(connectedPages.tenantId, tenantId), eq(connectedPages.isActive, true)))
     })
     return { count: rows[0]?.count ?? 0 }
   })

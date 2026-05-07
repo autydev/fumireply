@@ -11,15 +11,21 @@ async function fetchWithRetry(url: string, init?: RequestInit): Promise<Response
   const delays = [1000, 2000, 4000]
   let lastError: Error | undefined
 
+  // Compose the per-request timeout with any caller-supplied abort signal
+  const timeoutSignal = AbortSignal.timeout(TIMEOUT_MS)
+  const signal: AbortSignal =
+    init?.signal && typeof AbortSignal.any === 'function'
+      ? AbortSignal.any([timeoutSignal, init.signal])
+      : timeoutSignal
+
   for (let attempt = 0; attempt <= delays.length; attempt++) {
     try {
-      const res = await fetch(url, {
-        ...init,
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      })
+      const res = await fetch(url, { ...init, signal })
 
       if (res.status < 500 || attempt === delays.length) return res
 
+      // Discard the body before retrying to allow connection reuse
+      await res.body?.cancel().catch(() => {})
       lastError = new Error(`HTTP ${res.status}`)
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err))
