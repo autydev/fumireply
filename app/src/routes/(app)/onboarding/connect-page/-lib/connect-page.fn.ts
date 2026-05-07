@@ -70,7 +70,7 @@ export const connectPageFn = createServerFn({ method: 'POST' })
             webhookVerifyTokenSsmKey: env.WEBHOOK_VERIFY_TOKEN_SSM_KEY,
           })
           .onConflictDoUpdate({
-            target: connectedPages.tenantId,
+            target: connectedPages.pageId,
             set: {
               pageId: data.pageId,
               pageName: data.pageName,

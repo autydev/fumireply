@@ -9,7 +9,7 @@ const ERROR_MESSAGES: Record<string, () => string> = {
   internal_error: m.onboarding_error_generic,
   meta_unavailable: m.onboarding_error_generic,
   rate_limited: m.onboarding_error_generic,
-  already_connected: () => 'Page already connected.',
+  already_connected: m.onboarding_already_connected,
   token_invalid: m.onboarding_error_token_expired,
   webhook_url_failed: m.onboarding_error_subscribe_failed,
   encryption_failed: m.onboarding_error_generic,

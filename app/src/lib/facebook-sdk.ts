@@ -42,7 +42,10 @@ export function loadFbSdk(appId: string): Promise<void> {
     }
 
     if (document.getElementById('facebook-jssdk')) {
-      window.fbAsyncInit()
+      if (window.FB) {
+        window.fbAsyncInit()
+      }
+      // else: existing script will call fbAsyncInit once it finishes loading
       return
     }
 

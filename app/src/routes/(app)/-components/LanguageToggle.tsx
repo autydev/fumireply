@@ -1,6 +1,5 @@
 import { getLocale, setLocale } from '~/paraglide/runtime'
-
-const COOKIE_NAME = 'fumireply_locale'
+import { serializeLocaleCookie } from '~/lib/i18n/locale'
 
 export function LanguageToggle() {
   const raw = getLocale()
@@ -9,8 +8,7 @@ export function LanguageToggle() {
   function switchTo(next: 'en' | 'ja') {
     if (locale === next) return
     setLocale(next)
-    const secure = typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : ''
-    document.cookie = `${COOKIE_NAME}=${next}; Path=/; SameSite=Lax${secure}`
+    document.cookie = serializeLocaleCookie(next)
   }
 
   const baseBtn = {
