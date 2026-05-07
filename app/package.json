@@ -20,7 +20,10 @@
     "lint": "eslint src tests --no-error-on-unmatched-pattern",
     "db:migrate": "drizzle-kit migrate",
     "db:seed:review": "tsx src/server/db/seed/review.ts",
-    "db:seed:e2e": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/server/db/seed/e2e.ts"
+    "db:seed:e2e": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local src/server/db/seed/e2e.ts",
+    "paraglide:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide",
+    "predev": "npm run paraglide:compile",
+    "prebuild": "npm run paraglide:compile"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
@@ -38,6 +41,8 @@
   "devDependencies": {
     "@aws-sdk/client-sqs": "^3.1040.0",
     "@eslint/js": "^10.0.1",
+    "@inlang/paraglide-js": "^2.18.0",
+    "@inlang/plugin-message-format": "^4.4.0",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.2.4",
     "@tanstack/router-cli": "^1.166.33",

@@ -4,7 +4,7 @@ import prettier from 'eslint-config-prettier'
 
 export default tseslint.config(
   {
-    ignores: ['dist', '.output', 'node_modules', 'src/routeTree.gen.ts'],
+    ignores: ['dist', '.output', 'node_modules', 'src/routeTree.gen.ts', 'src/paraglide'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
