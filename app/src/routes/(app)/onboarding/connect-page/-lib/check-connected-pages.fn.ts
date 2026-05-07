@@ -14,5 +14,5 @@ export const checkConnectedPagesFn = createServerFn({ method: 'POST' })
         .from(connectedPages)
         .where(and(eq(connectedPages.tenantId, tenantId), eq(connectedPages.isActive, true)))
     })
-    return { count: rows[0]?.count ?? 0 }
+    return { count: Number(rows[0]?.count ?? 0) }
   })
