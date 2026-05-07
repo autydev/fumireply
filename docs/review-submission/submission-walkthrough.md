@@ -18,14 +18,16 @@ All of the following must be in place **before** opening the Meta App Dashboard 
 | 2 | Business Verification approved or pending review | Meta App Dashboard → App Review → Business Verification (green badge or pending) |
 | 3 | Production screencast MP4 rendered and uploaded as YouTube Unlisted | YouTube Studio → Video → Visibility = Unlisted + URL copied to clipboard |
 | 4 | `use-case-description.md` finalised (English body, all 4 permissions, timestamps matching screencast) | `grep -c "<<" docs/review-submission/use-case-description.md` → `0` |
-| 5 | `reviewer-credentials.md` §3 block updated with actual Test Page name, Page ID, and latest password from SSM | `bash scripts/prep-screencast.sh --dry-run` passes without error |
-| 6 | Reviewer account enabled (`banned_until = NULL`) | `bash scripts/prep-screencast.sh` (without `--dry-run`) completes successfully |
+| 5 | `reviewer-credentials.md` §3 block updated with actual Test Page name, Page ID, and latest password from SSM | `bash scripts/prep-screencast.sh --dry-run` passes without error _(script added in U7.1; if not yet available, verify SSM parameter exists: `aws ssm get-parameter --name /fumireply/review/supabase/reviewer-password --with-decryption`)_ |
+| 6 | Reviewer account enabled (`banned_until = NULL`) | `bash scripts/prep-screencast.sh` completes successfully _(U7.1 script; if not yet available, use Supabase Dashboard to set `banned_until = NULL` for `reviewer@malbek.co.jp`)_ |
 | 7 | Webhook green check in Meta App Dashboard | Dashboard → Products → Webhooks → Page → subscribed_apps field: green ✓ |
-| 8 | Long-lived Page Access Token active (not expired) | `bash scripts/prep-screencast.sh` health check step returns 200 for all URLs |
+| 8 | Long-lived Page Access Token active (not expired) | `bash scripts/prep-screencast.sh` health check passes _(U7.1 script; if not yet available, `curl -o /dev/null -s -w "%{http_code}" https://review.fumireply.ecsuite.work/` → 200)_ |
 | 9 | All public pages return 200 | `curl https://review.fumireply.ecsuite.work/privacy` → 200 (and `/terms`, `/data-deletion`) |
 | 10 | Supabase keep-alive Lambda running (prevents DB pause) | AWS Lambda console → `fumireply-review-keep-alive` → last invocation ≤ 5 min ago |
 | 11 | Anthropic AI usage disclosed in Privacy Policy | `https://review.fumireply.ecsuite.work/privacy` contains "Anthropic" |
-| 12 | Connect Page flow reachable | Clear `connected_pages` row (via prep script) → log in → `/onboarding/connect-page` loads |
+| 12 | Connect Page flow reachable | Clear `connected_pages` row (via prep script or `psql -c "DELETE FROM connected_pages WHERE tenant_id = ..."`) → log in → `/onboarding/connect-page` loads |
+
+> **Note**: Items 5, 6, 8, and 12 reference `scripts/prep-screencast.sh` and `scripts/post-screencast.sh` which are added in U7.1 (see PR #21). Until that branch is merged, use the manual alternatives shown in each row above.
 
 Once all items are checked, open Chrome in a **separate window** (not incognito) and log in to [Meta for Developers](https://developers.facebook.com/apps/) as the App owner.
 
@@ -170,8 +172,8 @@ All items checked? Proceed to section 7.
 5. **Immediately copy this ID** and record it:
 
    ```bash
-   # Append to audit log
-   echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") Submitted App Review. Submission ID: <PASTE-ID-HERE>" \
+   # Append to audit log (format: YYYY-MM-DDTHH:MM:SSZ | EVENT | DETAIL)
+   echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") | Submitted App Review | Submission ID: <PASTE-ID-HERE>" \
      >> docs/operations/audit-runbook.md
    ```
 

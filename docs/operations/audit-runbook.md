@@ -7,8 +7,8 @@ This file serves two purposes:
 1. **Runbook** — step-by-step procedures for recurring operational tasks
 2. **Audit log** — append-only record of key operational events (prep runs, submissions, result notifications)
 
-Scripts (`scripts/prep-screencast.sh`, `scripts/post-screencast.sh`) append audit rows automatically.
-Human operators append rows for events not covered by scripts.
+Once `scripts/prep-screencast.sh` and `scripts/post-screencast.sh` are available (added in U7.1), they append audit rows automatically.
+Until then, append rows manually using the format defined in the Audit Log section below.
 
 ---
 
@@ -16,20 +16,40 @@ Human operators append rows for events not covered by scripts.
 
 ### Reviewer Account Enable / Disable
 
-Enable before review period (run via `scripts/prep-screencast.sh`):
+> `scripts/prep-screencast.sh` and `scripts/post-screencast.sh` are added in U7.1 (PR #21). Until merged, use the manual steps below.
+
+Enable before review period:
 ```bash
+# With script (U7.1+):
 bash scripts/prep-screencast.sh  # enables reviewer, clears connected_pages, health checks
+
+# Manual alternative:
+# 1. Supabase Dashboard → Authentication → Users → reviewer@malbek.co.jp → set banned_until = NULL
+# 2. psql -c "DELETE FROM connected_pages WHERE tenant_id = '<malbek-uuid>';"
+# 3. curl -o /dev/null -s -w "%{http_code}" https://review.fumireply.ecsuite.work/  # → 200
 ```
 
-Disable after review result (run via `scripts/post-screencast.sh`):
+Disable after review result:
 ```bash
+# With script (U7.1+):
 bash scripts/post-screencast.sh  # re-bans reviewer, optionally rotates password
+
+# Manual alternative:
+# Supabase Dashboard → Authentication → Users → reviewer@malbek.co.jp → set banned_until = 2099-12-31
 ```
 
 ### Reviewer Password Rotation
 
 ```bash
+# With script (U7.1+):
 bash scripts/post-screencast.sh --rotate-password
+
+# Manual alternative:
+NEW_PW=$(openssl rand -base64 24)
+# Set in Supabase Dashboard → Authentication → Users → reviewer@malbek.co.jp → Update password
+# Then update SSM:
+aws ssm put-parameter --name /fumireply/review/supabase/reviewer-password \
+  --value "$NEW_PW" --type SecureString --overwrite
 ```
 
 Generates a new password via `openssl rand -base64 24`, updates Supabase Auth and SSM
