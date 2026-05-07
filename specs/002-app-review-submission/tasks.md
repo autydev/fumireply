@@ -33,16 +33,16 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 - [x] T001 Verify branch is `002-app-review-submission` (created by /speckit.specify) and run `npm ci` in `app/` to ensure clean install
 
 <!-- unit: U1.2 | deps: U1.1 | scope: frontend | tasks: T002-T006 | files: ~5 | automation: auto -->
-- [ ] T002 [P] Install Paraglide dev dependency: `npm install --save-dev @inlang/paraglide-js` in `app/package.json`
-- [ ] T003 [P] Create `app/project.inlang/settings.json` with sourceLanguageTag=ja, languageTags=[ja,en], plugin.inlang.messageFormat config (per `contracts/locale-fn.md` §4)
-- [ ] T004 [P] Create skeleton `app/messages/en.json` and `app/messages/ja.json` with `$schema` reference and an empty body (keys added per-story)
+- [x] T002 [P] Install Paraglide dev dependency: `npm install --save-dev @inlang/paraglide-js` in `app/package.json`
+- [x] T003 [P] Create `app/project.inlang/settings.json` with sourceLanguageTag=ja, languageTags=[ja,en], plugin.inlang.messageFormat config (per `contracts/locale-fn.md` §4)
+- [x] T004 [P] Create skeleton `app/messages/en.json` and `app/messages/ja.json` with `$schema` reference and an empty body (keys added per-story)
 - [ ] T005 Configure Paraglide Vite plugin in `app/vite.config.ts` (per TanStack official example `examples/react/start-i18n-paraglide`)
 - [ ] T006 Run `npx paraglide-js compile --project ./project.inlang` once and verify generation succeeds; add `app/paraglide/` to root `.gitignore`
 
 <!-- unit: U1.3 | deps: none | scope: infra | tasks: T007-T009 | files: ~1 | automation: manual -->
-- [ ] T007 [P] Set `VITE_FB_APP_ID=<Meta App ID>` in `app/.env.local` and `app/.env` (local dev / build); add same key to GitHub Actions build env as a non-secret Variable (App ID is public per Meta, see research.md R-003) so production `vite build` inlines it. **Do NOT** add to Lambda runtime env or Terraform — `VITE_` prefix is statically replaced at build time by Vite, runtime env has no effect. Document key in `app/.env.example` only if that file already exists
+- [x] T007 [P] Set `VITE_FB_APP_ID=<Meta App ID>` in `app/.env.local` and `app/.env` (local dev / build); add same key to GitHub Actions build env as a non-secret Variable (App ID is public per Meta, see research.md R-003) so production `vite build` inlines it. **Do NOT** add to Lambda runtime env or Terraform — `VITE_` prefix is statically replaced at build time by Vite, runtime env has no effect. Document key in `app/.env.example` only if that file already exists
 - [ ] T008 [P] **(Manual)** Verify Meta App Settings: App Domains contains `review.fumireply.ecsuite.work`, Platform=Website with Site URL, Embedded Browser OAuth=Yes — record completion date in `docs/operations/audit-runbook.md`
-- [ ] T009 [P] **(Manual)** Create one Facebook Test User under Meta App Roles → Test Users; create one Test Page under that user; store credentials in GitHub Actions secrets `FB_TEST_USER_EMAIL`/`FB_TEST_USER_PASSWORD`/`FB_TEST_PAGE_ID`
+- [x] T009 [P] **(Manual)** Create one Facebook Test User under Meta App Roles → Test Users; create one Test Page under that user; store credentials in GitHub Actions secrets `FB_TEST_USER_EMAIL`/`FB_TEST_USER_PASSWORD`/`FB_TEST_PAGE_ID`
 
 ---
 
@@ -53,10 +53,10 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 **⚠️ CRITICAL**: T010〜T017 のいずれかが未完だと US1 / US2 のコンポーネントを実装してもコンパイル/起動しない可能性が高い。
 
 <!-- unit: U2.1 | deps: U1.2 | scope: frontend | tasks: T010-T013 | files: ~4 | automation: auto -->
-- [ ] T010 Implement Cookie helpers in `app/src/lib/i18n/locale.ts` — `getLocaleFromCookieHeader(cookieHeader: string): 'en' | 'ja'`, `serializeLocaleCookie(locale): string`, defaulting to `'ja'` for missing/invalid (per data-model.md §2.1, contracts/locale-fn.md §2)
-- [ ] T011 Implement SSR locale middleware in `app/src/lib/i18n/locale-middleware.ts` using `createMiddleware` from `@tanstack/start/server`; reads cookie via T010 helper and calls Paraglide `setLocale()` per request (per contracts/locale-fn.md §2)
-- [ ] T012 Wire `localeMiddleware` into `createStart` in `app/src/start.ts` (or equivalent entry) as a global server middleware so every SSR request runs through it
-- [ ] T013 Implement `setLocaleFn` server fn in `app/src/lib/i18n/set-locale.fn.ts` — Zod input `{ locale: 'en'|'ja' }`, sets `Set-Cookie: fumireply_locale=...; Path=/; Max-Age=31536000; SameSite=Lax; Secure` (per contracts/locale-fn.md §1)
+- [x] T010 Implement Cookie helpers in `app/src/lib/i18n/locale.ts` — `getLocaleFromCookieHeader(cookieHeader: string): 'en' | 'ja'`, `serializeLocaleCookie(locale): string`, defaulting to `'ja'` for missing/invalid (per data-model.md §2.1, contracts/locale-fn.md §2)
+- [x] T011 Implement SSR locale middleware in `app/src/lib/i18n/locale-middleware.ts` using `createMiddleware` from `@tanstack/start/server`; reads cookie via T010 helper and calls Paraglide `setLocale()` per request (per contracts/locale-fn.md §2)
+- [x] T012 Wire `localeMiddleware` into `createStart` in `app/src/start.ts` (or equivalent entry) as a global server middleware so every SSR request runs through it
+- [x] T013 Implement `setLocaleFn` server fn in `app/src/lib/i18n/set-locale.fn.ts` — Zod input `{ locale: 'en'|'ja' }`, sets `Set-Cookie: fumireply_locale=...; Path=/; Max-Age=31536000; SameSite=Lax; Secure` (per contracts/locale-fn.md §1)
 
 <!-- unit: U2.2 | deps: U1.2,U1.3 | scope: backend | tasks: T014-T017 | files: ~4 | automation: auto -->
 - [ ] T014 [P] Implement Facebook JS SDK loader in `app/src/lib/facebook-sdk.ts` — Promise-cached dynamic `<script src="https://connect.facebook.net/en_US/sdk.js">` injection, exposes `loadFbSdk(appId): Promise<typeof FB>`
