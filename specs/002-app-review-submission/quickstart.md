@@ -170,11 +170,22 @@ CI（`.github/workflows/ci.yml`）に同様のステップを追加して PR で
 
 ## 6. 撮影前 prep スクリプトの使い方
 
+### 6.0 前提チェック（副作用なし、どこでも実行可）
+
+```bash
+bash scripts/test-prep.sh
+```
+
+両スクリプトの実行権限・`--dry-run` フラグ・`set -euo pipefail`・`AUDIT_LOG` パスを検証する。AWS 接続不要。CI や新規マシンで最初に実行して環境を確認する。
+
 ### 6.1 実行
 
 ```bash
-# 本番 reviewer 有効化 + connected_pages 削除
-bash scripts/prep-screencast.sh
+# 事前確認: --dry-run で実際の副作用なしにプランを表示
+AWS_PROFILE=review bash scripts/prep-screencast.sh --dry-run
+
+# 本番実行: reviewer 有効化 + connected_pages 削除
+AWS_PROFILE=review bash scripts/prep-screencast.sh
 ```
 
 スクリプトは以下を実行する（詳細は research.md R-010）：
@@ -189,10 +200,23 @@ bash scripts/prep-screencast.sh
 ### 6.2 撮影完了後の cleanup
 
 ```bash
-bash scripts/post-screencast.sh
+# 事前確認: --dry-run で副作用なしにプランを表示
+AWS_PROFILE=review bash scripts/post-screencast.sh --dry-run
+
+# 本番実行: reviewer 再無効化
+AWS_PROFILE=review bash scripts/post-screencast.sh
+
+# パスワードローテーション付き（推奨: 申請 ID 取得後）
+AWS_PROFILE=review bash scripts/post-screencast.sh --rotate-password
+
+# 撮影データ削除付き（connected_pages + conversations + messages を CASCADE DELETE）
+AWS_PROFILE=review bash scripts/post-screencast.sh --cleanup-recording-data
+
+# 全オプション同時
+AWS_PROFILE=review bash scripts/post-screencast.sh --rotate-password --cleanup-recording-data
 ```
 
-reviewer 無効化 + 撮影で生じた一時データの整理（research.md R-011）。
+reviewer 再無効化 + 撮影で生じた一時データの整理（research.md R-011）。
 
 ---
 
