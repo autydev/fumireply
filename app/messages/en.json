@@ -21,5 +21,17 @@
   "reply_error_outside_window": "The 24-hour window is closed. You cannot reply.",
   "reply_error_token_expired": "Page access token has expired. Please contact your administrator.",
   "reply_error_meta_failed": "Failed to send to Meta. Please wait and try again.",
-  "reply_error_generic": "Send failed."
+  "reply_error_generic": "Send failed.",
+  "onboarding_title": "Connect Your Facebook Page",
+  "onboarding_description": "Connect a Facebook Page to start managing Messenger conversations.",
+  "onboarding_connect_button": "Connect with Facebook",
+  "onboarding_consent_denied": "Permission denied. Please allow the required permissions to continue.",
+  "onboarding_select_page_heading": "Select a Page to connect",
+  "onboarding_connecting": "Connecting...",
+  "onboarding_no_pages": "No Pages found. Please create a Facebook Page first.",
+  "onboarding_error_token_expired": "Your Facebook session has expired. Please try again.",
+  "onboarding_error_permission_missing": "Required permissions were not granted. Please try again and allow all permissions.",
+  "onboarding_error_subscribe_failed": "Failed to connect the Page. Please try again.",
+  "onboarding_error_generic": "Something went wrong. Please try again.",
+  "onboarding_retry_button": "Try again"
 }
