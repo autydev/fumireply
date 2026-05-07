@@ -126,4 +126,4 @@ Step 5. Confirm public pages
 - [ ] reviewer の `banned_until` が NULL（=有効化済み）
 - [ ] スクリーンキャスト動画が Unlisted で再生可能
 
-すべて満たしたら申請フォームを送信。
+すべて満たしたら、`docs/review-submission/submission-walkthrough.md` の手順に従って申請フォームを送信すること。

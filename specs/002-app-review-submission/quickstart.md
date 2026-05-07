@@ -205,7 +205,7 @@ reviewer 無効化 + 撮影で生じた一時データの整理（research.md R-
 | `docs/review-submission/use-case-description.md` | 001 ドラフトあり | Connect Page フロー追加・EN UI 前提・タイムスタンプ参照を反映、英文を最終化 |
 | `docs/review-submission/screencast-script.md` | 001 ドラフトあり | 全シーン EN UI 前提に書き直し、Connect Page シーンを追加 |
 | `docs/review-submission/reviewer-credentials.md` | 001 ドラフトあり | Connect Page フロー反映、SSM 取得手順は維持 |
-| `docs/review-submission/submission-walkthrough.md` | 未作成 | 新規作成（Meta App Dashboard 操作手順、提出ボタン押下までのフロー、最終チェックリスト） |
+| `docs/review-submission/submission-walkthrough.md` | 作成済み | Meta App Dashboard 操作手順・提出フロー・最終チェックリスト |
 
 ### 7.2 確認
 
@@ -261,7 +261,7 @@ npm run deploy:review
 
 ## 10. 提出フロー
 
-`docs/review-submission/submission-walkthrough.md`（002 で新規作成）の手順に従う：
+`docs/review-submission/submission-walkthrough.md` の手順に従う：
 
 1. Meta App Dashboard → App Review → Permissions and Features
 2. 各権限欄に use-case-description.md の本文を貼付（権限 4 つ）
