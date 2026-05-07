@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-prep.sh — 撮影スクリプトの前提条件チェック（副作用なし、どこでも実行可）
+# test-prep.sh — 撮影スクリプトの前提条件チェック（AWS/DB への副作用なし。ファイル実行権限は変更する）
 # Usage: bash scripts/test-prep.sh
 set -euo pipefail
 
@@ -20,11 +20,10 @@ for script in prep-screencast.sh post-screencast.sh; do
     fail "$script が見つかりません"
     continue
   fi
-  chmod +x "$path"
-  if [[ -x "$path" ]]; then
-    pass "$script: 実行可能"
+  if chmod +x "$path" 2>/dev/null; then
+    pass "$script: 実行可能 (chmod +x 適用済み)"
   else
-    fail "$script: chmod +x 後も実行不可"
+    fail "$script: chmod +x 失敗（権限不足の可能性）"
   fi
 done
 

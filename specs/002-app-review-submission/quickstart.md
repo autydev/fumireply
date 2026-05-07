@@ -170,13 +170,13 @@ CI（`.github/workflows/ci.yml`）に同様のステップを追加して PR で
 
 ## 6. 撮影前 prep スクリプトの使い方
 
-### 6.0 前提チェック（副作用なし、どこでも実行可）
+### 6.0 前提チェック（AWS/DB への副作用なし。ファイル実行権限は変更する）
 
 ```bash
 bash scripts/test-prep.sh
 ```
 
-両スクリプトの実行権限・`--dry-run` フラグ・`set -euo pipefail`・`AUDIT_LOG` パスを検証する。AWS 接続不要。CI や新規マシンで最初に実行して環境を確認する。
+両スクリプトの実行権限・`--dry-run` フラグ・`set -euo pipefail`・`AUDIT_LOG` パスを検証する。AWS 接続不要。CI や新規マシンで最初に実行して環境を確認する。なお内部で `chmod +x` を実行するためファイル権限は変更される。
 
 ### 6.1 実行
 
