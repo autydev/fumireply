@@ -1,0 +1,48 @@
+import { useState } from 'react'
+import { getLocale, setLocale } from '~/paraglide/runtime'
+import { serializeLocaleCookie } from '~/lib/i18n/locale'
+
+export function LanguageToggle() {
+  const [locale, setLocaleState] = useState<'en' | 'ja'>(() => getLocale() as 'en' | 'ja')
+
+  function handleClick(newLocale: 'en' | 'ja') {
+    if (newLocale === locale) return
+    // Optimistic update: Paraglide switches locale immediately in-process
+    setLocaleState(newLocale)
+    setLocale(newLocale)
+    // Persist locale preference in cookie (non-HttpOnly, safe to set client-side)
+    document.cookie = serializeLocaleCookie(newLocale)
+  }
+
+  const btnStyle = (active: boolean) =>
+    ({
+      background: 'none',
+      border: 'none',
+      padding: '2px 4px',
+      fontSize: 12,
+      fontWeight: 600,
+      cursor: 'pointer',
+      color: active ? 'var(--color-ink)' : 'var(--color-ink-3)',
+      transition: 'color 120ms',
+      lineHeight: 1,
+    }) as const
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2,
+        padding: '4px 10px',
+      }}
+    >
+      <button aria-pressed={locale === 'en'} onClick={() => handleClick('en')} style={btnStyle(locale === 'en')}>
+        EN
+      </button>
+      <span style={{ color: 'var(--color-ink-3)', fontSize: 10, userSelect: 'none' }}>|</span>
+      <button aria-pressed={locale === 'ja'} onClick={() => handleClick('ja')} style={btnStyle(locale === 'ja')}>
+        JA
+      </button>
+    </div>
+  )
+}
