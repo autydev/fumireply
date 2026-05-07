@@ -40,7 +40,7 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 - [ ] T006 Run `npx paraglide-js compile --project ./project.inlang` once and verify generation succeeds; add `app/paraglide/` to root `.gitignore`
 
 <!-- unit: U1.3 | deps: none | scope: infra | tasks: T007-T009 | files: ~1 | automation: manual -->
-- [ ] T007 [P] Add `VITE_FB_APP_ID` to `app/.env.local` (local dev) and document in `app/.env.example` if exists; sync expected env into Lambda env via Terraform module variables (no Terraform diff if value already provisioned)
+- [ ] T007 [P] Set `VITE_FB_APP_ID=<Meta App ID>` in `app/.env.local` and `app/.env` (local dev / build); add same key to GitHub Actions build env as a non-secret Variable (App ID is public per Meta, see research.md R-003) so production `vite build` inlines it. **Do NOT** add to Lambda runtime env or Terraform — `VITE_` prefix is statically replaced at build time by Vite, runtime env has no effect. Document key in `app/.env.example` only if that file already exists
 - [ ] T008 [P] **(Manual)** Verify Meta App Settings: App Domains contains `review.fumireply.ecsuite.work`, Platform=Website with Site URL, Embedded Browser OAuth=Yes — record completion date in `docs/operations/audit-runbook.md`
 - [ ] T009 [P] **(Manual)** Create one Facebook Test User under Meta App Roles → Test Users; create one Test Page under that user; store credentials in GitHub Actions secrets `FB_TEST_USER_EMAIL`/`FB_TEST_USER_PASSWORD`/`FB_TEST_PAGE_ID`
 
