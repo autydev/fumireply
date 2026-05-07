@@ -31,7 +31,6 @@ export function PageList({ pages, onError, onConnecting }: Props) {
       const result: ConnectPageResult = await connectPageFn({
         data: {
           pageId: page.id,
-          pageName: page.name,
         },
       })
 

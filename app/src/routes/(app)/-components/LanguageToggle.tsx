@@ -1,13 +1,15 @@
+import { useState } from 'react'
 import { getLocale, setLocale } from '~/paraglide/runtime'
 import { serializeLocaleCookie } from '~/lib/i18n/locale'
 
 export function LanguageToggle() {
   const raw = getLocale()
-  const locale: 'en' | 'ja' = raw === 'en' ? 'en' : 'ja'
+  const [locale, setLocaleState] = useState<'en' | 'ja'>(raw === 'en' ? 'en' : 'ja')
 
   function switchTo(next: 'en' | 'ja') {
     if (locale === next) return
     setLocale(next)
+    setLocaleState(next)
     document.cookie = serializeLocaleCookie(next)
   }
 

@@ -11,12 +11,19 @@ import { env } from '~/server/env'
 
 const Input = z.object({
   pageId: z.string().regex(/^\d+$/).min(5).max(20),
-  pageName: z.string().min(1).max(200),
 })
 
 export type ConnectPageResult =
   | { ok: true; pageId: string; pageName: string }
-  | { ok: false; error: 'already_connected' | 'subscribe_failed' | 'token_invalid' | 'permission_missing' | 'webhook_url_failed' | 'encryption_failed' | 'db_failed' | 'meta_unavailable' | 'internal_error'; message: string }
+  | { ok: false; error: 'already_connected' | 'subscribe_failed' | 'token_invalid' | 'permission_missing' | 'webhook_url_failed' | 'encryption_failed' | 'db_failed' | 'meta_unavailable' | 'rate_limited' | 'internal_error'; message: string }
+
+const SESSION_COOKIE = 'fb_connect_session'
+const SESSION_COOKIE_ATTRS = {
+  httpOnly: true,
+  secure: true,
+  sameSite: 'lax' as const,
+  path: '/',
+}
 
 export const connectPageFn = createServerFn({ method: 'POST' })
   .middleware([authMiddleware])
@@ -42,12 +49,13 @@ export const connectPageFn = createServerFn({ method: 'POST' })
 
     // Retrieve the long user token stored server-side by exchangeAndListFn.
     // The page access token never travels through the browser.
-    const encodedSession = getCookie('fb_connect_session')
+    const encodedSession = getCookie(SESSION_COOKIE)
     if (!encodedSession) {
       return { ok: false, error: 'token_invalid', message: 'Session expired. Please reconnect.' }
     }
 
     let pageAccessToken: string
+    let pageName: string
     try {
       const masterKey = await getMasterKey()
       const longToken = decryptToken(Buffer.from(encodedSession, 'base64'), masterKey)
@@ -56,11 +64,15 @@ export const connectPageFn = createServerFn({ method: 'POST' })
       if (!page) {
         return { ok: false, error: 'token_invalid', message: 'Selected page not found. Please reconnect.' }
       }
+      // Use server-fetched name to prevent client-side spoofing
       pageAccessToken = page.pageAccessToken
+      pageName = page.name
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown'
       if (msg === 'token_expired') return { ok: false, error: 'token_invalid', message: 'Session expired. Please reconnect.' }
       if (msg === 'permission_missing') return { ok: false, error: 'permission_missing', message: 'Missing pages_show_list permission.' }
+      if (msg === 'rate_limited') return { ok: false, error: 'rate_limited', message: 'Rate limited. Please wait.' }
+      if (msg === 'meta_unavailable') return { ok: false, error: 'meta_unavailable', message: 'Facebook API unavailable.' }
       return { ok: false, error: 'internal_error', message: 'Failed to retrieve page token.' }
     }
 
@@ -89,7 +101,7 @@ export const connectPageFn = createServerFn({ method: 'POST' })
           .values({
             tenantId,
             pageId: data.pageId,
-            pageName: data.pageName,
+            pageName,
             pageAccessTokenEncrypted: encryptedToken,
             webhookVerifyTokenSsmKey: env.WEBHOOK_VERIFY_TOKEN_SSM_KEY,
           })
@@ -97,8 +109,9 @@ export const connectPageFn = createServerFn({ method: 'POST' })
             target: connectedPages.pageId,
             set: {
               pageId: data.pageId,
-              pageName: data.pageName,
+              pageName,
               pageAccessTokenEncrypted: encryptedToken,
+              webhookVerifyTokenSsmKey: env.WEBHOOK_VERIFY_TOKEN_SSM_KEY,
             },
           })
       })
@@ -106,8 +119,8 @@ export const connectPageFn = createServerFn({ method: 'POST' })
       return { ok: false, error: 'db_failed', message: 'DB upsert failed.' }
     }
 
-    // Clear the session cookie — the long user token is no longer needed
-    setCookie('fb_connect_session', '', { maxAge: 0 })
+    // Clear the session cookie using the same attributes as set to ensure reliable deletion
+    setCookie(SESSION_COOKIE, '', { ...SESSION_COOKIE_ATTRS, maxAge: 0 })
 
-    return { ok: true, pageId: data.pageId, pageName: data.pageName }
+    return { ok: true, pageId: data.pageId, pageName }
   })
