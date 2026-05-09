@@ -1,3 +1,25 @@
 {
-  "$schema": "https://inlang.com/schema/inlang-message-format"
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "login_email_label": "Email",
+  "login_password_label": "Password",
+  "login_submit_button": "Sign in",
+  "login_error_invalid_credentials": "Invalid email or password.",
+  "inbox_filter_all": "All",
+  "inbox_filter_unread": "Unread",
+  "inbox_filter_draft": "Draft",
+  "inbox_filter_overdue": "Overdue",
+  "inbox_empty_state": "Select a conversation",
+  "thread_window_within_24h": "Within 24h window",
+  "thread_window_outside_24h": "Outside 24h window",
+  "reply_placeholder": "Enter your reply",
+  "reply_send_button": "Send",
+  "reply_sending_button": "Sending...",
+  "reply_ai_suggestion_label": "AI suggestion",
+  "reply_draft_saved": "Draft saved",
+  "reply_window_closed_warning": "The 24-hour reply window has closed.",
+  "reply_policy_countdown": "Meta 24h policy · Reply deadline approaching",
+  "reply_error_outside_window": "The 24-hour window is closed. You cannot reply.",
+  "reply_error_token_expired": "Page access token has expired. Please contact your administrator.",
+  "reply_error_meta_failed": "Failed to send to Meta. Please wait and try again.",
+  "reply_error_generic": "Send failed."
 }
