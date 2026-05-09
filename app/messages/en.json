@@ -22,5 +22,10 @@
   "reply_error_token_expired": "Page access token has expired. Please contact your administrator.",
   "reply_error_meta_failed": "Failed to send to Meta. Please wait and try again.",
   "reply_error_generic": "Send failed.",
-  "reply_draft_generating": "Generating draft..."
+  "reply_draft_generating": "Generating draft...",
+  "reply_error_validation_failed": "Invalid input.",
+  "reply_error_send_failed": "An error occurred while sending.",
+  "reply_saving": "Saving...",
+  "reply_body_label": "Reply body",
+  "reply_policy_time_remaining": "{hours}h {minutes}m remaining"
 }

@@ -113,12 +113,12 @@ export function ReplyForm({
           outside_window: m.reply_error_outside_window(),
           token_expired: m.reply_error_token_expired(),
           meta_error: m.reply_error_meta_failed(),
-          validation_failed: '入力内容が不正です。',
+          validation_failed: m.reply_error_validation_failed(),
         }
         setError(errorMessages[result.error] ?? m.reply_error_generic())
       }
     } catch {
-      setError('送信中にエラーが発生しました。')
+      setError(m.reply_error_send_failed())
     } finally {
       setSending(false)
     }
@@ -163,7 +163,7 @@ export function ReplyForm({
           <div>
             <strong>{m.reply_policy_countdown()}</strong>
             <span style={{ marginLeft: 6, opacity: 0.85 }}>
-              残り {Math.floor(hoursRemaining)}h {Math.floor((hoursRemaining % 1) * 60)}m
+              {m.reply_policy_time_remaining({ hours: Math.floor(hoursRemaining), minutes: Math.floor((hoursRemaining % 1) * 60) })}
             </span>
           </div>
         </div>
@@ -269,7 +269,7 @@ export function ReplyForm({
             {/* Auto-save pill */}
             {saveState === 'saving' && (
               <span style={{ fontSize: 11, color: 'var(--color-ink-3)', fontFamily: 'var(--font-mono)' }}>
-                保存中…
+                {m.reply_saving()}
               </span>
             )}
             {saveState === 'saved' && body !== (latestDraft?.body ?? '') && (
@@ -288,7 +288,7 @@ export function ReplyForm({
             onKeyDown={handleKeyDown}
             placeholder={m.reply_placeholder()}
             disabled={isWindowClosed || sending}
-            aria-label="返信本文"
+            aria-label={m.reply_body_label()}
             rows={4}
             style={{
               width: '100%',
