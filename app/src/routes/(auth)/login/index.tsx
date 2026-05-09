@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { LoginForm } from './-components/LoginForm'
+import { LanguageToggle } from '~/routes/(app)/-components/LanguageToggle'
 
 export const Route = createFileRoute('/(auth)/login/')({
   ssr: false,
@@ -15,5 +16,12 @@ export const Route = createFileRoute('/(auth)/login/')({
 
 function LoginPage() {
   const { returnTo } = Route.useSearch()
-  return <LoginForm returnTo={returnTo} />
+  return (
+    <div style={{ position: 'relative' }}>
+      <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }}>
+        <LanguageToggle />
+      </div>
+      <LoginForm returnTo={returnTo} />
+    </div>
+  )
 }
