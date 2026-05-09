@@ -23,7 +23,7 @@ export function LoginForm({ returnTo }: { returnTo?: string }) {
         setError(m.login_error_invalid_credentials())
       }
     } catch {
-      setError('Login failed. Please try again.')
+      setError(m.login_error_generic())
     } finally {
       setLoading(false)
     }
@@ -185,7 +185,7 @@ export function LoginForm({ returnTo }: { returnTo?: string }) {
               transition: 'opacity 120ms',
             }}
           >
-            {loading ? 'Logging in…' : m.login_submit_button()}
+            {loading ? m.login_loading() : m.login_submit_button()}
           </button>
         </form>
 

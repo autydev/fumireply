@@ -4,6 +4,8 @@
   "login_password_label": "Password",
   "login_submit_button": "Sign in",
   "login_error_invalid_credentials": "Invalid email or password.",
+  "login_error_generic": "Login failed. Please try again.",
+  "login_loading": "Logging in…",
   "inbox_filter_all": "All",
   "inbox_filter_unread": "Unread",
   "inbox_filter_draft": "Draft",

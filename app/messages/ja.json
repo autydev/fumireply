@@ -4,6 +4,8 @@
   "login_password_label": "パスワード",
   "login_submit_button": "ログイン",
   "login_error_invalid_credentials": "メールアドレスまたはパスワードが正しくありません。",
+  "login_error_generic": "ログインに失敗しました。再度お試しください。",
+  "login_loading": "ログイン中…",
   "inbox_filter_all": "すべて",
   "inbox_filter_unread": "未読",
   "inbox_filter_draft": "下書き",
