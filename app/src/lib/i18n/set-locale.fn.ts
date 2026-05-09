@@ -3,7 +3,7 @@ import { setCookie } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { COOKIE_NAME } from './locale'
 
-const SetLocaleInput = z.object({
+export const SetLocaleInput = z.object({
   locale: z.enum(['en', 'ja']),
 })
 
