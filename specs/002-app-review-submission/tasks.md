@@ -77,24 +77,24 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 ### Tests for User Story 2
 
 <!-- unit: U3.1 | deps: U2.1 | scope: frontend | tasks: T018-T020 | files: ~3 | automation: auto -->
-- [ ] T018 [P] [US2] Unit test for cookie helpers in `app/tests/integration/locale-cookie.test.ts` — getLocaleFromCookieHeader / serializeLocaleCookie の境界値（無効値、複数値、空文字、未設定）
-- [ ] T019 [P] [US2] Integration test for `setLocaleFn` in `app/tests/integration/set-locale-fn.test.ts` — happy path (en, ja) と Zod 失敗ケースで Set-Cookie ヘッダ確認
-- [ ] T020 [P] [US2] Integration test for SSR locale resolution in `app/tests/integration/ssr-locale.test.ts` — Cookie `fumireply_locale=en` を付けて inbox / threads を SSR レンダリング → HTML 内に英訳文字列を含む。Cookie なしは ja デフォルト
+- [x] T018 [P] [US2] Unit test for cookie helpers in `app/tests/integration/locale-cookie.test.ts` — getLocaleFromCookieHeader / serializeLocaleCookie の境界値（無効値、複数値、空文字、未設定）
+- [x] T019 [P] [US2] Integration test for `setLocaleFn` in `app/tests/integration/set-locale-fn.test.ts` — happy path (en, ja) と Zod 失敗ケースで Set-Cookie ヘッダ確認
+- [x] T020 [P] [US2] Integration test for SSR locale resolution in `app/tests/integration/ssr-locale.test.ts` — Cookie `fumireply_locale=en` を付けて inbox / threads を SSR レンダリング → HTML 内に英訳文字列を含む。Cookie なしは ja デフォルト
 
 ### Translation keys (parallel — different scope per file but same JSON file 2 つを編集するため逐次)
 
 <!-- unit: U3.2 | deps: U2.1 | scope: frontend | tasks: T021-T024 | files: ~2 | automation: auto -->
-- [ ] T021 [US2] Add login-screen keys (`login_email_label`, `login_password_label`, `login_submit_button`, `login_error_invalid_credentials`) to both `app/messages/en.json` and `app/messages/ja.json` — per contracts/locale-fn.md §4 example
-- [ ] T022 [US2] Add inbox keys (`inbox_filter_all`, `inbox_filter_unread`, `inbox_filter_draft`, `inbox_filter_overdue`, `inbox_empty_state`) to both `app/messages/en.json` and `app/messages/ja.json`
-- [ ] T023 [US2] Add thread + reply form keys (`thread_window_within_24h`, `thread_window_outside_24h`, `reply_placeholder`, `reply_send_button`, `reply_sending_button`, `reply_ai_suggestion_label`, `reply_draft_saved`, `reply_window_closed_warning`, `reply_policy_countdown`, `reply_error_outside_window`, `reply_error_token_expired`, `reply_error_meta_failed`, `reply_error_generic`) to both message files
-- [ ] T024 [US2] Run `npx paraglide-js compile` and commit only the JSON files (not the generated TS) — confirm no compile error
+- [x] T021 [US2] Add login-screen keys (`login_email_label`, `login_password_label`, `login_submit_button`, `login_error_invalid_credentials`) to both `app/messages/en.json` and `app/messages/ja.json` — per contracts/locale-fn.md §4 example
+- [x] T022 [US2] Add inbox keys (`inbox_filter_all`, `inbox_filter_unread`, `inbox_filter_draft`, `inbox_filter_overdue`, `inbox_empty_state`) to both `app/messages/en.json` and `app/messages/ja.json`
+- [x] T023 [US2] Add thread + reply form keys (`thread_window_within_24h`, `thread_window_outside_24h`, `reply_placeholder`, `reply_send_button`, `reply_sending_button`, `reply_ai_suggestion_label`, `reply_draft_saved`, `reply_window_closed_warning`, `reply_policy_countdown`, `reply_error_outside_window`, `reply_error_token_expired`, `reply_error_meta_failed`, `reply_error_generic`) to both message files
+- [x] T024 [US2] Run `npx paraglide-js compile` and commit only the JSON files (not the generated TS) — confirm no compile error
 
 ### LanguageToggle component
 
 <!-- unit: U3.3 | deps: U2.1,U3.2 | scope: frontend | tasks: T025-T027 | files: ~3 | automation: auto -->
-- [ ] T025 [P] [US2] Implement `LanguageToggle` component in `app/src/routes/(app)/-components/LanguageToggle.tsx` — `EN | JA` text toggle, optimistic update via Paraglide `setLocale`, async call to `setLocaleFn`, aria-pressed for active state (per contracts/locale-fn.md §3)
-- [ ] T026 [US2] Insert `LanguageToggle` into `(app)/route.tsx` Header — right side near user menu, no layout shift (depends on T025)
-- [ ] T027 [US2] Insert `LanguageToggle` into `(auth)/login` screen — top-right absolute position so unauthenticated users can switch before logging in (depends on T025)
+- [x] T025 [P] [US2] Implement `LanguageToggle` component in `app/src/routes/(app)/-components/LanguageToggle.tsx` — `EN | JA` text toggle, optimistic update via Paraglide `setLocale`, async call to `setLocaleFn`, aria-pressed for active state (per contracts/locale-fn.md §3)
+- [x] T026 [US2] Insert `LanguageToggle` into `(app)/route.tsx` Header — right side near user menu, no layout shift (depends on T025)
+- [x] T027 [US2] Insert `LanguageToggle` into `(auth)/login` screen — top-right absolute position so unauthenticated users can switch before logging in (depends on T025)
 
 ### Replace hardcoded JA strings with `m.xxx()` calls (parallel — separate component files)
 
