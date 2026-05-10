@@ -1,3 +1,25 @@
 {
-  "$schema": "https://inlang.com/schema/inlang-message-format"
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "login_email_label": "メールアドレス",
+  "login_password_label": "パスワード",
+  "login_submit_button": "ログイン",
+  "login_error_invalid_credentials": "メールアドレスまたはパスワードが正しくありません。",
+  "inbox_filter_all": "すべて",
+  "inbox_filter_unread": "未読",
+  "inbox_filter_draft": "下書き",
+  "inbox_filter_overdue": "期限超過",
+  "inbox_empty_state": "会話を選択してください",
+  "thread_window_within_24h": "24h窓内",
+  "thread_window_outside_24h": "24h窓外",
+  "reply_placeholder": "返信を入力してください",
+  "reply_send_button": "送信",
+  "reply_sending_button": "送信中…",
+  "reply_ai_suggestion_label": "AI 下書き",
+  "reply_draft_saved": "下書き保存済",
+  "reply_window_closed_warning": "24時間窓が閉じているため返信できません。",
+  "reply_policy_countdown": "Meta 24時間ポリシー · 返信期限迫る",
+  "reply_error_outside_window": "24時間窓が閉じています。返信できません。",
+  "reply_error_token_expired": "ページアクセストークンが失効しています。管理者に連絡してください。",
+  "reply_error_meta_failed": "Metaへの送信に失敗しました。しばらく待ってから再試行してください。",
+  "reply_error_generic": "送信に失敗しました。"
 }

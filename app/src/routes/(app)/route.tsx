@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, Link, useRouter, useLocation } from '@tanstack/react-router'
 import { TokenStatusBanner } from './-components/TokenStatusBanner'
+import { LanguageToggle } from './-components/LanguageToggle'
 import { logoutFn } from '~/server/fns/logout.fn'
 import {
   InboxIcon,
@@ -160,6 +161,7 @@ function Sidebar() {
           borderTop: '1px solid var(--color-line)',
         }}
       >
+        <LanguageToggle />
         <button
           onClick={handleLogout}
           style={{
