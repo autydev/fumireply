@@ -108,7 +108,7 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 ### CI integration
 
 <!-- unit: U3.5 | deps: U3.2 | scope: infra | tasks: T033 | files: ~1 | automation: auto -->
-- [ ] T033 [US2] Add Paraglide compile diff check to `.github/workflows/ci.yml` — run `npx paraglide-js compile && git diff --exit-code messages/` to fail PR when JSON edits aren't compiled
+- [x] T033 [US2] Add Paraglide compile diff check to `.github/workflows/ci.yml` — run `npx paraglide-js compile && git diff --exit-code messages/` to fail PR when JSON edits aren't compiled
 
 ### Manual verification
 
