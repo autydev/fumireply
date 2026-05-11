@@ -34,7 +34,9 @@
       "Bash(gh release list *)",
       "Bash(gh auth status *)",
       "Bash(npx tsc --noEmit)",
-      "Bash(npx vitest run)"
+      "Bash(npx tsc *)",
+      "Bash(npx vitest run)",
+      "Bash(mkdir *)"
     ]
   }
 }

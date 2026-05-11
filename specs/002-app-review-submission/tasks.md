@@ -149,9 +149,9 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 ### UI components
 
 <!-- unit: U4.4 | deps: U2.2,U4.2 | scope: frontend | tasks: T044-T046 | files: ~3 | automation: auto -->
-- [ ] T044 [P] [US1] Implement `ConnectFacebookButton` in `app/src/routes/(app)/onboarding/connect-page/-components/ConnectFacebookButton.tsx` — uses T014 SDK loader, calls `FB.login` with the four permissions in one consent dialog (`auth_type: 'reauthenticate'` so reviewers see the dialog every time), invokes T042 server fn on success
-- [ ] T045 [P] [US1] Implement `PageList` in `app/src/routes/(app)/onboarding/connect-page/-components/PageList.tsx` — displays pages from T042 response, single-select UI, calls T043 server fn on confirm, displays page name + page ID
-- [ ] T046 [P] [US1] Implement `ConnectErrorPanel` in `app/src/routes/(app)/onboarding/connect-page/-components/ConnectErrorPanel.tsx` — displays mapped error messages from T042/T043 plus a Retry button that resets the flow
+- [x] T044 [P] [US1] Implement `ConnectFacebookButton` in `app/src/routes/(app)/onboarding/connect-page/-components/ConnectFacebookButton.tsx` — uses T014 SDK loader, calls `FB.login` with the four permissions in one consent dialog (`auth_type: 'reauthenticate'` so reviewers see the dialog every time), invokes T042 server fn on success
+- [x] T045 [P] [US1] Implement `PageList` in `app/src/routes/(app)/onboarding/connect-page/-components/PageList.tsx` — displays pages from T042 response, single-select UI, calls T043 server fn on confirm, displays page name + page ID
+- [x] T046 [P] [US1] Implement `ConnectErrorPanel` in `app/src/routes/(app)/onboarding/connect-page/-components/ConnectErrorPanel.tsx` — displays mapped error messages from T042/T043 plus a Retry button that resets the flow
 
 ### Route + guards
 
