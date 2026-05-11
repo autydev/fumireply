@@ -6,6 +6,7 @@ import { sendReplyFn } from '../-lib/send-reply.fn'
 import { DraftBanner } from './DraftBanner'
 import type { ConversationDetail } from '../-lib/get-conversation.fn'
 import { SparkleIcon, SendIcon, XIcon, ThumbUpIcon, ThumbDownIcon, AlertTriIcon } from '~/components/ui/icons'
+import { m } from '~/paraglide/messages'
 
 type Props = {
   conversationId: string
@@ -109,15 +110,15 @@ export function ReplyForm({
         await router.invalidate()
       } else {
         const errorMessages: Record<string, string> = {
-          outside_window: '24時間窓が閉じています。返信できません。',
-          token_expired: 'ページアクセストークンが失効しています。管理者に連絡してください。',
-          meta_error: 'Metaへの送信に失敗しました。しばらく待ってから再試行してください。',
-          validation_failed: '入力内容が不正です。',
+          outside_window: m.reply_error_outside_window(),
+          token_expired: m.reply_error_token_expired(),
+          meta_error: m.reply_error_meta_failed(),
+          validation_failed: m.reply_error_validation_failed(),
         }
-        setError(errorMessages[result.error] ?? '送信に失敗しました。')
+        setError(errorMessages[result.error] ?? m.reply_error_generic())
       }
     } catch {
-      setError('送信中にエラーが発生しました。')
+      setError(m.reply_error_send_failed())
     } finally {
       setSending(false)
     }
@@ -160,9 +161,9 @@ export function ReplyForm({
         >
           <AlertTriIcon size={13} />
           <div>
-            <strong>Meta 24時間ポリシー · 返信期限迫る</strong>
+            <strong>{m.reply_policy_countdown()}</strong>
             <span style={{ marginLeft: 6, opacity: 0.85 }}>
-              残り {Math.floor(hoursRemaining)}h {Math.floor((hoursRemaining % 1) * 60)}m
+              {m.reply_policy_time_remaining({ hours: Math.floor(hoursRemaining), minutes: Math.floor((hoursRemaining % 1) * 60) })}
             </span>
           </div>
         </div>
@@ -186,7 +187,7 @@ export function ReplyForm({
             margin: '0 0 8px',
           }}
         >
-          24時間窓が閉じているため返信できません。
+          {m.reply_window_closed_warning()}
         </p>
       )}
 
@@ -224,7 +225,7 @@ export function ReplyForm({
               }}
             >
               <SparkleIcon size={11} />
-              AI suggestion
+              {m.reply_ai_suggestion_label()}
             </span>
 
             {/* Feedback buttons */}
@@ -268,12 +269,12 @@ export function ReplyForm({
             {/* Auto-save pill */}
             {saveState === 'saving' && (
               <span style={{ fontSize: 11, color: 'var(--color-ink-3)', fontFamily: 'var(--font-mono)' }}>
-                保存中…
+                {m.reply_saving()}
               </span>
             )}
             {saveState === 'saved' && body !== (latestDraft?.body ?? '') && (
               <span style={{ fontSize: 11, color: 'var(--color-green-ink)', fontFamily: 'var(--font-mono)' }}>
-                下書き保存済
+                {m.reply_draft_saved()}
               </span>
             )}
           </div>
@@ -285,9 +286,9 @@ export function ReplyForm({
             value={body}
             onChange={(e) => handleBodyChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="返信を入力してください"
+            placeholder={m.reply_placeholder()}
             disabled={isWindowClosed || sending}
-            aria-label="返信本文"
+            aria-label={m.reply_body_label()}
             rows={4}
             style={{
               width: '100%',
@@ -385,7 +386,7 @@ export function ReplyForm({
               }}
             >
               <SendIcon size={12} />
-              {sending ? '送信中…' : '送信'}
+              {sending ? m.reply_sending_button() : m.reply_send_button()}
             </button>
           </div>
         </div>

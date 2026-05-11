@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { MessageWithDraft } from '../-lib/get-conversation.fn'
 import { CheckIcon, ClockIcon } from '~/components/ui/icons'
+import { m } from '~/paraglide/messages'
 
 export function ThreadMessages({ messages }: { messages: MessageWithDraft[] }) {
   const bottomRef = useRef<HTMLLIElement>(null)
@@ -140,7 +141,7 @@ function MessageBubble({ msg }: { msg: MessageWithDraft }) {
             }}
           >
             <ClockIcon size={11} />
-            送信中…
+            {m.reply_sending_button()}
           </span>
         )}
         {isSent && (
