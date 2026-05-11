@@ -12,6 +12,7 @@ import {
   listPagesEmpty,
   listPagesPermissionMissing,
   listPagesTokenExpired,
+  listPagesRateLimited,
   subscribeWebhookSuccess,
   subscribeWebhookTokenInvalid,
   subscribeWebhookPermissionMissing,
@@ -74,6 +75,11 @@ describe('listPages', () => {
   it('throws token_expired on code 190', async () => {
     server.use(listPagesTokenExpired)
     await expect(listPages(DEFAULT_LONG_TOKEN)).rejects.toThrow('token_expired')
+  })
+
+  it('throws rate_limited on code 4', async () => {
+    server.use(listPagesRateLimited)
+    await expect(listPages(DEFAULT_LONG_TOKEN)).rejects.toThrow('rate_limited')
   })
 })
 

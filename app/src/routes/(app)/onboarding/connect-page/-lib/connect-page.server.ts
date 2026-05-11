@@ -41,9 +41,17 @@ export async function handleConnectPage(tenantId: string, pageId: string): Promi
 
   let pageAccessToken: string
   let pageName: string
+  let longToken: string
   try {
     const masterKey = await getMasterKey()
-    const longToken = decryptToken(Buffer.from(encodedSession, 'base64'), masterKey)
+    longToken = decryptToken(Buffer.from(encodedSession, 'base64'), masterKey)
+  } catch {
+    // Tampered or corrupted cookie — clear it and force re-connect
+    setCookie(SESSION_COOKIE, '', { ...SESSION_COOKIE_ATTRS, maxAge: 0 })
+    return { ok: false, error: 'token_invalid', message: 'Session invalid. Please reconnect.' }
+  }
+
+  try {
     const pages = await listPages(longToken)
     const page = pages.find((p) => p.id === pageId)
     if (!page) {
