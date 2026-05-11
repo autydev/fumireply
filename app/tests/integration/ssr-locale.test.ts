@@ -119,7 +119,7 @@ describe('SSR locale concurrent isolation via localeMiddleware', () => {
     )
 
     expect(mockSetLocale).toHaveBeenCalledTimes(100)
-    const localeCalls = mockSetLocale.mock.calls.map(([locale]: [string]) => locale)
+    const localeCalls = mockSetLocale.mock.calls.map(([locale]) => locale as string)
     expect(localeCalls.filter((l) => l === 'en').length).toBe(50)
     expect(localeCalls.filter((l) => l === 'ja').length).toBe(50)
   })
@@ -137,7 +137,7 @@ describe('SSR locale concurrent isolation via localeMiddleware', () => {
     )
 
     expect(mockSetLocale).toHaveBeenCalledTimes(50)
-    const localeCalls = mockSetLocale.mock.calls.map(([locale]: [string]) => locale)
+    const localeCalls = mockSetLocale.mock.calls.map(([locale]) => locale as string)
     expect(localeCalls.every((l) => l === 'ja')).toBe(true)
   })
 })

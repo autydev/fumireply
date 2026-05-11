@@ -3,6 +3,7 @@ import type { ConversationSummary } from '../-lib/list-conversations.fn'
 import { slaState, formatTime } from '../-lib/sla-helpers'
 import { Avatar } from '~/components/ui/avatar'
 import { SearchIcon, ClockIcon } from '~/components/ui/icons'
+import { m } from '~/paraglide/messages'
 
 type FilterKey = 'all' | 'unread' | 'draft' | 'overdue'
 
@@ -15,11 +16,11 @@ type Props = {
 
 export function InboxList({ conversations, selectedId, filter = 'all', onFilterChange }: Props) {
   const filters: { key: FilterKey; label: string; count: number }[] = [
-    { key: 'all', label: 'すべて', count: conversations.length },
-    { key: 'unread', label: '未読', count: conversations.filter((c) => c.unread_count > 0).length },
+    { key: 'all', label: m.inbox_filter_all(), count: conversations.length },
+    { key: 'unread', label: m.inbox_filter_unread(), count: conversations.filter((c) => c.unread_count > 0).length },
     {
       key: 'overdue',
-      label: '未返信',
+      label: m.inbox_filter_overdue(),
       count: conversations.filter((c) => {
         const s = slaState(c)
         return s === 'overdue' || s === 'warn'
@@ -145,7 +146,7 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
               fontSize: 13,
             }}
           >
-            メッセージはありません
+            {m.inbox_empty_state()}
           </li>
         ) : (
           filtered.map((conv, i) => {
@@ -267,7 +268,7 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
                           padding: '1px 6px',
                         }}
                       >
-                        24h窓外
+                        {m.thread_window_outside_24h()}
                       </span>
                     )}
                     {sla === 'overdue' && (

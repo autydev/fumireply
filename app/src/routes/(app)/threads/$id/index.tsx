@@ -8,6 +8,7 @@ import { Avatar } from '~/components/ui/avatar'
 import { InboxList } from '../../inbox/-components/InboxList'
 import { listConversationsFn } from '../../inbox/-lib/list-conversations.fn'
 import { ChevronLeftIcon, MoreHorizIcon, StarIcon } from '~/components/ui/icons'
+import { m } from '~/paraglide/messages'
 
 type FilterKey = 'all' | 'unread' | 'draft' | 'overdue'
 
@@ -118,7 +119,7 @@ function ThreadPage() {
                     fontWeight: 600,
                   }}
                 >
-                  24h窓内
+                  {m.thread_window_within_24h()}
                 </span>
               ) : (
                 <span
@@ -133,7 +134,7 @@ function ThreadPage() {
                     fontWeight: 600,
                   }}
                 >
-                  24h窓外
+                  {m.thread_window_outside_24h()}
                 </span>
               )}
             </div>
