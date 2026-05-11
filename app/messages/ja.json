@@ -29,5 +29,17 @@
   "reply_error_send_failed": "送信中にエラーが発生しました。",
   "reply_saving": "保存中…",
   "reply_body_label": "返信本文",
-  "reply_policy_time_remaining": "残り {hours}h {minutes}m"
+  "reply_policy_time_remaining": "残り {hours}h {minutes}m",
+  "onboarding_title": "Facebook ページを連携する",
+  "onboarding_description": "Facebook ページを連携して、Messenger の会話を管理しましょう。",
+  "onboarding_connect_button": "Facebook で連携する",
+  "onboarding_consent_denied": "権限が拒否されました。続けるには必要な権限をすべて許可してください。",
+  "onboarding_select_page_heading": "連携するページを選択してください",
+  "onboarding_connecting": "連携中…",
+  "onboarding_no_pages": "ページが見つかりません。先に Facebook ページを作成してください。",
+  "onboarding_error_token_expired": "Facebook のセッションが失効しました。再度お試しください。",
+  "onboarding_error_permission_missing": "必要な権限が付与されませんでした。再度試行し、すべての権限を許可してください。",
+  "onboarding_error_subscribe_failed": "ページの連携に失敗しました。再度お試しください。",
+  "onboarding_error_generic": "エラーが発生しました。再度お試しください。",
+  "onboarding_retry_button": "再試行"
 }
