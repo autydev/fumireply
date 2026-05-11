@@ -33,6 +33,11 @@ jobs:
         run: npm ci
         working-directory: ai-worker
 
+      - name: Paraglide compile diff check
+        run: |
+          npm run paraglide:compile
+          git diff --exit-code messages/
+
       - name: Typecheck
         run: npm run typecheck
 

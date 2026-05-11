@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import type { LoginResult } from '~/routes/(auth)/login/-lib/login.server'
+import { setLocale } from '~/paraglide/runtime'
 
 process.env.SUPABASE_URL = 'https://test.supabase.co'
 process.env.SUPABASE_PUBLISHABLE_KEY = 'test-publishable-key'
@@ -140,6 +141,7 @@ describe('performLogin handler', () => {
 describe('LoginForm component', () => {
   beforeEach(async () => {
     loginFnMock.mockReset()
+    setLocale('en')
   })
 
   it('navigates to /inbox on successful login', async () => {
@@ -153,7 +155,7 @@ describe('LoginForm component', () => {
 
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'rev@example.com' } })
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'pass123' } })
-    fireEvent.click(screen.getByRole('button', { name: /login/i }))
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
     await waitFor(() => {
       expect(loginFnMock).toHaveBeenCalledWith({
@@ -175,7 +177,7 @@ describe('LoginForm component', () => {
 
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'rev@example.com' } })
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'pass123' } })
-    fireEvent.click(screen.getByRole('button', { name: /login/i }))
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith({ to: '/threads/42' })
@@ -190,10 +192,10 @@ describe('LoginForm component', () => {
 
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'bad@example.com' } })
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'wrongpass' } })
-    fireEvent.click(screen.getByRole('button', { name: /login/i }))
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Invalid email or password')
+      expect(screen.getByRole('alert')).toHaveTextContent('Invalid email or password.')
     })
     expect(mockNavigate).not.toHaveBeenCalled()
   })
@@ -206,7 +208,7 @@ describe('LoginForm component', () => {
 
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'user@example.com' } })
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'pass' } })
-    fireEvent.click(screen.getByRole('button', { name: /login/i }))
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }))
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('Login failed. Please try again.')

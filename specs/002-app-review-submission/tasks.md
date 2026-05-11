@@ -33,16 +33,16 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 - [x] T001 Verify branch is `002-app-review-submission` (created by /speckit.specify) and run `npm ci` in `app/` to ensure clean install
 
 <!-- unit: U1.2 | deps: U1.1 | scope: frontend | tasks: T002-T006 | files: ~5 | automation: auto -->
-- [ ] T002 [P] Install Paraglide dev dependency: `npm install --save-dev @inlang/paraglide-js` in `app/package.json`
-- [ ] T003 [P] Create `app/project.inlang/settings.json` with sourceLanguageTag=ja, languageTags=[ja,en], plugin.inlang.messageFormat config (per `contracts/locale-fn.md` §4)
-- [ ] T004 [P] Create skeleton `app/messages/en.json` and `app/messages/ja.json` with `$schema` reference and an empty body (keys added per-story)
-- [ ] T005 Configure Paraglide Vite plugin in `app/vite.config.ts` (per TanStack official example `examples/react/start-i18n-paraglide`)
-- [ ] T006 Run `npx paraglide-js compile --project ./project.inlang` once and verify generation succeeds; add `app/paraglide/` to root `.gitignore`
+- [x] T002 [P] Install Paraglide dev dependency: `npm install --save-dev @inlang/paraglide-js` in `app/package.json`
+- [x] T003 [P] Create `app/project.inlang/settings.json` with sourceLanguageTag=ja, languageTags=[ja,en], plugin.inlang.messageFormat config (per `contracts/locale-fn.md` §4)
+- [x] T004 [P] Create skeleton `app/messages/en.json` and `app/messages/ja.json` with `$schema` reference and an empty body (keys added per-story)
+- [x] T005 Configure Paraglide Vite plugin in `app/vite.config.ts` (per TanStack official example `examples/react/start-i18n-paraglide`)
+- [x] T006 Run `npx paraglide-js compile --project ./project.inlang` once and verify generation succeeds; add `app/paraglide/` to root `.gitignore`
 
 <!-- unit: U1.3 | deps: none | scope: infra | tasks: T007-T009 | files: ~1 | automation: manual -->
-- [ ] T007 [P] Add `VITE_FB_APP_ID` to `app/.env.local` (local dev) and document in `app/.env.example` if exists; sync expected env into Lambda env via Terraform module variables (no Terraform diff if value already provisioned)
+- [x] T007 [P] Set `VITE_FB_APP_ID=<Meta App ID>` in `app/.env.local` and `app/.env` (local dev / build); add same key to GitHub Actions build env as a non-secret Variable (App ID is public per Meta, see research.md R-003) so production `vite build` inlines it. **Do NOT** add to Lambda runtime env or Terraform — `VITE_` prefix is statically replaced at build time by Vite, runtime env has no effect. Document key in `app/.env.example` only if that file already exists
 - [ ] T008 [P] **(Manual)** Verify Meta App Settings: App Domains contains `review.fumireply.ecsuite.work`, Platform=Website with Site URL, Embedded Browser OAuth=Yes — record completion date in `docs/operations/audit-runbook.md`
-- [ ] T009 [P] **(Manual)** Create one Facebook Test User under Meta App Roles → Test Users; create one Test Page under that user; store credentials in GitHub Actions secrets `FB_TEST_USER_EMAIL`/`FB_TEST_USER_PASSWORD`/`FB_TEST_PAGE_ID`
+- [x] T009 [P] **(Manual)** Create one Facebook Test User under Meta App Roles → Test Users; create one Test Page under that user; store credentials in GitHub Actions secrets `FB_TEST_USER_EMAIL`/`FB_TEST_USER_PASSWORD`/`FB_TEST_PAGE_ID`
 
 ---
 
@@ -53,16 +53,16 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 **⚠️ CRITICAL**: T010〜T017 のいずれかが未完だと US1 / US2 のコンポーネントを実装してもコンパイル/起動しない可能性が高い。
 
 <!-- unit: U2.1 | deps: U1.2 | scope: frontend | tasks: T010-T013 | files: ~4 | automation: auto -->
-- [ ] T010 Implement Cookie helpers in `app/src/lib/i18n/locale.ts` — `getLocaleFromCookieHeader(cookieHeader: string): 'en' | 'ja'`, `serializeLocaleCookie(locale): string`, defaulting to `'ja'` for missing/invalid (per data-model.md §2.1, contracts/locale-fn.md §2)
-- [ ] T011 Implement SSR locale middleware in `app/src/lib/i18n/locale-middleware.ts` using `createMiddleware` from `@tanstack/start/server`; reads cookie via T010 helper and calls Paraglide `setLocale()` per request (per contracts/locale-fn.md §2)
-- [ ] T012 Wire `localeMiddleware` into `createStart` in `app/src/start.ts` (or equivalent entry) as a global server middleware so every SSR request runs through it
-- [ ] T013 Implement `setLocaleFn` server fn in `app/src/lib/i18n/set-locale.fn.ts` — Zod input `{ locale: 'en'|'ja' }`, sets `Set-Cookie: fumireply_locale=...; Path=/; Max-Age=31536000; SameSite=Lax; Secure` (per contracts/locale-fn.md §1)
+- [x] T010 Implement Cookie helpers in `app/src/lib/i18n/locale.ts` — `getLocaleFromCookieHeader(cookieHeader: string): 'en' | 'ja'`, `serializeLocaleCookie(locale): string`, defaulting to `'ja'` for missing/invalid (per data-model.md §2.1, contracts/locale-fn.md §2)
+- [x] T011 Implement SSR locale middleware in `app/src/lib/i18n/locale-middleware.ts` using `createMiddleware` from `@tanstack/start/server`; reads cookie via T010 helper and calls Paraglide `setLocale()` per request (per contracts/locale-fn.md §2)
+- [x] T012 Wire `localeMiddleware` into `createStart` in `app/src/start.ts` (or equivalent entry) as a global server middleware so every SSR request runs through it
+- [x] T013 Implement `setLocaleFn` server fn in `app/src/lib/i18n/set-locale.fn.ts` — Zod input `{ locale: 'en'|'ja' }`, sets `Set-Cookie: fumireply_locale=...; Path=/; Max-Age=31536000; SameSite=Lax; Secure` (per contracts/locale-fn.md §1)
 
 <!-- unit: U2.2 | deps: U1.2,U1.3 | scope: backend | tasks: T014-T017 | files: ~4 | automation: auto -->
-- [ ] T014 [P] Implement Facebook JS SDK loader in `app/src/lib/facebook-sdk.ts` — Promise-cached dynamic `<script src="https://connect.facebook.net/en_US/sdk.js">` injection, exposes `loadFbSdk(appId): Promise<typeof FB>`
-- [ ] T015 [P] Implement Graph API wrapper in `app/src/server/services/facebook.ts` with three exports: `exchangeUserToken(shortToken)`, `listPages(longUserToken)`, `subscribePageWebhook(pageId, pageAccessToken)` — all use global `fetch` + `AbortSignal.timeout(10000)` + exponential backoff for 5xx, no axios (per contracts/facebook-graph.md §1〜3, plan.md HTTP クライアント方針)
-- [ ] T016 [P] Implement `checkConnectedPagesFn` server fn in `app/src/server/services/check-connected-pages.fn.ts` — returns `{ count: number }` for the JWT's tenant_id (used by both forward and reverse guards, per contracts/connect-page-fn.md §4)
-- [ ] T017 [P] Add MSW Graph API handlers in `app/src/test/msw/facebook-handlers.ts` — happy paths for fb_exchange_token, /me/accounts, /{page-id}/subscribed_apps, plus error variants (190, 200, 4, 803) per contracts/facebook-graph.md test matrix
+- [x] T014 [P] Implement Facebook JS SDK loader in `app/src/lib/facebook-sdk.ts` — Promise-cached dynamic `<script src="https://connect.facebook.net/en_US/sdk.js">` injection, exposes `loadFbSdk(appId): Promise<typeof FB>`
+- [x] T015 [P] Implement Graph API wrapper in `app/src/server/services/facebook.ts` with three exports: `exchangeUserToken(shortToken)`, `listPages(longUserToken)`, `subscribePageWebhook(pageId, pageAccessToken)` — all use global `fetch` + `AbortSignal.timeout(10000)` + exponential backoff for 5xx, no axios (per contracts/facebook-graph.md §1〜3, plan.md HTTP クライアント方針)
+- [x] T016 [P] Implement `checkConnectedPagesFn` server fn in `app/src/server/services/check-connected-pages.fn.ts` — returns `{ count: number }` for the JWT's tenant_id (used by both forward and reverse guards, per contracts/connect-page-fn.md §4)
+- [x] T017 [P] Add MSW Graph API handlers in `app/src/test/msw/facebook-handlers.ts` — happy paths for fb_exchange_token, /me/accounts, /{page-id}/subscribed_apps, plus error variants (190, 200, 4, 803) per contracts/facebook-graph.md test matrix
 
 **Checkpoint**: i18n SSR + Cookie が機能、Graph API ラッパーが MSW で叩け、guard の前提 fn が呼べる状態。
 
@@ -77,38 +77,38 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 ### Tests for User Story 2
 
 <!-- unit: U3.1 | deps: U2.1 | scope: frontend | tasks: T018-T020 | files: ~3 | automation: auto -->
-- [ ] T018 [P] [US2] Unit test for cookie helpers in `app/tests/integration/locale-cookie.test.ts` — getLocaleFromCookieHeader / serializeLocaleCookie の境界値（無効値、複数値、空文字、未設定）
-- [ ] T019 [P] [US2] Integration test for `setLocaleFn` in `app/tests/integration/set-locale-fn.test.ts` — happy path (en, ja) と Zod 失敗ケースで Set-Cookie ヘッダ確認
-- [ ] T020 [P] [US2] Integration test for SSR locale resolution in `app/tests/integration/ssr-locale.test.ts` — Cookie `fumireply_locale=en` を付けて inbox / threads を SSR レンダリング → HTML 内に英訳文字列を含む。Cookie なしは ja デフォルト
+- [x] T018 [P] [US2] Unit test for cookie helpers in `app/tests/integration/locale-cookie.test.ts` — getLocaleFromCookieHeader / serializeLocaleCookie の境界値（無効値、複数値、空文字、未設定）
+- [x] T019 [P] [US2] Integration test for `setLocaleFn` in `app/tests/integration/set-locale-fn.test.ts` — happy path (en, ja) と Zod 失敗ケースで Set-Cookie ヘッダ確認
+- [x] T020 [P] [US2] Integration test for SSR locale resolution in `app/tests/integration/ssr-locale.test.ts` — Cookie `fumireply_locale=en` を付けて inbox / threads を SSR レンダリング → HTML 内に英訳文字列を含む。Cookie なしは ja デフォルト
 
 ### Translation keys (parallel — different scope per file but same JSON file 2 つを編集するため逐次)
 
 <!-- unit: U3.2 | deps: U2.1 | scope: frontend | tasks: T021-T024 | files: ~2 | automation: auto -->
-- [ ] T021 [US2] Add login-screen keys (`login_email_label`, `login_password_label`, `login_submit_button`, `login_error_invalid_credentials`) to both `app/messages/en.json` and `app/messages/ja.json` — per contracts/locale-fn.md §4 example
-- [ ] T022 [US2] Add inbox keys (`inbox_filter_all`, `inbox_filter_unread`, `inbox_filter_draft`, `inbox_filter_overdue`, `inbox_empty_state`) to both `app/messages/en.json` and `app/messages/ja.json`
-- [ ] T023 [US2] Add thread + reply form keys (`thread_window_within_24h`, `thread_window_outside_24h`, `reply_placeholder`, `reply_send_button`, `reply_sending_button`, `reply_ai_suggestion_label`, `reply_draft_saved`, `reply_window_closed_warning`, `reply_policy_countdown`, `reply_error_outside_window`, `reply_error_token_expired`, `reply_error_meta_failed`, `reply_error_generic`) to both message files
-- [ ] T024 [US2] Run `npx paraglide-js compile` and commit only the JSON files (not the generated TS) — confirm no compile error
+- [x] T021 [US2] Add login-screen keys (`login_email_label`, `login_password_label`, `login_submit_button`, `login_error_invalid_credentials`) to both `app/messages/en.json` and `app/messages/ja.json` — per contracts/locale-fn.md §4 example
+- [x] T022 [US2] Add inbox keys (`inbox_filter_all`, `inbox_filter_unread`, `inbox_filter_draft`, `inbox_filter_overdue`, `inbox_empty_state`) to both `app/messages/en.json` and `app/messages/ja.json`
+- [x] T023 [US2] Add thread + reply form keys (`thread_window_within_24h`, `thread_window_outside_24h`, `reply_placeholder`, `reply_send_button`, `reply_sending_button`, `reply_ai_suggestion_label`, `reply_draft_saved`, `reply_window_closed_warning`, `reply_policy_countdown`, `reply_error_outside_window`, `reply_error_token_expired`, `reply_error_meta_failed`, `reply_error_generic`) to both message files
+- [x] T024 [US2] Run `npx paraglide-js compile` and commit only the JSON files (not the generated TS) — confirm no compile error
 
 ### LanguageToggle component
 
 <!-- unit: U3.3 | deps: U2.1,U3.2 | scope: frontend | tasks: T025-T027 | files: ~3 | automation: auto -->
-- [ ] T025 [P] [US2] Implement `LanguageToggle` component in `app/src/routes/(app)/-components/LanguageToggle.tsx` — `EN | JA` text toggle, optimistic update via Paraglide `setLocale`, async call to `setLocaleFn`, aria-pressed for active state (per contracts/locale-fn.md §3)
-- [ ] T026 [US2] Insert `LanguageToggle` into `(app)/route.tsx` Header — right side near user menu, no layout shift (depends on T025)
-- [ ] T027 [US2] Insert `LanguageToggle` into `(auth)/login` screen — top-right absolute position so unauthenticated users can switch before logging in (depends on T025)
+- [x] T025 [P] [US2] Implement `LanguageToggle` component in `app/src/routes/(app)/-components/LanguageToggle.tsx` — `EN | JA` text toggle, optimistic update via Paraglide `setLocale`, async call to `setLocaleFn`, aria-pressed for active state (per contracts/locale-fn.md §3)
+- [x] T026 [US2] Insert `LanguageToggle` into `(app)/route.tsx` Header — right side near user menu, no layout shift (depends on T025)
+- [x] T027 [US2] Insert `LanguageToggle` into `(auth)/login` screen — top-right absolute position so unauthenticated users can switch before logging in (depends on T025)
 
 ### Replace hardcoded JA strings with `m.xxx()` calls (parallel — separate component files)
 
 <!-- unit: U3.4 | deps: U3.2 | scope: frontend | tasks: T028-T032 | files: ~5 | automation: auto -->
-- [ ] T028 [P] [US2] Replace JA strings in `app/src/routes/(auth)/login/-components/LoginForm.tsx` with Paraglide message calls (T021 keys)
-- [ ] T029 [P] [US2] Replace JA strings in `app/src/routes/(app)/inbox/-components/InboxList.tsx` with Paraglide message calls (T022 keys)
-- [ ] T030 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/ThreadMessages.tsx` and thread header in `app/src/routes/(app)/threads/$id/index.tsx` (24h badge, header labels) with Paraglide calls (T023 keys)
-- [ ] T031 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/ReplyForm.tsx` (placeholder, Send button, banners, error messages) with Paraglide calls (T023 keys)
-- [ ] T032 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/DraftBanner.tsx` if any (e.g., "下書きを生成中…") with Paraglide calls — add new keys to T023 if needed and re-compile
+- [x] T028 [P] [US2] Replace JA strings in `app/src/routes/(auth)/login/-components/LoginForm.tsx` with Paraglide message calls (T021 keys)
+- [x] T029 [P] [US2] Replace JA strings in `app/src/routes/(app)/inbox/-components/InboxList.tsx` with Paraglide message calls (T022 keys)
+- [x] T030 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/ThreadMessages.tsx` and thread header in `app/src/routes/(app)/threads/$id/index.tsx` (24h badge, header labels) with Paraglide calls (T023 keys)
+- [x] T031 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/ReplyForm.tsx` (placeholder, Send button, banners, error messages) with Paraglide calls (T023 keys)
+- [x] T032 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/DraftBanner.tsx` if any (e.g., "下書きを生成中…") with Paraglide calls — add new keys to T023 if needed and re-compile
 
 ### CI integration
 
 <!-- unit: U3.5 | deps: U3.2 | scope: infra | tasks: T033 | files: ~1 | automation: auto -->
-- [ ] T033 [US2] Add Paraglide compile diff check to `.github/workflows/ci.yml` — run `npx paraglide-js compile && git diff --exit-code messages/` to fail PR when JSON edits aren't compiled
+- [x] T033 [US2] Add Paraglide compile diff check to `.github/workflows/ci.yml` — run `npx paraglide-js compile && git diff --exit-code messages/` to fail PR when JSON edits aren't compiled
 
 ### Manual verification
 
@@ -128,12 +128,12 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 ### Tests for User Story 1
 
 <!-- unit: U4.1 | deps: U2.2 | scope: backend | tasks: T035-T040 | files: ~6 | automation: auto -->
-- [ ] T035 [P] [US1] Integration test for `exchangeAndListFn` in `app/tests/integration/exchange-and-list-fn.test.ts` using MSW (T017 handlers): happy path / token_expired (190) / permission_missing (200) / no_pages (empty data) / rate_limited (4) variants
-- [ ] T036 [P] [US1] Integration test for `connectPageFn` in `app/tests/integration/connect-page-fn.test.ts` using MSW: happy path UPSERT verifies DB row, already_connected returns error without DB write, subscribe_failed returns error without DB write, encryption round-trip via decrypt
-- [ ] T037 [P] [US1] Integration test for forward guard in `app/tests/integration/onboarding-guard.test.ts` — request `/inbox` with empty connected_pages returns 302 to `/onboarding/connect-page`; with a row present returns inbox HTML
-- [ ] T038 [P] [US1] Integration test for reverse guard — request `/onboarding/connect-page` with a connected_pages row returns 302 to `/inbox`
-- [ ] T039 [P] [US1] Cross-tenant safety test — tenant A's JWT calling connectPageFn with tenant_id field in input forged or attempting to write tenant B's row is blocked by RLS (within `withTenant` wrapper)
-- [ ] T040 [US1] E2E test in `app/tests/e2e/connect-page-flow.spec.ts` using Playwright + FB Test User — full flow: login → onboarding → FB.login popup → page selection → /inbox; gated behind `FB_TEST_USER_EMAIL` env var
+- [x] T035 [P] [US1] Integration test for `exchangeAndListFn` in `app/tests/integration/exchange-and-list-fn.test.ts` using MSW (T017 handlers): happy path / token_expired (190) / permission_missing (200) / no_pages (empty data) / rate_limited (4) variants
+- [x] T036 [P] [US1] Integration test for `connectPageFn` in `app/tests/integration/connect-page-fn.test.ts` using MSW: happy path UPSERT verifies DB row, already_connected returns error without DB write, subscribe_failed returns error without DB write, encryption round-trip via decrypt
+- [x] T037 [P] [US1] Integration test for forward guard in `app/tests/integration/onboarding-guard.test.ts` — request `/inbox` with empty connected_pages returns 302 to `/onboarding/connect-page`; with a row present returns inbox HTML
+- [x] T038 [P] [US1] Integration test for reverse guard — request `/onboarding/connect-page` with a connected_pages row returns 302 to `/inbox`
+- [x] T039 [P] [US1] Cross-tenant safety test — tenant A's JWT calling connectPageFn with tenant_id field in input forged or attempting to write tenant B's row is blocked by RLS (within `withTenant` wrapper)
+- [x] T040 [US1] E2E test in `app/tests/e2e/connect-page-flow.spec.ts` using Playwright + FB Test User — full flow: login → onboarding → FB.login popup → page selection → /inbox; gated behind `FB_TEST_USER_EMAIL` env var
 
 ### Onboarding-screen translation keys
 
@@ -143,8 +143,8 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 ### Server functions
 
 <!-- unit: U4.3 | deps: U2.2 | scope: backend | tasks: T042-T043 | files: ~2 | automation: auto -->
-- [ ] T042 [US1] Implement `exchangeAndListFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/exchange-and-list.fn.ts` — Zod input/output per contracts/connect-page-fn.md §1, calls T015 wrapper functions, structured logging per facebook-graph.md
-- [ ] T043 [US1] Implement `connectPageFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/connect-page.fn.ts` — Zod input/output per contracts/connect-page-fn.md §2, performs subscribe → encrypt (existing `crypto.ts`) → UPSERT within `withTenant`, full error mapping including `already_connected`
+- [x] T042 [US1] Implement `exchangeAndListFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/exchange-and-list.fn.ts` — Zod input/output per contracts/connect-page-fn.md §1, calls T015 wrapper functions, structured logging per facebook-graph.md
+- [x] T043 [US1] Implement `connectPageFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/connect-page.fn.ts` — Zod input/output per contracts/connect-page-fn.md §2, performs subscribe → encrypt (existing `crypto.ts`) → UPSERT within `withTenant`, full error mapping including `already_connected`
 
 ### UI components
 
