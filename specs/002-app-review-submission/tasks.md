@@ -36,8 +36,8 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 - [x] T002 [P] Install Paraglide dev dependency: `npm install --save-dev @inlang/paraglide-js` in `app/package.json`
 - [x] T003 [P] Create `app/project.inlang/settings.json` with sourceLanguageTag=ja, languageTags=[ja,en], plugin.inlang.messageFormat config (per `contracts/locale-fn.md` §4)
 - [x] T004 [P] Create skeleton `app/messages/en.json` and `app/messages/ja.json` with `$schema` reference and an empty body (keys added per-story)
-- [ ] T005 Configure Paraglide Vite plugin in `app/vite.config.ts` (per TanStack official example `examples/react/start-i18n-paraglide`)
-- [ ] T006 Run `npx paraglide-js compile --project ./project.inlang` once and verify generation succeeds; add `app/paraglide/` to root `.gitignore`
+- [x] T005 Configure Paraglide Vite plugin in `app/vite.config.ts` (per TanStack official example `examples/react/start-i18n-paraglide`)
+- [x] T006 Run `npx paraglide-js compile --project ./project.inlang` once and verify generation succeeds; add `app/paraglide/` to root `.gitignore`
 
 <!-- unit: U1.3 | deps: none | scope: infra | tasks: T007-T009 | files: ~1 | automation: manual -->
 - [x] T007 [P] Set `VITE_FB_APP_ID=<Meta App ID>` in `app/.env.local` and `app/.env` (local dev / build); add same key to GitHub Actions build env as a non-secret Variable (App ID is public per Meta, see research.md R-003) so production `vite build` inlines it. **Do NOT** add to Lambda runtime env or Terraform — `VITE_` prefix is statically replaced at build time by Vite, runtime env has no effect. Document key in `app/.env.example` only if that file already exists
@@ -99,11 +99,11 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 ### Replace hardcoded JA strings with `m.xxx()` calls (parallel — separate component files)
 
 <!-- unit: U3.4 | deps: U3.2 | scope: frontend | tasks: T028-T032 | files: ~5 | automation: auto -->
-- [ ] T028 [P] [US2] Replace JA strings in `app/src/routes/(auth)/login/-components/LoginForm.tsx` with Paraglide message calls (T021 keys)
-- [ ] T029 [P] [US2] Replace JA strings in `app/src/routes/(app)/inbox/-components/InboxList.tsx` with Paraglide message calls (T022 keys)
-- [ ] T030 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/ThreadMessages.tsx` and thread header in `app/src/routes/(app)/threads/$id/index.tsx` (24h badge, header labels) with Paraglide calls (T023 keys)
-- [ ] T031 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/ReplyForm.tsx` (placeholder, Send button, banners, error messages) with Paraglide calls (T023 keys)
-- [ ] T032 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/DraftBanner.tsx` if any (e.g., "下書きを生成中…") with Paraglide calls — add new keys to T023 if needed and re-compile
+- [x] T028 [P] [US2] Replace JA strings in `app/src/routes/(auth)/login/-components/LoginForm.tsx` with Paraglide message calls (T021 keys)
+- [x] T029 [P] [US2] Replace JA strings in `app/src/routes/(app)/inbox/-components/InboxList.tsx` with Paraglide message calls (T022 keys)
+- [x] T030 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/ThreadMessages.tsx` and thread header in `app/src/routes/(app)/threads/$id/index.tsx` (24h badge, header labels) with Paraglide calls (T023 keys)
+- [x] T031 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/ReplyForm.tsx` (placeholder, Send button, banners, error messages) with Paraglide calls (T023 keys)
+- [x] T032 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/DraftBanner.tsx` if any (e.g., "下書きを生成中…") with Paraglide calls — add new keys to T023 if needed and re-compile
 
 ### CI integration
 
