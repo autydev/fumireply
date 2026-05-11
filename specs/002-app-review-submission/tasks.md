@@ -59,10 +59,10 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 - [x] T013 Implement `setLocaleFn` server fn in `app/src/lib/i18n/set-locale.fn.ts` — Zod input `{ locale: 'en'|'ja' }`, sets `Set-Cookie: fumireply_locale=...; Path=/; Max-Age=31536000; SameSite=Lax; Secure` (per contracts/locale-fn.md §1)
 
 <!-- unit: U2.2 | deps: U1.2,U1.3 | scope: backend | tasks: T014-T017 | files: ~4 | automation: auto -->
-- [ ] T014 [P] Implement Facebook JS SDK loader in `app/src/lib/facebook-sdk.ts` — Promise-cached dynamic `<script src="https://connect.facebook.net/en_US/sdk.js">` injection, exposes `loadFbSdk(appId): Promise<typeof FB>`
-- [ ] T015 [P] Implement Graph API wrapper in `app/src/server/services/facebook.ts` with three exports: `exchangeUserToken(shortToken)`, `listPages(longUserToken)`, `subscribePageWebhook(pageId, pageAccessToken)` — all use global `fetch` + `AbortSignal.timeout(10000)` + exponential backoff for 5xx, no axios (per contracts/facebook-graph.md §1〜3, plan.md HTTP クライアント方針)
-- [ ] T016 [P] Implement `checkConnectedPagesFn` server fn in `app/src/server/services/check-connected-pages.fn.ts` — returns `{ count: number }` for the JWT's tenant_id (used by both forward and reverse guards, per contracts/connect-page-fn.md §4)
-- [ ] T017 [P] Add MSW Graph API handlers in `app/src/test/msw/facebook-handlers.ts` — happy paths for fb_exchange_token, /me/accounts, /{page-id}/subscribed_apps, plus error variants (190, 200, 4, 803) per contracts/facebook-graph.md test matrix
+- [x] T014 [P] Implement Facebook JS SDK loader in `app/src/lib/facebook-sdk.ts` — Promise-cached dynamic `<script src="https://connect.facebook.net/en_US/sdk.js">` injection, exposes `loadFbSdk(appId): Promise<typeof FB>`
+- [x] T015 [P] Implement Graph API wrapper in `app/src/server/services/facebook.ts` with three exports: `exchangeUserToken(shortToken)`, `listPages(longUserToken)`, `subscribePageWebhook(pageId, pageAccessToken)` — all use global `fetch` + `AbortSignal.timeout(10000)` + exponential backoff for 5xx, no axios (per contracts/facebook-graph.md §1〜3, plan.md HTTP クライアント方針)
+- [x] T016 [P] Implement `checkConnectedPagesFn` server fn in `app/src/server/services/check-connected-pages.fn.ts` — returns `{ count: number }` for the JWT's tenant_id (used by both forward and reverse guards, per contracts/connect-page-fn.md §4)
+- [x] T017 [P] Add MSW Graph API handlers in `app/src/test/msw/facebook-handlers.ts` — happy paths for fb_exchange_token, /me/accounts, /{page-id}/subscribed_apps, plus error variants (190, 200, 4, 803) per contracts/facebook-graph.md test matrix
 
 **Checkpoint**: i18n SSR + Cookie が機能、Graph API ラッパーが MSW で叩け、guard の前提 fn が呼べる状態。
 
@@ -128,12 +128,12 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 ### Tests for User Story 1
 
 <!-- unit: U4.1 | deps: U2.2 | scope: backend | tasks: T035-T040 | files: ~6 | automation: auto -->
-- [ ] T035 [P] [US1] Integration test for `exchangeAndListFn` in `app/tests/integration/exchange-and-list-fn.test.ts` using MSW (T017 handlers): happy path / token_expired (190) / permission_missing (200) / no_pages (empty data) / rate_limited (4) variants
-- [ ] T036 [P] [US1] Integration test for `connectPageFn` in `app/tests/integration/connect-page-fn.test.ts` using MSW: happy path UPSERT verifies DB row, already_connected returns error without DB write, subscribe_failed returns error without DB write, encryption round-trip via decrypt
-- [ ] T037 [P] [US1] Integration test for forward guard in `app/tests/integration/onboarding-guard.test.ts` — request `/inbox` with empty connected_pages returns 302 to `/onboarding/connect-page`; with a row present returns inbox HTML
-- [ ] T038 [P] [US1] Integration test for reverse guard — request `/onboarding/connect-page` with a connected_pages row returns 302 to `/inbox`
-- [ ] T039 [P] [US1] Cross-tenant safety test — tenant A's JWT calling connectPageFn with tenant_id field in input forged or attempting to write tenant B's row is blocked by RLS (within `withTenant` wrapper)
-- [ ] T040 [US1] E2E test in `app/tests/e2e/connect-page-flow.spec.ts` using Playwright + FB Test User — full flow: login → onboarding → FB.login popup → page selection → /inbox; gated behind `FB_TEST_USER_EMAIL` env var
+- [x] T035 [P] [US1] Integration test for `exchangeAndListFn` in `app/tests/integration/exchange-and-list-fn.test.ts` using MSW (T017 handlers): happy path / token_expired (190) / permission_missing (200) / no_pages (empty data) / rate_limited (4) variants
+- [x] T036 [P] [US1] Integration test for `connectPageFn` in `app/tests/integration/connect-page-fn.test.ts` using MSW: happy path UPSERT verifies DB row, already_connected returns error without DB write, subscribe_failed returns error without DB write, encryption round-trip via decrypt
+- [x] T037 [P] [US1] Integration test for forward guard in `app/tests/integration/onboarding-guard.test.ts` — request `/inbox` with empty connected_pages returns 302 to `/onboarding/connect-page`; with a row present returns inbox HTML
+- [x] T038 [P] [US1] Integration test for reverse guard — request `/onboarding/connect-page` with a connected_pages row returns 302 to `/inbox`
+- [x] T039 [P] [US1] Cross-tenant safety test — tenant A's JWT calling connectPageFn with tenant_id field in input forged or attempting to write tenant B's row is blocked by RLS (within `withTenant` wrapper)
+- [x] T040 [US1] E2E test in `app/tests/e2e/connect-page-flow.spec.ts` using Playwright + FB Test User — full flow: login → onboarding → FB.login popup → page selection → /inbox; gated behind `FB_TEST_USER_EMAIL` env var
 
 ### Onboarding-screen translation keys
 
@@ -143,8 +143,8 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 ### Server functions
 
 <!-- unit: U4.3 | deps: U2.2 | scope: backend | tasks: T042-T043 | files: ~2 | automation: auto -->
-- [ ] T042 [US1] Implement `exchangeAndListFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/exchange-and-list.fn.ts` — Zod input/output per contracts/connect-page-fn.md §1, calls T015 wrapper functions, structured logging per facebook-graph.md
-- [ ] T043 [US1] Implement `connectPageFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/connect-page.fn.ts` — Zod input/output per contracts/connect-page-fn.md §2, performs subscribe → encrypt (existing `crypto.ts`) → UPSERT within `withTenant`, full error mapping including `already_connected`
+- [x] T042 [US1] Implement `exchangeAndListFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/exchange-and-list.fn.ts` — Zod input/output per contracts/connect-page-fn.md §1, calls T015 wrapper functions, structured logging per facebook-graph.md
+- [x] T043 [US1] Implement `connectPageFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/connect-page.fn.ts` — Zod input/output per contracts/connect-page-fn.md §2, performs subscribe → encrypt (existing `crypto.ts`) → UPSERT within `withTenant`, full error mapping including `already_connected`
 
 ### UI components
 
