@@ -95,7 +95,7 @@ describe('InboxList', () => {
     renderRoute({ path: '/inbox', component: () => <InboxList conversations={[]} />, initialEntries: ['/inbox'] })
 
     await waitFor(() => {
-      expect(screen.getByText('メッセージはありません')).toBeInTheDocument()
+      expect(screen.getByText('会話を選択してください')).toBeInTheDocument()
     })
   })
 })

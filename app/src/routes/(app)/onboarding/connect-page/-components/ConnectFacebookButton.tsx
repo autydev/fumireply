@@ -15,11 +15,11 @@ export function ConnectFacebookButton({ fbAppId, onPagesLoaded, onError }: Props
   async function handleConnect() {
     setLoading(true)
     try {
-      await loadFbSdk(fbAppId)
+      const fb = await loadFbSdk(fbAppId)
 
       const fbResponse = await new Promise<{ status: string; authResponse: { accessToken: string } | null }>(
         (resolve) => {
-          window.FB.login((res) => resolve(res as never), {
+          fb.login((res) => resolve(res as never), {
             scope: 'pages_show_list,pages_manage_metadata,pages_read_engagement,pages_messaging',
             auth_type: 'reauthenticate',
           })

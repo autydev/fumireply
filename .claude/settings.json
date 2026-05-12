@@ -32,7 +32,9 @@
       "Bash(gh repo view *)",
       "Bash(gh release view *)",
       "Bash(gh release list *)",
-      "Bash(gh auth status *)"
+      "Bash(gh auth status *)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx vitest run)"
     ]
   }
 }
