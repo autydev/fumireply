@@ -57,41 +57,49 @@ Password:      <<PASSWORD — paste from SSM>>
 Two-factor authentication is disabled for this account during the review period.
 The account does not require IP allow-listing.
 
-=== Connected test Facebook Page ===
+=== Connect Facebook Page (step 2 of the demo) ===
 
+Test Facebook Page for the reviewer to connect:
 Page name:     <<TEST PAGE NAME — fill before submission>>
 Page ID:       <<NUMERIC PAGE ID — fill before submission>>
+Page owner:    <<FB TEST USER EMAIL — fill before submission>>
 
-This Page is already connected to the Fumireply admin account in our database.
-You do not need to perform any OAuth flow. After signing in, the inbox will
-already be subscribed to the Page's Messenger webhook.
+After signing in you will be redirected to /onboarding/connect-page.
+See Step 2 below for instructions on completing the connection.
 
 === End-to-end test scenario (~3 minutes) ===
 
 Step 1. Sign in
   - Go to https://review.fumireply.ecsuite.work/login
   - Use the credentials above
+  - You will be redirected to /onboarding/connect-page (no Page connected yet)
+
+Step 2. Connect the test Facebook Page
+  - Click "Connect with Facebook"
+  - Log in as the Test User above when the Facebook Login dialog opens
+  - Grant all four permissions when prompted
+  - Select the test Page from the list and click Connect
   - You will be redirected to /inbox
 
-Step 2. Send a test Messenger message to our Page
+Step 3. Send a test Messenger message to our Page
   - Open the Messenger app on your phone (or m.me link)
   - Send a short message such as: "Hi, do you have product X in stock?"
   - The conversation appears in the inbox within ~10 seconds (auto-poll)
 
-Step 3. Open the conversation
+Step 4. Open the conversation
   - Click the new conversation in the left list to open /threads/<id>
   - The conversation header shows the customer's PSID and a "24h window" badge
-  - The reply textarea will briefly show "Draft is being generated..."
+  - The reply textarea will briefly show "Generating draft..."
   - Within ~30 seconds, an AI-suggested draft is filled into the textarea by
     Anthropic's Claude Haiku 4.5 model (this is disclosed in our Privacy Policy)
 
-Step 4. Edit and send
+Step 5. Edit and send
   - You can edit the draft freely (it is just a starting point)
-  - Click the "送信" (Send) button to deliver the reply
+  - Click the "Send" button to deliver the reply
   - Sending is a manual click action — there is no auto-send anywhere
   - Your phone Messenger app should receive the reply within 5 seconds
 
-Step 5. Confirm public pages
+Step 6. Confirm public pages
   - Privacy Policy:    https://review.fumireply.ecsuite.work/privacy
   - Terms of Service:  https://review.fumireply.ecsuite.work/terms
   - Data Deletion:     https://review.fumireply.ecsuite.work/data-deletion
