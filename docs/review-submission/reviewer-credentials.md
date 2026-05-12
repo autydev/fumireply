@@ -135,3 +135,5 @@ Step 6. Confirm public pages
 - [ ] スクリーンキャスト動画が Unlisted で再生可能
 
 すべて満たしたら申請フォームを送信。
+
+申請フォームの操作手順（Meta App Dashboard のナビゲーション、権限ごとの貼り付け手順、提出後ハンドオフ）は `docs/review-submission/submission-walkthrough.md` を参照。
