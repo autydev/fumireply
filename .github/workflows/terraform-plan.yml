@@ -40,7 +40,7 @@ jobs:
       # infra PRs in Phase 2 surface plan output from the first commit.
       - name: Configure AWS credentials (OIDC)
         if: ${{ vars.AWS_PLAN_ROLE_ARN != '' }}
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
           aws-region: ap-northeast-1
