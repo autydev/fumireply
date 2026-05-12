@@ -14,7 +14,7 @@
 - [ ] ブラウザは Chrome、ブックマークバー非表示・拡張機能アイコン非表示、**UI 言語は EN に切替済み**
 - [ ] DevTools / 通知 / メール等の個人情報が映らない
 - [ ] レビュワー用テストアカウント（`reviewer@malbek.co.jp`）を有効化済み（`banned_until = null`）
-- [ ] **connected_pages テーブルにレビュワー用テナントの行を削除済み**（onboarding フローを見せるため）
+- [ ] **connected_pages テーブルのレビュワー用テナントの行を削除済み**（onboarding フローを見せるため）
 - [ ] テスト FB ページ（Test User 所有）が存在し、FB.login で選択可能な状態
 - [ ] スマホ実機（Messenger アプリ）と PC 画面を同時に撮影できるよう準備（OBS で 2 ソース合成）
 - [ ] 公開ページ（`/privacy`, `/terms`, `/data-deletion`）が 200 で表示されることを事前確認

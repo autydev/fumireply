@@ -130,7 +130,7 @@ Complete every item before clicking Submit:
 - [ ] SSM password retrieval works and incognito sign-in succeeds
 - [ ] Business Verification: Meta App Dashboard shows "Verified"
 - [ ] Anthropic disclosure is visible in Privacy Policy at `/privacy`
-- [ ] Long-lived Page Access Token encrypted in DB (verify via Drizzle Studio — `encrypted_token` column non-null in `connected_pages`)
+- [ ] Long-lived Page Access Token encrypted in DB (verify via Drizzle Studio — `page_access_token_encrypted` column non-null in `connected_pages`)
 - [ ] Supabase project is active (no paused state — check Supabase Dashboard project health)
 - [ ] Screencast YouTube URL plays in incognito, duration ≤ 4 minutes, English UI visible
 - [ ] All four permission use-case texts pasted and saved in the form
@@ -161,7 +161,7 @@ After submitting:
    ```bash
    bash scripts/post-screencast.sh
    ```
-   This re-disables the reviewer account (`banned_until` set to 2099-12-31).
+   This re-disables the reviewer account (`ban_duration=876000h`, approximately 100 years).
 
 2. **Do NOT rotate the reviewer password** until after Meta notifies the result. Rotating mid-review causes "Cannot reproduce" rejections.
 

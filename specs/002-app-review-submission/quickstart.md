@@ -172,7 +172,7 @@ CI（`.github/workflows/ci.yml`）に同様のステップを追加して PR で
 
 ### 6.1 事前確認（dry-run）
 
-副作用なしで実行計画を確認できる：
+AWS 接続不要で実行計画を確認できる。SSM パラメータの取得・状態変更・DB 操作は一切行わない：
 
 ```bash
 bash scripts/prep-screencast.sh --dry-run

@@ -181,7 +181,7 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 - [x] T053 [P] [US3] Update `docs/review-submission/reviewer-credentials.md` — replace legacy "Page is pre-connected via DB seed" wording with "Reviewer connects Test Page during the demo flow"; preserve SSM password retrieval section (operator-facing JA) and finalize the English submission-form-ready block
 
 <!-- unit: U5.2 | deps: U5.1,U8.2 | scope: docs | tasks: T054-T055 | files: 0 | automation: auto -->
-- [x] T054 [US3] Verify zero placeholder leftovers: `grep -rn "<<.*>>" docs/review-submission/` returns no matches (depends on T051+T052+T053)
+- [x] T054 [US3] Verify placeholder leftovers: `grep -rn "<<.*>>" docs/review-submission/` returns only intentional operator-fill-at-submission-time markers in `reviewer-credentials.md` (password, page name, page ID, FB test user email); zero unintentional TODOs remain
 - [ ] T055 [US3] Verify URLs return 200: shell loop curling `https://review.fumireply.ecsuite.work` + `/privacy` + `/terms` + `/data-deletion` + `/login` + `/onboarding/connect-page` (after deploy of US1)
 
 **Checkpoint**: 申請フォーム貼り付け用の最終本文が全 4 権限分揃った状態。
@@ -212,8 +212,8 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 **Independent Test**: `bash scripts/prep-screencast.sh --dry-run` で副作用なしの計画出力が確認できる。本番モード実行後、Supabase ダッシュボードで reviewer の `banned_until` が NULL、`connected_pages` の Malbek 行が空、を目視確認できる。
 
 <!-- unit: U7.1 | deps: none | scope: infra | tasks: T059-T060 | files: ~2 | automation: auto -->
-- [x] T059 [P] [US5] Create `scripts/prep-screencast.sh` — `set -euo pipefail`, supports `--dry-run`, requires `AWS_PROFILE` env, reads SSM `/fumireply/review/supabase/{url,secret-key,reviewer-password,db-url}` and `/fumireply/master-encryption-key`, performs (a) reviewer `banned_until=NULL` via Supabase Admin API, (b) DELETE FROM connected_pages WHERE tenant_id matches Malbek slug, (c) macOS `pbcopy` of password, (d) curl 200 health check on production URLs, (e) append audit row to `docs/operations/audit-runbook.md`
-- [x] T060 [P] [US5] Create `scripts/post-screencast.sh` — sets reviewer `banned_until` to a future date (default 2099-12-31), supports `--rotate-password` flag to regenerate + SSM update, supports `--cleanup-recording-data` flag to DELETE the just-connected page + its conversations/messages, append audit row
+- [x] T059 [P] [US5] Create `scripts/prep-screencast.sh` — `set -euo pipefail`, supports `--dry-run` (skips SSM fetch and all mutations), uses `jq` for JSON parsing, reads SSM `/fumireply/review/supabase/{url,secret-key,reviewer-password,db-url}` in live mode, performs (a) reviewer `banned_until=NULL` via Supabase Admin API, (b) DELETE FROM connected_pages WHERE tenant_id matches Malbek slug, (c) macOS `pbcopy` of password, (d) curl 200 health check on production URLs, (e) append audit row to `docs/operations/audit-runbook.md`
+- [x] T060 [P] [US5] Create `scripts/post-screencast.sh` — disables reviewer via `ban_duration=876000h` (≈100 years), supports `--rotate-password` flag to regenerate + SSM update, supports `--cleanup-recording-data` flag to DELETE the just-connected page + its conversations/messages, append audit row; `--dry-run` skips all SSM access and mutations
 
 <!-- unit: U7.2 | deps: U7.1 | scope: infra | tasks: T061-T062 | files: ~1 | automation: auto -->
 - [x] T061 [US5] Add `chmod +x` and an idempotent execution test in `scripts/test-prep.sh` (or document in `docs/operations/audit-runbook.md`) that `--dry-run` is safe to run anywhere
