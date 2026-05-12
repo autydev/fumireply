@@ -170,29 +170,54 @@ CI（`.github/workflows/ci.yml`）に同様のステップを追加して PR で
 
 ## 6. 撮影前 prep スクリプトの使い方
 
-### 6.1 実行
+### 6.1 事前確認（dry-run）
+
+AWS 接続不要で実行計画を確認できる。SSM パラメータの取得・状態変更・DB 操作は一切行わない：
+
+```bash
+bash scripts/prep-screencast.sh --dry-run
+```
+
+出力例（`[DRY-RUN]` プレフィックス付き）で全ステップが表示される。本番実行前に必ずこれで確認すること。
+
+### 6.2 実行
 
 ```bash
 # 本番 reviewer 有効化 + connected_pages 削除
 bash scripts/prep-screencast.sh
 ```
 
-スクリプトは以下を実行する（詳細は research.md R-010）：
+スクリプトは以下を実行する：
 
-1. AWS CLI / Supabase 接続情報の存在確認
-2. SSM から reviewer パスワード取得（macOS のクリップボードに `pbcopy`）
-3. Supabase Admin API で reviewer の `banned_until = NULL`
-4. `DELETE FROM connected_pages WHERE tenant_id = 'malbek-uuid'`
-5. 公開ページ・管理画面・Webhook の 200 ヘルスチェック
-6. 監査ログ append（`docs/operations/audit-runbook.md`）
+1. `aws`/`curl`/`psql` コマンドの存在確認
+2. SSM から reviewer パスワード取得（macOS の場合は `pbcopy` でクリップボードにコピー）
+3. Supabase Admin API で reviewer の `banned_until = NULL`（有効化）
+4. `DELETE FROM connected_pages WHERE tenant_id = '<malbek-uuid>'`
+5. 公開ページ・login の 200 ヘルスチェック
+6. 監査ログ append（`docs/operations/audit-runbook.md`、ファイル存在時のみ）
 
-### 6.2 撮影完了後の cleanup
+### 6.3 撮影完了後の cleanup
 
 ```bash
+# reviewer 無効化のみ
 bash scripts/post-screencast.sh
+
+# パスワードローテーションも同時に行う場合（審査結果通知後のみ）
+bash scripts/post-screencast.sh --rotate-password
+
+# 撮影データ（会話・メッセージ・AI 下書き）も削除する場合
+bash scripts/post-screencast.sh --cleanup-recording-data
 ```
 
-reviewer 無効化 + 撮影で生じた一時データの整理（research.md R-011）。
+> **WARNING**: `--rotate-password` は Meta から審査結果が通知されるまで実行しないこと。
+> 審査期間中にパスワードを変更すると "Cannot reproduce" 差し戻しの原因になる。
+
+dry-run オプションは `post-screencast.sh` でも使用可能：
+
+```bash
+bash scripts/post-screencast.sh --dry-run
+bash scripts/post-screencast.sh --dry-run --rotate-password --cleanup-recording-data
+```
 
 ---
 

@@ -138,7 +138,7 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 ### Onboarding-screen translation keys
 
 <!-- unit: U4.2 | deps: U3.2 | scope: frontend | tasks: T041 | files: ~2 | automation: auto -->
-- [ ] T041 [US1] Add onboarding keys (`onboarding_title`, `onboarding_description`, `onboarding_connect_button`, `onboarding_consent_denied`, `onboarding_select_page_heading`, `onboarding_connecting`, `onboarding_no_pages`, `onboarding_error_token_expired`, `onboarding_error_permission_missing`, `onboarding_error_subscribe_failed`, `onboarding_error_generic`, `onboarding_retry_button`) to both `app/messages/en.json` and `app/messages/ja.json` and re-compile
+- [x] T041 [US1] Add onboarding keys (`onboarding_title`, `onboarding_description`, `onboarding_connect_button`, `onboarding_consent_denied`, `onboarding_select_page_heading`, `onboarding_connecting`, `onboarding_no_pages`, `onboarding_error_token_expired`, `onboarding_error_permission_missing`, `onboarding_error_subscribe_failed`, `onboarding_error_generic`, `onboarding_retry_button`) to both `app/messages/en.json` and `app/messages/ja.json` and re-compile
 
 ### Server functions
 
@@ -176,12 +176,12 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 **Independent Test**: 各ドキュメントを開いて、Meta App Dashboard の各権限欄に貼り付ける本文・reviewer 認証情報・screencast シーン構成が破綻なく揃っていることを目視確認。プレースホルダー残存ゼロ・URL すべて 200 を `grep` と `curl` で確認できる。
 
 <!-- unit: U5.1 | deps: U3.6,U4.6 | scope: docs | tasks: T051-T053 | files: ~3 | automation: manual -->
-- [ ] T051 [US3] Update `docs/review-submission/use-case-description.md` — add Connect Page flow section, add per-permission timestamp references (e.g., "0:50–1:30 in screencast"), refresh sample text for `pages_show_list`/`pages_manage_metadata`/`pages_read_engagement`/`pages_messaging`, ensure all URLs use `review.fumireply.ecsuite.work`, English body
-- [ ] T052 [P] [US3] Update `docs/review-submission/screencast-script.md` — rewrite all scenes assuming English UI (drop translation captions), insert new "Connect Facebook Page" scene (~40s) covering FB.login popup + page list + selection, add explicit timestamp markers per scene to align with use-case-description.md
-- [ ] T053 [P] [US3] Update `docs/review-submission/reviewer-credentials.md` — replace legacy "Page is pre-connected via DB seed" wording with "Reviewer connects Test Page during the demo flow"; preserve SSM password retrieval section (operator-facing JA) and finalize the English submission-form-ready block
+- [x] T051 [US3] Update `docs/review-submission/use-case-description.md` — add Connect Page flow section, add per-permission timestamp references (e.g., "0:50–1:30 in screencast"), refresh sample text for `pages_show_list`/`pages_manage_metadata`/`pages_read_engagement`/`pages_messaging`, ensure all URLs use `review.fumireply.ecsuite.work`, English body
+- [x] T052 [P] [US3] Update `docs/review-submission/screencast-script.md` — rewrite all scenes assuming English UI (drop translation captions), insert new "Connect Facebook Page" scene (~40s) covering FB.login popup + page list + selection, add explicit timestamp markers per scene to align with use-case-description.md
+- [x] T053 [P] [US3] Update `docs/review-submission/reviewer-credentials.md` — replace legacy "Page is pre-connected via DB seed" wording with "Reviewer connects Test Page during the demo flow"; preserve SSM password retrieval section (operator-facing JA) and finalize the English submission-form-ready block
 
 <!-- unit: U5.2 | deps: U5.1,U8.2 | scope: docs | tasks: T054-T055 | files: 0 | automation: auto -->
-- [ ] T054 [US3] Verify zero placeholder leftovers: `grep -rn "<<.*>>" docs/review-submission/` returns no matches (depends on T051+T052+T053)
+- [x] T054 [US3] Verify placeholder leftovers: `grep -rn "<<.*>>" docs/review-submission/` returns only intentional operator-fill-at-submission-time markers in `reviewer-credentials.md` (password, page name, page ID, FB test user email); zero unintentional TODOs remain
 - [ ] T055 [US3] Verify URLs return 200: shell loop curling `https://review.fumireply.ecsuite.work` + `/privacy` + `/terms` + `/data-deletion` + `/login` + `/onboarding/connect-page` (after deploy of US1)
 
 **Checkpoint**: 申請フォーム貼り付け用の最終本文が全 4 権限分揃った状態。
@@ -195,8 +195,8 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 **Independent Test**: 申請担当でない第三者が `submission-walkthrough.md` だけ読んで、別のテスト用 Meta App（実提出はしない）に対して全項目を完走できる。
 
 <!-- unit: U6.1 | deps: U5.1 | scope: docs | tasks: T056-T057 | files: ~2 | automation: auto -->
-- [ ] T056 [US4] Create `docs/review-submission/submission-walkthrough.md` — sections: (1) Pre-submit prerequisites, (2) Meta App Dashboard navigation map, (3) Per-permission paste content table, (4) Screencast upload procedure (same MP4 to all 4 fields or single URL referenced 4 times), (5) Reviewer credentials placement, (6) Pre-submit checklist (≥10 items including Business Verification, public pages 200, Webhook green check, reviewer enabled, long-lived token, Anthropic disclosure, Supabase keep-alive), (7) Submit button click + capture submission ID, (8) Post-submit handoff referencing `docs/operations/audit-runbook.md`
-- [ ] T057 [US4] Cross-link the walkthrough from `quickstart.md` §10 and from `docs/review-submission/reviewer-credentials.md` final-check section
+- [x] T056 [US4] Create `docs/review-submission/submission-walkthrough.md` — sections: (1) Pre-submit prerequisites, (2) Meta App Dashboard navigation map, (3) Per-permission paste content table, (4) Screencast upload procedure (same MP4 to all 4 fields or single URL referenced 4 times), (5) Reviewer credentials placement, (6) Pre-submit checklist (≥10 items including Business Verification, public pages 200, Webhook green check, reviewer enabled, long-lived token, Anthropic disclosure, Supabase keep-alive), (7) Submit button click + capture submission ID, (8) Post-submit handoff referencing `docs/operations/audit-runbook.md`
+- [x] T057 [US4] Cross-link the walkthrough from `quickstart.md` §10 and from `docs/review-submission/reviewer-credentials.md` final-check section
 
 <!-- unit: U6.2 | deps: U6.1 | scope: docs | tasks: T058 | files: 0 | automation: manual -->
 - [ ] T058 [US4] **(Manual)** Internal review: have a teammate unfamiliar with Meta App Dashboard read T056 and walk through the form on a test Meta App (no actual submission); collect feedback and iterate
@@ -212,12 +212,12 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 **Independent Test**: `bash scripts/prep-screencast.sh --dry-run` で副作用なしの計画出力が確認できる。本番モード実行後、Supabase ダッシュボードで reviewer の `banned_until` が NULL、`connected_pages` の Malbek 行が空、を目視確認できる。
 
 <!-- unit: U7.1 | deps: none | scope: infra | tasks: T059-T060 | files: ~2 | automation: auto -->
-- [ ] T059 [P] [US5] Create `scripts/prep-screencast.sh` — `set -euo pipefail`, supports `--dry-run`, requires `AWS_PROFILE` env, reads SSM `/fumireply/review/supabase/{url,secret-key,reviewer-password,db-url}` and `/fumireply/master-encryption-key`, performs (a) reviewer `banned_until=NULL` via Supabase Admin API, (b) DELETE FROM connected_pages WHERE tenant_id matches Malbek slug, (c) macOS `pbcopy` of password, (d) curl 200 health check on production URLs, (e) append audit row to `docs/operations/audit-runbook.md`
-- [ ] T060 [P] [US5] Create `scripts/post-screencast.sh` — sets reviewer `banned_until` to a future date (default 2099-12-31), supports `--rotate-password` flag to regenerate + SSM update, supports `--cleanup-recording-data` flag to DELETE the just-connected page + its conversations/messages, append audit row
+- [x] T059 [P] [US5] Create `scripts/prep-screencast.sh` — `set -euo pipefail`, supports `--dry-run` (skips SSM fetch and all mutations), uses `jq` for JSON parsing, reads SSM `/fumireply/review/supabase/{url,secret-key,reviewer-password,db-url}` in live mode, performs (a) reviewer `banned_until=NULL` via Supabase Admin API, (b) DELETE FROM connected_pages WHERE tenant_id matches Malbek slug, (c) macOS `pbcopy` of password, (d) curl 200 health check on production URLs, (e) append audit row to `docs/operations/audit-runbook.md`
+- [x] T060 [P] [US5] Create `scripts/post-screencast.sh` — disables reviewer via `ban_duration=876000h` (≈100 years), supports `--rotate-password` flag to regenerate + SSM update, supports `--cleanup-recording-data` flag to DELETE the just-connected page + its conversations/messages, append audit row; `--dry-run` skips all SSM access and mutations
 
 <!-- unit: U7.2 | deps: U7.1 | scope: infra | tasks: T061-T062 | files: ~1 | automation: auto -->
-- [ ] T061 [US5] Add `chmod +x` and an idempotent execution test in `scripts/test-prep.sh` (or document in `docs/operations/audit-runbook.md`) that `--dry-run` is safe to run anywhere
-- [ ] T062 [US5] Document the scripts in `quickstart.md` §6 (already referenced) — confirm exact command names match T059/T060
+- [x] T061 [US5] Add `chmod +x` and an idempotent execution test in `scripts/test-prep.sh` (or document in `docs/operations/audit-runbook.md`) that `--dry-run` is safe to run anywhere
+- [x] T062 [US5] Document the scripts in `quickstart.md` §6 (already referenced) — confirm exact command names match T059/T060
 
 **Checkpoint**: US5 完結。撮影者は 2 コマンドで前後状態を整えられる。
 
