@@ -59,9 +59,9 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 - [x] T013 Implement `setLocaleFn` server fn in `app/src/lib/i18n/set-locale.fn.ts` — Zod input `{ locale: 'en'|'ja' }`, sets `Set-Cookie: fumireply_locale=...; Path=/; Max-Age=31536000; SameSite=Lax; Secure` (per contracts/locale-fn.md §1)
 
 <!-- unit: U2.2 | deps: U1.2,U1.3 | scope: backend | tasks: T014-T017 | files: ~4 | automation: auto -->
-- [ ] T014 [P] Implement Facebook JS SDK loader in `app/src/lib/facebook-sdk.ts` — Promise-cached dynamic `<script src="https://connect.facebook.net/en_US/sdk.js">` injection, exposes `loadFbSdk(appId): Promise<typeof FB>`
-- [ ] T015 [P] Implement Graph API wrapper in `app/src/server/services/facebook.ts` with three exports: `exchangeUserToken(shortToken)`, `listPages(longUserToken)`, `subscribePageWebhook(pageId, pageAccessToken)` — all use global `fetch` + `AbortSignal.timeout(10000)` + exponential backoff for 5xx, no axios (per contracts/facebook-graph.md §1〜3, plan.md HTTP クライアント方針)
-- [ ] T016 [P] Implement `checkConnectedPagesFn` server fn in `app/src/server/services/check-connected-pages.fn.ts` — returns `{ count: number }` for the JWT's tenant_id (used by both forward and reverse guards, per contracts/connect-page-fn.md §4)
+- [x] T014 [P] Implement Facebook JS SDK loader in `app/src/lib/facebook-sdk.ts` — Promise-cached dynamic `<script src="https://connect.facebook.net/en_US/sdk.js">` injection, exposes `loadFbSdk(appId): Promise<typeof FB>`
+- [x] T015 [P] Implement Graph API wrapper in `app/src/server/services/facebook.ts` with three exports: `exchangeUserToken(shortToken)`, `listPages(longUserToken)`, `subscribePageWebhook(pageId, pageAccessToken)` — all use global `fetch` + `AbortSignal.timeout(10000)` + exponential backoff for 5xx, no axios (per contracts/facebook-graph.md §1〜3, plan.md HTTP クライアント方針)
+- [x] T016 [P] Implement `checkConnectedPagesFn` server fn in `app/src/server/services/check-connected-pages.fn.ts` — returns `{ count: number }` for the JWT's tenant_id (used by both forward and reverse guards, per contracts/connect-page-fn.md §4)
 - [ ] T017 [P] Add MSW Graph API handlers in `app/src/test/msw/facebook-handlers.ts` — happy paths for fb_exchange_token, /me/accounts, /{page-id}/subscribed_apps, plus error variants (190, 200, 4, 803) per contracts/facebook-graph.md test matrix
 
 **Checkpoint**: i18n SSR + Cookie が機能、Graph API ラッパーが MSW で叩け、guard の前提 fn が呼べる状態。
@@ -99,16 +99,16 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 ### Replace hardcoded JA strings with `m.xxx()` calls (parallel — separate component files)
 
 <!-- unit: U3.4 | deps: U3.2 | scope: frontend | tasks: T028-T032 | files: ~5 | automation: auto -->
-- [ ] T028 [P] [US2] Replace JA strings in `app/src/routes/(auth)/login/-components/LoginForm.tsx` with Paraglide message calls (T021 keys)
-- [ ] T029 [P] [US2] Replace JA strings in `app/src/routes/(app)/inbox/-components/InboxList.tsx` with Paraglide message calls (T022 keys)
-- [ ] T030 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/ThreadMessages.tsx` and thread header in `app/src/routes/(app)/threads/$id/index.tsx` (24h badge, header labels) with Paraglide calls (T023 keys)
-- [ ] T031 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/ReplyForm.tsx` (placeholder, Send button, banners, error messages) with Paraglide calls (T023 keys)
-- [ ] T032 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/DraftBanner.tsx` if any (e.g., "下書きを生成中…") with Paraglide calls — add new keys to T023 if needed and re-compile
+- [x] T028 [P] [US2] Replace JA strings in `app/src/routes/(auth)/login/-components/LoginForm.tsx` with Paraglide message calls (T021 keys)
+- [x] T029 [P] [US2] Replace JA strings in `app/src/routes/(app)/inbox/-components/InboxList.tsx` with Paraglide message calls (T022 keys)
+- [x] T030 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/ThreadMessages.tsx` and thread header in `app/src/routes/(app)/threads/$id/index.tsx` (24h badge, header labels) with Paraglide calls (T023 keys)
+- [x] T031 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/ReplyForm.tsx` (placeholder, Send button, banners, error messages) with Paraglide calls (T023 keys)
+- [x] T032 [P] [US2] Replace JA strings in `app/src/routes/(app)/threads/$id/-components/DraftBanner.tsx` if any (e.g., "下書きを生成中…") with Paraglide calls — add new keys to T023 if needed and re-compile
 
 ### CI integration
 
 <!-- unit: U3.5 | deps: U3.2 | scope: infra | tasks: T033 | files: ~1 | automation: auto -->
-- [ ] T033 [US2] Add Paraglide compile diff check to `.github/workflows/ci.yml` — run `npx paraglide-js compile && git diff --exit-code messages/` to fail PR when JSON edits aren't compiled
+- [x] T033 [US2] Add Paraglide compile diff check to `.github/workflows/ci.yml` — run `npx paraglide-js compile && git diff --exit-code messages/` to fail PR when JSON edits aren't compiled
 
 ### Manual verification
 
@@ -138,13 +138,13 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 ### Onboarding-screen translation keys
 
 <!-- unit: U4.2 | deps: U3.2 | scope: frontend | tasks: T041 | files: ~2 | automation: auto -->
-- [ ] T041 [US1] Add onboarding keys (`onboarding_title`, `onboarding_description`, `onboarding_connect_button`, `onboarding_consent_denied`, `onboarding_select_page_heading`, `onboarding_connecting`, `onboarding_no_pages`, `onboarding_error_token_expired`, `onboarding_error_permission_missing`, `onboarding_error_subscribe_failed`, `onboarding_error_generic`, `onboarding_retry_button`) to both `app/messages/en.json` and `app/messages/ja.json` and re-compile
+- [x] T041 [US1] Add onboarding keys (`onboarding_title`, `onboarding_description`, `onboarding_connect_button`, `onboarding_consent_denied`, `onboarding_select_page_heading`, `onboarding_connecting`, `onboarding_no_pages`, `onboarding_error_token_expired`, `onboarding_error_permission_missing`, `onboarding_error_subscribe_failed`, `onboarding_error_generic`, `onboarding_retry_button`) to both `app/messages/en.json` and `app/messages/ja.json` and re-compile
 
 ### Server functions
 
 <!-- unit: U4.3 | deps: U2.2 | scope: backend | tasks: T042-T043 | files: ~2 | automation: auto -->
-- [ ] T042 [US1] Implement `exchangeAndListFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/exchange-and-list.fn.ts` — Zod input/output per contracts/connect-page-fn.md §1, calls T015 wrapper functions, structured logging per facebook-graph.md
-- [ ] T043 [US1] Implement `connectPageFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/connect-page.fn.ts` — Zod input/output per contracts/connect-page-fn.md §2, performs subscribe → encrypt (existing `crypto.ts`) → UPSERT within `withTenant`, full error mapping including `already_connected`
+- [x] T042 [US1] Implement `exchangeAndListFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/exchange-and-list.fn.ts` — Zod input/output per contracts/connect-page-fn.md §1, calls T015 wrapper functions, structured logging per facebook-graph.md
+- [x] T043 [US1] Implement `connectPageFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/connect-page.fn.ts` — Zod input/output per contracts/connect-page-fn.md §2, performs subscribe → encrypt (existing `crypto.ts`) → UPSERT within `withTenant`, full error mapping including `already_connected`
 
 ### UI components
 
