@@ -78,7 +78,7 @@ Step 2. Connect the test Facebook Page
   - Click "Connect with Facebook"
   - Log in as the Test User above when the Facebook Login dialog opens
   - Grant all four permissions when prompted
-  - Select the test Page from the list and click Connect
+  - Select the test Page from the list and click "Connect with Facebook"
   - You will be redirected to /inbox
 
 Step 3. Send a test Messenger message to our Page

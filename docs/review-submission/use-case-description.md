@@ -36,11 +36,11 @@ This onboarding flow runs entirely on our server — the Page Access Token never
 
 A customer sends a Messenger message to the connected Facebook Page. Our webhook receives the event, stores the message, and triggers an AI draft generator (Anthropic Claude Haiku 4.5) over HTTPS.
 
-**Step 2 — AI draft (screencast 1:20–1:45)**
+**Step 2 — AI draft (screencast 1:40–2:05)**
 
 The AI-generated reply draft appears in the operator's admin inbox as a suggestion.
 
-**Step 3 — Human review and send (screencast 1:45–2:10)**
+**Step 3 — Human review and send (screencast 2:05–2:35)**
 
 The human operator reviews the draft, edits it as needed, and **explicitly clicks a Send button** to deliver the reply through the Send API. **Auto-sending is not implemented anywhere in the codebase.**
 
@@ -54,7 +54,7 @@ The end users of our Facebook Page are customers of a Japanese cross-border e-co
 
 We use `pages_messaging` in two ways:
 
-**1. Send API (screencast 1:45–2:10)** — Each reply is composed as follows: the operator opens the conversation in our admin panel, reviews the AI-generated draft that has been pre-filled in the reply textarea, edits it if necessary, and explicitly clicks the Send button. Only at that point do we call `POST https://graph.facebook.com/v19.0/me/messages` with the long-lived Page Access Token to deliver the message.
+**1. Send API (screencast 2:05–2:35)** — Each reply is composed as follows: the operator opens the conversation in our admin panel, reviews the AI-generated draft that has been pre-filled in the reply textarea, edits it if necessary, and explicitly clicks the Send button. Only at that point do we call `POST https://graph.facebook.com/v19.0/me/messages` with the long-lived Page Access Token to deliver the message.
 
 We do **not** implement automated sending. There is no scheduler, no AI-trigger, and no batch send. Every outgoing Messenger message corresponds to a manual click action by an authenticated operator. The Send button is also explicitly disabled when the 24-hour window has expired.
 
@@ -90,7 +90,9 @@ Webhook subscription is performed once at onboarding time per Page (during the C
 
 We use `pages_show_list` during the Connect Page onboarding flow (screencast 0:30–0:55):
 
-After the operator grants consent, our server calls `GET https://graph.facebook.com/v19.0/me/accounts` to retrieve the list of Pages the operator administers. We display the page names and IDs to the operator so they can select which Page to connect to Fumireply. The Page Access Token returned by this endpoint is immediately encrypted (AES-256-GCM) and stored server-side; it is never exposed to the browser.
+After the operator grants consent, our server exchanges the short-lived user token for a long-lived user token via the Graph API, stores that long-lived token in a server-set HttpOnly cookie (never exposed to the browser), then calls `GET https://graph.facebook.com/v19.0/me/accounts` to retrieve the list of Pages the operator administers. We display the page names and IDs so the operator can select which Page to connect.
+
+Once the operator selects a Page, our server calls `GET /me/accounts` again to retrieve the Page Access Token for that specific Page, encrypts it (AES-256-GCM) using a server-side key, and stores only the ciphertext in our database. The plaintext Page Access Token is never sent to the browser at any point.
 
 We do not access post content, insights, or any Page data beyond the Page ID, name, and access token needed to establish the connection.
 

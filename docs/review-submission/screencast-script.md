@@ -65,7 +65,7 @@
    - `pages_messaging`, `pages_read_engagement`, `pages_manage_metadata`, `pages_show_list`
 3. Test User アカウントでログイン → 全権限を許可
 4. ポップアップが閉じ、ページ一覧が表示される（Test Page の名前と ID が見える）
-5. Test Page を選択 → "Connect" ボタンをクリック
+5. Test Page を選択 → "Connect with Facebook" ボタンをクリック
 6. `/inbox` にリダイレクト（接続完了）
 
 **字幕**:
