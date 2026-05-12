@@ -41,5 +41,6 @@
   "onboarding_error_permission_missing": "必要な権限が付与されませんでした。再度試行し、すべての権限を許可してください。",
   "onboarding_error_subscribe_failed": "ページの連携に失敗しました。再度お試しください。",
   "onboarding_error_generic": "エラーが発生しました。再度お試しください。",
-  "onboarding_retry_button": "再試行"
+  "onboarding_retry_button": "再試行",
+  "onboarding_already_connected": "このページはすでに連携されています。"
 }

@@ -41,5 +41,6 @@
   "onboarding_error_permission_missing": "Required permissions were not granted. Please try again and allow all permissions.",
   "onboarding_error_subscribe_failed": "Failed to connect the Page. Please try again.",
   "onboarding_error_generic": "Something went wrong. Please try again.",
-  "onboarding_retry_button": "Try again"
+  "onboarding_retry_button": "Try again",
+  "onboarding_already_connected": "Page already connected."
 }

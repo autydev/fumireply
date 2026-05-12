@@ -10,11 +10,8 @@ export function LanguageToggle() {
 
   function handleClick(newLocale: 'en' | 'ja') {
     if (newLocale === locale) return
-    // Optimistic update: Paraglide switches locale immediately in-process
     setLocaleState(newLocale)
     setLocale(newLocale)
-    // Persist locale preference in cookie (non-HttpOnly, safe to set client-side).
-    // Omit Secure on HTTP so localhost dev works; Secure is set by SSR setCookie in production.
     const isHttps = typeof location !== 'undefined' && location.protocol === 'https:'
     document.cookie = `${COOKIE_NAME}=${newLocale}; Path=/; Max-Age=31536000; SameSite=Lax${isHttps ? '; Secure' : ''}`
   }

@@ -1,7 +1,8 @@
-import { createFileRoute, Outlet, Link, useRouter, useLocation } from '@tanstack/react-router'
+import { createFileRoute, Outlet, Link, useRouter, useLocation, redirect } from '@tanstack/react-router'
 import { TokenStatusBanner } from './-components/TokenStatusBanner'
 import { LanguageToggle } from './-components/LanguageToggle'
 import { logoutFn } from '~/server/fns/logout.fn'
+import { checkConnectedPagesFn } from './onboarding/connect-page/-lib/check-connected-pages.fn'
 import {
   InboxIcon,
   UsersIcon,
@@ -12,6 +13,13 @@ import {
 } from '~/components/ui/icons'
 
 export const Route = createFileRoute('/(app)')({
+  beforeLoad: async ({ location }) => {
+    if (location.pathname.startsWith('/onboarding')) return
+    const { count } = await checkConnectedPagesFn()
+    if (count === 0) {
+      throw redirect({ to: '/onboarding/connect-page' })
+    }
+  },
   component: AppLayout,
 })
 
@@ -161,7 +169,9 @@ function Sidebar() {
           borderTop: '1px solid var(--color-line)',
         }}
       >
-        <LanguageToggle />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: 8 }}>
+          <LanguageToggle />
+        </div>
         <button
           onClick={handleLogout}
           style={{

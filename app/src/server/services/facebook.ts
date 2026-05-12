@@ -1,300 +1,138 @@
-import { getSsmParameter } from './ssm'
-
-const META_GRAPH_BASE = 'https://graph.facebook.com/v19.0'
+const GRAPH_API_BASE = 'https://graph.facebook.com/v19.0'
 const TIMEOUT_MS = 10000
-const MAX_RETRIES = 3
-const MAX_PAGES = 50
 
-type Logger = {
-  info: (record: Record<string, unknown>) => void
-  warn: (record: Record<string, unknown>) => void
-  error: (record: Record<string, unknown>) => void
+type FbErrorResponse = { error: { code: number; message: string; fbtrace_id?: string } }
+
+function isFbError(body: unknown): body is FbErrorResponse {
+  return typeof body === 'object' && body !== null && 'error' in body
 }
 
-const defaultLogger: Logger = {
-  info: (r) => console.log(JSON.stringify(r)),
-  warn: (r) => console.warn(JSON.stringify(r)),
-  error: (r) => console.error(JSON.stringify(r)),
-}
+async function fetchWithRetry(url: string, init?: RequestInit): Promise<Response> {
+  const delays = [1000, 2000, 4000]
+  let lastError: Error | undefined
 
-async function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    if (init?.signal?.aborted) throw init.signal.reason ?? new Error('Request aborted')
 
-type GraphError = { code?: number; type?: string; message?: string; fbtrace_id?: string }
+    const timeoutSignal = AbortSignal.timeout(TIMEOUT_MS)
+    const signal: AbortSignal =
+      init?.signal && typeof AbortSignal.any === 'function'
+        ? AbortSignal.any([timeoutSignal, init.signal])
+        : timeoutSignal
 
-async function parseGraphError(response: Response): Promise<GraphError> {
-  try {
-    const body = (await response.json()) as { error?: GraphError }
-    return body.error ?? {}
-  } catch {
-    return {}
+    try {
+      const res = await fetch(url, { ...init, signal })
+
+      if (res.status < 500 || attempt === delays.length) return res
+
+      // Discard the body before retrying to allow connection reuse
+      await res.body?.cancel().catch(() => {})
+      lastError = new Error(`HTTP ${res.status}`)
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+      if (init?.signal?.aborted) throw lastError
+    }
+
+    if (attempt < delays.length) {
+      await new Promise((r) => setTimeout(r, delays[attempt]))
+    }
   }
+
+  throw lastError ?? new Error('fetch failed')
 }
 
-function getAppId(): string {
-  const appId = process.env.VITE_FB_APP_ID?.trim()
-  if (!appId) throw new Error('VITE_FB_APP_ID is required')
-  return appId
+export interface ExchangedToken {
+  accessToken: string
+  expiresIn: number
 }
-
-async function getAppSecret(): Promise<string> {
-  const key = process.env.META_APP_SECRET_SSM_KEY?.trim()
-  if (!key) throw new Error('META_APP_SECRET_SSM_KEY is required')
-  return getSsmParameter(key)
-}
-
-// === 1. fb_exchange_token ===
-
-export type ExchangeUserTokenResult =
-  | { ok: true; longLivedUserToken: string; expiresIn: number }
-  | { ok: false; error: 'token_expired' | 'rate_limited' | 'meta_unavailable' | 'internal_error'; errorCode?: number }
 
 export async function exchangeUserToken(
-  shortLivedUserToken: string,
-  logger: Logger = defaultLogger,
-): Promise<ExchangeUserTokenResult> {
-  const start = Date.now()
-  let appId: string
-  let appSecret: string
-  try {
-    appId = getAppId()
-    appSecret = await getAppSecret()
-  } catch {
-    logger.error({ event: 'fb_exchange_token', status: 'failure', reason: 'env_or_ssm', duration_ms: Date.now() - start })
-    return { ok: false, error: 'internal_error' }
+  shortLivedToken: string,
+  appId: string,
+  appSecret: string,
+): Promise<ExchangedToken> {
+  const params = new URLSearchParams({
+    grant_type: 'fb_exchange_token',
+    client_id: appId,
+    client_secret: appSecret,
+    fb_exchange_token: shortLivedToken,
+  })
+
+  const res = await fetchWithRetry(`${GRAPH_API_BASE}/oauth/access_token?${params}`)
+  const body = (await res.json()) as unknown
+
+  if (isFbError(body)) {
+    const code = body.error.code
+    if (code === 190) throw Object.assign(new Error('token_expired'), { fbCode: code })
+    if (code === 4) throw Object.assign(new Error('rate_limited'), { fbCode: code })
+    throw Object.assign(new Error('meta_unavailable'), { fbCode: code })
   }
 
-  const url = new URL(`${META_GRAPH_BASE}/oauth/access_token`)
-  url.searchParams.set('grant_type', 'fb_exchange_token')
-  url.searchParams.set('client_id', appId)
-  url.searchParams.set('client_secret', appSecret)
-  url.searchParams.set('fb_exchange_token', shortLivedUserToken)
-
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    if (attempt > 0) await sleep(1000 * Math.pow(2, attempt - 1))
-
-    let response: Response
-    try {
-      response = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) })
-    } catch {
-      if (attempt === MAX_RETRIES - 1) {
-        logger.error({ event: 'fb_exchange_token', status: 'failure', reason: 'network_or_timeout', duration_ms: Date.now() - start })
-        return { ok: false, error: 'meta_unavailable' }
-      }
-      continue
-    }
-
-    if (response.ok) {
-      const data = (await response.json()) as { access_token?: string; expires_in?: number }
-      if (typeof data.access_token !== 'string' || data.access_token.length === 0) {
-        logger.error({ event: 'fb_exchange_token', status: 'failure', reason: 'malformed_response', duration_ms: Date.now() - start })
-        return { ok: false, error: 'internal_error' }
-      }
-      logger.info({
-        event: 'fb_exchange_token',
-        status: 'success',
-        expires_in: data.expires_in ?? 0,
-        duration_ms: Date.now() - start,
-      })
-      return { ok: true, longLivedUserToken: data.access_token, expiresIn: data.expires_in ?? 0 }
-    }
-
-    if (response.status >= 500) {
-      if (attempt === MAX_RETRIES - 1) {
-        logger.error({ event: 'fb_exchange_token', status: 'failure', http_status: response.status, duration_ms: Date.now() - start })
-        return { ok: false, error: 'meta_unavailable' }
-      }
-      continue
-    }
-
-    const errBody = await parseGraphError(response)
-    logger.warn({
-      event: 'fb_exchange_token',
-      status: 'failure',
-      error_code: errBody.code,
-      fbtrace_id: errBody.fbtrace_id,
-      duration_ms: Date.now() - start,
-    })
-    if (errBody.code === 190) return { ok: false, error: 'token_expired', errorCode: 190 }
-    if (errBody.code === 4) {
-      if (attempt === MAX_RETRIES - 1) return { ok: false, error: 'rate_limited', errorCode: 4 }
-      continue
-    }
-    return { ok: false, error: 'internal_error', errorCode: errBody.code }
-  }
-
-  return { ok: false, error: 'meta_unavailable' }
+  const data = body as { access_token: string; expires_in: number }
+  return { accessToken: data.access_token, expiresIn: data.expires_in }
 }
 
-// === 2. /me/accounts ===
-
-export type FacebookPage = {
+export interface FbPage {
   id: string
   name: string
   pageAccessToken: string
 }
 
-export type ListPagesResult =
-  | { ok: true; pages: FacebookPage[]; hasNextPage: boolean }
-  | { ok: false; error: 'token_expired' | 'permission_missing' | 'rate_limited' | 'meta_unavailable' | 'internal_error'; errorCode?: number }
+export async function listPages(longUserToken: string): Promise<FbPage[]> {
+  const params = new URLSearchParams({
+    access_token: longUserToken,
+    fields: 'id,name,access_token',
+    limit: '50',
+  })
 
-export async function listPages(
-  longLivedUserToken: string,
-  logger: Logger = defaultLogger,
-): Promise<ListPagesResult> {
-  const start = Date.now()
-  const url = new URL(`${META_GRAPH_BASE}/me/accounts`)
-  url.searchParams.set('access_token', longLivedUserToken)
-  url.searchParams.set('fields', 'id,name,access_token')
+  const pages: FbPage[] = []
+  let nextUrl: string | undefined = `${GRAPH_API_BASE}/me/accounts?${params}`
 
-  const allPages: FacebookPage[] = []
-  let nextUrl: URL | null = url
-  let hasNextPage = false
+  while (nextUrl) {
+    const res = await fetchWithRetry(nextUrl)
+    const body = (await res.json()) as unknown
 
-  while (nextUrl !== null) {
-    const currentUrl: URL = nextUrl
-
-    let response: Response | null = null
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      if (attempt > 0) await sleep(1000 * Math.pow(2, attempt - 1))
-      try {
-        response = await fetch(currentUrl, { signal: AbortSignal.timeout(TIMEOUT_MS) })
-      } catch {
-        if (attempt === MAX_RETRIES - 1) {
-          logger.error({ event: 'me_accounts', status: 'failure', reason: 'network_or_timeout', duration_ms: Date.now() - start })
-          return { ok: false, error: 'meta_unavailable' }
-        }
-        continue
-      }
-      if (response.ok) break
-      if (response.status >= 500) {
-        if (attempt === MAX_RETRIES - 1) {
-          logger.error({ event: 'me_accounts', status: 'failure', http_status: response.status, duration_ms: Date.now() - start })
-          return { ok: false, error: 'meta_unavailable' }
-        }
-        continue
-      }
-      // 4xx — break out and handle
-      break
+    if (isFbError(body)) {
+      const code = (body as FbErrorResponse).error.code
+      if (code === 200) throw Object.assign(new Error('permission_missing'), { fbCode: code })
+      if (code === 190) throw Object.assign(new Error('token_expired'), { fbCode: code })
+      if (code === 4) throw Object.assign(new Error('rate_limited'), { fbCode: code })
+      throw Object.assign(new Error('meta_unavailable'), { fbCode: code })
     }
 
-    if (response === null) return { ok: false, error: 'meta_unavailable' }
-
-    if (!response.ok) {
-      const errBody = await parseGraphError(response)
-      logger.warn({
-        event: 'me_accounts',
-        status: 'failure',
-        error_code: errBody.code,
-        fbtrace_id: errBody.fbtrace_id,
-        duration_ms: Date.now() - start,
-      })
-      if (errBody.code === 190) return { ok: false, error: 'token_expired', errorCode: 190 }
-      if (errBody.code === 200) return { ok: false, error: 'permission_missing', errorCode: 200 }
-      if (errBody.code === 4) return { ok: false, error: 'rate_limited', errorCode: 4 }
-      return { ok: false, error: 'internal_error', errorCode: errBody.code }
+    const data = body as { data: Array<{ id: string; name: string; access_token: string }>; paging?: { next?: string } }
+    for (const page of data.data) {
+      pages.push({ id: page.id, name: page.name, pageAccessToken: page.access_token })
+      if (pages.length >= 50) break
     }
 
-    const data = (await response.json()) as {
-      data?: Array<{ id?: string; name?: string; access_token?: string }>
-      paging?: { next?: string }
-    }
-    for (const p of data.data ?? []) {
-      if (typeof p.id === 'string' && typeof p.name === 'string' && typeof p.access_token === 'string') {
-        allPages.push({ id: p.id, name: p.name, pageAccessToken: p.access_token })
-        if (allPages.length >= MAX_PAGES) break
-      }
-    }
-    if (allPages.length >= MAX_PAGES) {
-      hasNextPage = Boolean(data.paging?.next) || allPages.length === MAX_PAGES
-      break
-    }
-    nextUrl = typeof data.paging?.next === 'string' ? new URL(data.paging.next) : null
+    nextUrl = pages.length < 50 ? data.paging?.next : undefined
   }
 
-  logger.info({
-    event: 'me_accounts',
-    status: 'success',
-    page_count: allPages.length,
-    has_next_page: hasNextPage,
-    duration_ms: Date.now() - start,
-  })
-  return { ok: true, pages: allPages, hasNextPage }
+  return pages
 }
-
-// === 3. subscribed_apps ===
-
-export type SubscribePageResult =
-  | { ok: true }
-  | { ok: false; error: 'token_invalid' | 'permission_missing' | 'webhook_url_failed' | 'rate_limited' | 'meta_unavailable' | 'internal_error'; errorCode?: number }
 
 export async function subscribePageWebhook(
   pageId: string,
   pageAccessToken: string,
-  logger: Logger = defaultLogger,
-): Promise<SubscribePageResult> {
-  const start = Date.now()
-  const url = new URL(`${META_GRAPH_BASE}/${pageId}/subscribed_apps`)
-  url.searchParams.set('subscribed_fields', 'messages,messaging_postbacks')
-  url.searchParams.set('access_token', pageAccessToken)
+): Promise<void> {
+  const params = new URLSearchParams({
+    subscribed_fields: 'messages,messaging_postbacks',
+    access_token: pageAccessToken,
+  })
 
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    if (attempt > 0) await sleep(1000 * Math.pow(2, attempt - 1))
+  const res = await fetchWithRetry(`${GRAPH_API_BASE}/${pageId}/subscribed_apps`, {
+    method: 'POST',
+    body: params,
+  })
 
-    let response: Response
-    try {
-      response = await fetch(url, { method: 'POST', signal: AbortSignal.timeout(TIMEOUT_MS) })
-    } catch {
-      if (attempt === MAX_RETRIES - 1) {
-        logger.error({ event: 'subscribe_apps', status: 'failure', page_id: pageId, reason: 'network_or_timeout', duration_ms: Date.now() - start })
-        return { ok: false, error: 'meta_unavailable' }
-      }
-      continue
-    }
+  const body = (await res.json()) as unknown
 
-    if (response.ok) {
-      const data = (await response.json().catch(() => ({}))) as { success?: boolean }
-      if (data.success !== true) {
-        logger.error({ event: 'subscribe_apps', status: 'failure', page_id: pageId, reason: 'unexpected_body', duration_ms: Date.now() - start })
-        return { ok: false, error: 'internal_error' }
-      }
-      logger.info({
-        event: 'subscribe_apps',
-        status: 'success',
-        page_id: pageId,
-        fields: ['messages', 'messaging_postbacks'],
-        duration_ms: Date.now() - start,
-      })
-      return { ok: true }
-    }
-
-    if (response.status >= 500) {
-      if (attempt === MAX_RETRIES - 1) {
-        logger.error({ event: 'subscribe_apps', status: 'failure', page_id: pageId, http_status: response.status, duration_ms: Date.now() - start })
-        return { ok: false, error: 'meta_unavailable' }
-      }
-      continue
-    }
-
-    const errBody = await parseGraphError(response)
-    logger.warn({
-      event: 'subscribe_apps',
-      status: 'failure',
-      page_id: pageId,
-      error_code: errBody.code,
-      fbtrace_id: errBody.fbtrace_id,
-      duration_ms: Date.now() - start,
-    })
-    if (errBody.code === 190) return { ok: false, error: 'token_invalid', errorCode: 190 }
-    if (errBody.code === 200) return { ok: false, error: 'permission_missing', errorCode: 200 }
-    if (errBody.code === 803) return { ok: false, error: 'webhook_url_failed', errorCode: 803 }
-    if (errBody.code === 4) {
-      if (attempt === MAX_RETRIES - 1) return { ok: false, error: 'rate_limited', errorCode: 4 }
-      continue
-    }
-    return { ok: false, error: 'internal_error', errorCode: errBody.code }
+  if (isFbError(body)) {
+    const code = (body as FbErrorResponse).error.code
+    if (code === 190) throw Object.assign(new Error('token_invalid'), { fbCode: code })
+    if (code === 200) throw Object.assign(new Error('permission_missing'), { fbCode: code })
+    if (code === 803) throw Object.assign(new Error('webhook_url_failed'), { fbCode: code })
+    throw Object.assign(new Error('subscribe_failed'), { fbCode: code })
   }
-
-  return { ok: false, error: 'meta_unavailable' }
 }

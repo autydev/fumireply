@@ -1,17 +1,58 @@
 import { createServerFn } from '@tanstack/react-start'
+import { setCookie } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { authMiddleware } from '~/server/middleware/auth-middleware'
-import { handleExchangeAndList, type ExchangeAndListResult } from './exchange-and-list.server'
+import { env } from '~/server/env'
+import { getSsmParameter } from '~/server/services/ssm'
+import { exchangeUserToken, listPages } from '~/server/services/facebook'
+import { encryptToken, getMasterKey } from '~/server/services/crypto'
 
-export type { ExchangeAndListResult } from './exchange-and-list.server'
-
-const inputSchema = z.object({
+const Input = z.object({
   shortLivedUserToken: z.string().min(20).max(2000),
 })
 
+export type ExchangeAndListResult =
+  | { ok: true; pages: Array<{ id: string; name: string }> }
+  | { ok: false; error: 'token_expired' | 'permission_missing' | 'no_pages' | 'rate_limited' | 'meta_unavailable' | 'internal_error'; message: string }
+
 export const exchangeAndListFn = createServerFn({ method: 'POST' })
   .middleware([authMiddleware])
-  .inputValidator(inputSchema)
+  .inputValidator(Input)
   .handler(async ({ data }): Promise<ExchangeAndListResult> => {
-    return handleExchangeAndList(data.shortLivedUserToken)
+    try {
+      const appSecret = await getSsmParameter(env.META_APP_SECRET_SSM_KEY)
+      const { accessToken: longToken } = await exchangeUserToken(
+        data.shortLivedUserToken,
+        env.META_APP_ID,
+        appSecret,
+      )
+
+      const pages = await listPages(longToken)
+
+      if (pages.length === 0) {
+        return { ok: false, error: 'no_pages', message: 'No Facebook Pages found.' }
+      }
+
+      // Store the long user token server-side only — never send it to the browser.
+      // connectPageFn will read this cookie to retrieve the page access token.
+      const masterKey = await getMasterKey()
+      const encryptedLongToken = encryptToken(longToken, masterKey)
+      setCookie('fb_connect_session', encryptedLongToken.toString('base64'), {
+        httpOnly: true,
+        // secure:true requires HTTPS; disable on non-production to allow localhost dev
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 600, // 10 minutes — long enough for the user to pick a page
+      })
+
+      return { ok: true, pages: pages.map(({ id, name }) => ({ id, name })) }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown'
+      if (msg === 'token_expired') return { ok: false, error: 'token_expired', message: 'Token expired.' }
+      if (msg === 'permission_missing') return { ok: false, error: 'permission_missing', message: 'Missing pages_show_list permission.' }
+      if (msg === 'rate_limited') return { ok: false, error: 'rate_limited', message: 'Rate limited. Please wait.' }
+      if (msg === 'meta_unavailable') return { ok: false, error: 'meta_unavailable', message: 'Facebook API unavailable.' }
+      return { ok: false, error: 'internal_error', message: 'Internal error.' }
+    }
   })
