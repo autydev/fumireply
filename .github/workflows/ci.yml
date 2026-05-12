@@ -33,6 +33,18 @@ jobs:
         run: npm ci
         working-directory: ai-worker
 
+      - name: Verify package signatures (app)
+        run: npm audit signatures
+        working-directory: app
+
+      - name: Verify package signatures (webhook)
+        run: npm audit signatures
+        working-directory: webhook
+
+      - name: Verify package signatures (ai-worker)
+        run: npm audit signatures
+        working-directory: ai-worker
+
       - name: Paraglide compile diff check
         run: |
           npm run paraglide:compile

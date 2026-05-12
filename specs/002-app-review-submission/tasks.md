@@ -156,9 +156,9 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 ### Route + guards
 
 <!-- unit: U4.5 | deps: U4.3,U4.4 | scope: frontend | tasks: T047-T049 | files: ~3 | automation: auto -->
-- [ ] T047 [US1] Create `/onboarding/connect-page` route at `app/src/routes/(app)/onboarding/connect-page/index.tsx` — composes ConnectFacebookButton / PageList / ConnectErrorPanel; manages flow state (initial / consent_done / pages_loaded / connecting / error); reverse guard via `beforeLoad` redirecting to `/inbox` if already connected
-- [ ] T048 [US1] Add forward guard to `app/src/routes/(app)/route.tsx` `beforeLoad` — calls T016 `checkConnectedPagesFn`, throws redirect to `/onboarding/connect-page` if count==0; do NOT trigger guard on `/onboarding/*` paths to avoid loop
-- [ ] T049 [US1] Update `app/src/routes/(app)/-components/LanguageToggle.tsx` Header insertion to also render on `/onboarding/connect-page` (so reviewer can pick EN before connecting)
+- [x] T047 [US1] Create `/onboarding/connect-page` route at `app/src/routes/(app)/onboarding/connect-page/index.tsx` — composes ConnectFacebookButton / PageList / ConnectErrorPanel; manages flow state (initial / consent_done / pages_loaded / connecting / error); reverse guard via `beforeLoad` redirecting to `/inbox` if already connected
+- [x] T048 [US1] Add forward guard to `app/src/routes/(app)/route.tsx` `beforeLoad` — calls T016 `checkConnectedPagesFn`, throws redirect to `/onboarding/connect-page` if count==0; do NOT trigger guard on `/onboarding/*` paths to avoid loop
+- [x] T049 [US1] Update `app/src/routes/(app)/-components/LanguageToggle.tsx` Header insertion to also render on `/onboarding/connect-page` (so reviewer can pick EN before connecting)
 
 ### Manual verification
 
