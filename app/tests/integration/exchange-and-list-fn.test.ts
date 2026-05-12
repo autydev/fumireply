@@ -14,7 +14,7 @@ import {
 
 const mockSsm = vi.fn<() => Promise<string>>().mockResolvedValue('test-app-secret')
 
-vi.mock('~/server/services/ssm', () => ({ getSsmParameter: (...args: unknown[]) => mockSsm(...args) }))
+vi.mock('~/server/services/ssm', () => ({ getSsmParameter: () => mockSsm() }))
 vi.mock('~/server/services/crypto', () => ({
   getMasterKey: vi.fn().mockResolvedValue(Buffer.alloc(32)),
   encryptToken: vi.fn().mockReturnValue(Buffer.from('encrypted-long-token')),
