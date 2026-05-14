@@ -72,14 +72,16 @@ supabase_curl() {
 }
 
 # ── psql helper: DATABASE_URL を引数に露出させない ───────────────────────────
+urldecode() { printf '%b' "${1//%/\\x}"; }
+
 parse_db_url() {
   local url="${DATABASE_URL}"
   url="${url#postgres://}"
   url="${url#postgresql://}"
   local userinfo="${url%%@*}"
   local hostinfo="${url#*@}"
-  export PGUSER="${userinfo%%:*}"
-  export PGPASSWORD="${userinfo#*:}"
+  export PGUSER="$(urldecode "${userinfo%%:*}")"
+  export PGPASSWORD="$(urldecode "${userinfo#*:}")"
   local hostport="${hostinfo%%/*}"
   export PGDATABASE="${hostinfo#*/}"
   export PGDATABASE="${PGDATABASE%%\?*}"
@@ -108,9 +110,9 @@ find_reviewer_id() {
     found="$(printf '%s' "$resp" | jq -r --arg email "$REVIEWER_EMAIL" \
       '.users[] | select(.email == $email) | .id' 2>/dev/null || true)"
     [[ -n "$found" ]] && { echo "$found"; return; }
-    local total
-    total="$(printf '%s' "$resp" | jq '.total // 0' 2>/dev/null || echo 0)"
-    (( page * 100 >= total )) && break
+    local count
+    count="$(printf '%s' "$resp" | jq '.users | length' 2>/dev/null || echo 0)"
+    (( count < 100 )) && break
     (( page++ ))
   done
   echo ""
