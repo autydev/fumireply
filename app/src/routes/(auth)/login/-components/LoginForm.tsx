@@ -91,7 +91,7 @@ export function LoginForm({ returnTo }: { returnTo?: string }) {
           Fumireply
         </div>
         <div style={{ fontSize: 13, color: 'var(--color-ink-3)', textAlign: 'center', marginBottom: 26 }}>
-          Messenger + Instagram DM を半自動で。
+          {m.login_tagline()}
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -189,17 +189,6 @@ export function LoginForm({ returnTo }: { returnTo?: string }) {
           </button>
         </form>
 
-        <div
-          style={{
-            textAlign: 'center',
-            fontSize: 11,
-            color: 'var(--color-ink-3)',
-            marginTop: 18,
-            fontFamily: 'var(--font-mono)',
-          }}
-        >
-          Supabase Auth
-        </div>
       </div>
     </div>
   )

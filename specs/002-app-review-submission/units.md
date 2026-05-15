@@ -44,7 +44,7 @@ updated: 2026-05-07
 
 | Unit | tasks | scope | deps | files | automation | 概要 |
 |------|-------|-------|------|-------|------------|------|
-| U4.1 | T035-T040 | backend | U2.2 | ~6 | auto | server fn integration + E2E tests — ⚠️ **未完**: T040 E2E のみ実在、T035/T036/T039 統合テスト未作成、T037/T038 はモックユニットで部分カバー |
+| U4.1 | T035-T040 | backend | U2.2 | ~6 | auto | server fn integration + E2E tests — ✅ T035/T036/T037/T038/T039 統合テスト + T017 MSW 実装済(2026-05-16)。T040 E2E spec 実在(FB Test User gate)|
 | U4.2 | T041 | frontend | U3.2 | ~2 | auto | onboarding 翻訳キー追加（Page ID 入力フロー用キー: enter_page_id_heading / page_id_placeholder / page_id_help / invalid_page_id / already_connected）|
 | U4.3 | T042-T043 | backend | U2.2 | ~2 | auto | exchangeAndListFn（token 長期化 + 暗号化 httpOnly Cookie 保管、ページ一覧は返さない）+ connectPageFn（Cookie の user token で fetchPageWithToken → subscribe → 暗号化 → UPSERT）|
 | U4.4 | T044-T046 | frontend | U2.2,U4.2 | ~3 | auto | ConnectFacebookButton（FB Login for Business, config_id）+ PageIdInput（数値 Page ID 手入力）+ ConnectErrorPanel |
@@ -55,28 +55,28 @@ updated: 2026-05-07
 
 | Unit | tasks | scope | deps | files | automation | 概要 |
 |------|-------|-------|------|-------|------------|------|
-| U5.1 | T051-T053 | docs | U3.6,U4.6 | ~3 | manual | use-case-description + screencast-script + reviewer-credentials 最終化 |
-| U5.2 | T054-T055 | docs | U5.1,U8.2 | 0 | auto | placeholder 0件確認 + URL 200 確認 |
+| U5.1 | T051-T053 | docs | U3.6,U4.6 | ~3 | manual | ✅ 更新済(2026-05-16): use-case(+pages_show_list節) / screencast(Connect Scene) / reviewer-credentials を PageIdInput フローに最終化 |
+| U5.2 | T054-T055 | docs | U5.1,U8.2 | 0 | auto | ⏳ 提出直前ゲート: T054 placeholder 0件 / T055 URL 200。`<<...>>` は提出時に実値差替する設計のため**現時点では意図的に残存**(本番デプロイ後に実施) |
 
 ## Phase 6: US4 — Submission walkthrough
 
 | Unit | tasks | scope | deps | files | automation | 概要 |
 |------|-------|-------|------|-------|------------|------|
-| U6.1 | T056-T057 | docs | U5.1 | ~2 | auto | submission-walkthrough.md 作成 + クロスリンク |
+| U6.1 | T056-T057 | docs | U5.1 | ~2 | auto | ✅ 作成済(2026-05-16): submission-walkthrough.md(日本語, 全8節) + reviewer-credentials/quickstart クロスリンク |
 | U6.2 | T058 | docs | U6.1 | 0 | manual | 内部レビュー |
 
 ## Phase 7: US5 — Recording prep automation
 
 | Unit | tasks | scope | deps | files | automation | 概要 |
 |------|-------|-------|------|-------|------------|------|
-| U7.1 | T059-T060 | infra | none | ~2 | auto | prep/post-screencast bash scripts |
-| U7.2 | T061-T062 | infra | U7.1 | ~1 | auto | test-prep.sh + quickstart §6 ドキュメント |
+| U7.1 | T059-T060 | infra | none | ~2 | auto | ✅ 作成済(2026-05-16): scripts/prep-screencast.sh / post-screencast.sh(--dry-run/確認/監査ログ) |
+| U7.2 | T061-T062 | infra | U7.1 | ~1 | auto | ✅ 作成済(2026-05-16): scripts/test-prep.sh(PASS) + quickstart §6 + audit-runbook.md stub |
 
 ## Phase 8: Polish, Deploy, Submit
 
 | Unit | tasks | scope | deps | files | automation | 概要 |
 |------|-------|-------|------|-------|------------|------|
-| U8.1 | T063-T066 | backend | U3.6,U4.6,U5.1,U6.1,U7.2 | 0 | auto | 全テスト実行 + CI 確認 + Constitution Check |
+| U8.1 | T063-T066 | backend | U3.6,U4.6,U5.1,U6.1,U7.2 | 0 | auto | ✅ T063(178 tests green)/T066(Constitution 6ゲートPASS) 済、T065 ローカル等価(tsc/eslint/vitest)green。T064 E2E は live secret 必要で deferred |
 | U8.2 | T067-T068 | infra | U8.1 | 0 | manual | Deploy + production smoke |
 | U8.3 | T069-T072 | docs | U7.1,U8.2 | 0 | manual | prep script 実行 + screencast 撮影・編集 |
 | U8.4 | T073-T075 | infra | U8.3,U5.2 | 0 | manual | 最終 pre-submit 確認 |

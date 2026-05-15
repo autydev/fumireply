@@ -3,23 +3,34 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { renderRoute } from '~/test/file-route-utils'
 
-// Mocks required by route module imports
-vi.mock('~/paraglide/messages', () => ({
-  onboarding_title: () => 'Connect Your Facebook Page',
-  onboarding_description: () => 'Connect a Facebook Page to start managing Messenger conversations.',
-  onboarding_connecting: () => 'Connecting...',
-  onboarding_retry_button: () => 'Try again',
-  onboarding_already_connected: () => 'Page already connected.',
-  onboarding_error_token_expired: () => 'Session expired.',
-  onboarding_error_permission_missing: () => 'Permission missing.',
-  onboarding_error_subscribe_failed: () => 'Subscribe failed.',
-  onboarding_error_generic: () => 'Something went wrong.',
-  onboarding_consent_denied: () => 'Permission denied.',
-  onboarding_enter_page_id_heading: () => 'Enter the Page ID to connect',
-  onboarding_page_id_placeholder: () => 'e.g. 731325636740278',
-  onboarding_page_id_help: () => 'Find the Page ID at the bottom of Settings → About.',
-  onboarding_invalid_page_id: () => 'Page ID must be 5-20 digits.',
-}))
+// Mocks required by route module imports. Paraglide is consumed two ways in this
+// render path: older components use `import * as m` (individual named exports)
+// while (app)/route.tsx uses `import { m }` (an aggregate object export), so the
+// mock must expose both shapes.
+vi.mock('~/paraglide/messages', () => {
+  const messages = {
+    onboarding_title: () => 'Connect Your Facebook Page',
+    onboarding_description: () => 'Connect a Facebook Page to start managing Messenger conversations.',
+    onboarding_connecting: () => 'Connecting...',
+    onboarding_retry_button: () => 'Try again',
+    onboarding_already_connected: () => 'Page already connected.',
+    onboarding_error_token_expired: () => 'Session expired.',
+    onboarding_error_permission_missing: () => 'Permission missing.',
+    onboarding_error_subscribe_failed: () => 'Subscribe failed.',
+    onboarding_error_generic: () => 'Something went wrong.',
+    onboarding_consent_denied: () => 'Permission denied.',
+    onboarding_enter_page_id_heading: () => 'Enter the Page ID to connect',
+    onboarding_page_id_placeholder: () => 'e.g. 731325636740278',
+    onboarding_page_id_help: () => 'Find the Page ID at the bottom of Settings → About.',
+    onboarding_invalid_page_id: () => 'Page ID must be 5-20 digits.',
+    nav_inbox: () => 'Inbox',
+    nav_customers: () => 'Customers',
+    nav_products: () => 'Products',
+    nav_settings: () => 'Settings',
+    nav_logout: () => 'Log out',
+  }
+  return { ...messages, m: messages }
+})
 vi.mock('~/routes/(app)/-components/TokenStatusBanner', () => ({ TokenStatusBanner: () => null }))
 vi.mock('~/routes/(app)/-components/LanguageToggle', () => ({ LanguageToggle: () => null }))
 vi.mock('~/server/fns/logout.fn', () => ({ logoutFn: vi.fn() }))

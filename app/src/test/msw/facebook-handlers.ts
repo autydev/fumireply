@@ -66,6 +66,39 @@ export function listPagesError(code: number, status = 400) {
   )
 }
 
+// --- GET /{page-id} (fetchPageWithToken) ---
+
+export function fetchPageSuccess(
+  pageId: string,
+  opts?: { name?: string; token?: string },
+) {
+  return http.get(`${META_BASE}/${pageId}`, () =>
+    HttpResponse.json({
+      id: pageId,
+      name: opts?.name ?? 'Malbek Test Page',
+      access_token: opts?.token ?? 'LONG_LIVED_PAGE_TOKEN',
+    }),
+  )
+}
+
+// Page found but access_token field absent → user lacks manage rights on it
+export function fetchPageNoToken(pageId: string, opts?: { name?: string }) {
+  return http.get(`${META_BASE}/${pageId}`, () =>
+    HttpResponse.json({ id: pageId, name: opts?.name ?? 'Malbek Test Page' }),
+  )
+}
+
+export function fetchPageError(pageId: string, code: number, status = 400) {
+  return http.get(`${META_BASE}/${pageId}`, () =>
+    HttpResponse.json(
+      {
+        error: { message: `Graph error ${code}`, type: 'OAuthException', code, fbtrace_id: 'trace_xyz' },
+      },
+      { status },
+    ),
+  )
+}
+
 // --- subscribed_apps ---
 
 export function subscribeSuccess(pageId: string) {
@@ -85,8 +118,15 @@ export function subscribeError(pageId: string, code: number, status = 400) {
   )
 }
 
-// --- Combined happy-path helper ---
+// --- Combined happy-path helper (current flow: exchange → fetchPage → subscribe) ---
 
-export function fullHappyPath(pageId: string, pages: MockPage[]) {
-  return [exchangeTokenSuccess(), listPagesSuccess(pages), subscribeSuccess(pageId)]
+export function fullHappyPath(
+  pageId: string,
+  opts?: { name?: string; pageToken?: string },
+) {
+  return [
+    exchangeTokenSuccess(),
+    fetchPageSuccess(pageId, { name: opts?.name, token: opts?.pageToken }),
+    subscribeSuccess(pageId),
+  ]
 }

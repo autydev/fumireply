@@ -173,26 +173,42 @@ CI（`.github/workflows/ci.yml`）に同様のステップを追加して PR で
 ### 6.1 実行
 
 ```bash
-# 本番 reviewer 有効化 + connected_pages 削除
-bash scripts/prep-screencast.sh
+# まず副作用なしで計画確認（推奨）
+AWS_PROFILE=<profile> bash scripts/prep-screencast.sh --dry-run
+
+# 問題なければ本番実行（各 mutation 前に y/N 確認。--yes でskip可）
+AWS_PROFILE=<profile> bash scripts/prep-screencast.sh
 ```
+
+必須: 環境変数 `AWS_PROFILE`。任意: `REVIEWER_EMAIL`（既定 `reviewer@malbek.co.jp`）/ `TENANT_SLUG`（既定 `malbek`）。
 
 スクリプトは以下を実行する（詳細は research.md R-010）：
 
-1. AWS CLI / Supabase 接続情報の存在確認
-2. SSM から reviewer パスワード取得（macOS のクリップボードに `pbcopy`）
-3. Supabase Admin API で reviewer の `banned_until = NULL`
-4. `DELETE FROM connected_pages WHERE tenant_id = 'malbek-uuid'`
-5. 公開ページ・管理画面・Webhook の 200 ヘルスチェック
-6. 監査ログ append（`docs/operations/audit-runbook.md`）
+1. `aws` / `curl` / `psql` / `jq` の存在確認、`AWS_PROFILE` 必須化
+2. SSM 読み取り `/fumireply/review/supabase/{url,secret-key,reviewer-password,db-url}` + `/fumireply/master-encryption-key`
+3. GoTrue Admin API で reviewer を `ban_duration=none`（有効化）
+4. `DELETE FROM connected_pages WHERE tenant_id = (SELECT id FROM tenants WHERE slug='malbek')`
+5. reviewer パスワードを `pbcopy`（標準出力はマスク）
+6. 公開ページ / `/login` / `/onboarding/connect-page` の 200 ヘルスチェック
+7. 監査ログ append（`docs/operations/audit-runbook.md`）
 
 ### 6.2 撮影完了後の cleanup
 
 ```bash
-bash scripts/post-screencast.sh
+AWS_PROFILE=<profile> bash scripts/post-screencast.sh --dry-run
+AWS_PROFILE=<profile> bash scripts/post-screencast.sh \
+  [--rotate-password] [--cleanup-recording-data]
 ```
 
-reviewer 無効化 + 撮影で生じた一時データの整理（research.md R-011）。
+reviewer 再無効化（`ban_duration=876000h`）+ 任意でパスワードローテーション / 撮影で生じた接続データ cleanup（research.md R-011）。
+
+### 6.3 スクリプトの安全性チェック
+
+```bash
+bash scripts/test-prep.sh   # bash -n 構文 + --dry-run ガード + chmod +x（冪等）
+```
+
+`--dry-run` は DB write / Admin API write / SSM write / pbcopy を一切行わない。
 
 ---
 
@@ -202,10 +218,10 @@ reviewer 無効化 + 撮影で生じた一時データの整理（research.md R-
 
 | ファイル | 状態 | 002 での作業 |
 |---|---|---|
-| `docs/review-submission/use-case-description.md` | 001 ドラフトあり | Connect Page フロー追加・EN UI 前提・タイムスタンプ参照を反映、英文を最終化 |
-| `docs/review-submission/screencast-script.md` | 001 ドラフトあり | 全シーン EN UI 前提に書き直し、Connect Page シーンを追加 |
-| `docs/review-submission/reviewer-credentials.md` | 001 ドラフトあり | Connect Page フロー反映、SSM 取得手順は維持 |
-| `docs/review-submission/submission-walkthrough.md` | 未作成 | 新規作成（Meta App Dashboard 操作手順、提出ボタン押下までのフロー、最終チェックリスト） |
+| `docs/review-submission/use-case-description.md` | ✅ 更新済（2026-05-16）| Connect Page フロー + `pages_show_list` 節追加・EN UI 前提・タイムスタンプ参照反映 |
+| `docs/review-submission/screencast-script.md` | ✅ 更新済（2026-05-16）| 全シーン EN UI 前提に書き直し、Connect Page シーン（Scene 3/4）追加 |
+| `docs/review-submission/reviewer-credentials.md` | ✅ 更新済（2026-05-16）| Connect Page フロー反映 + FB Test User 情報追加、SSM 取得手順は維持 |
+| `docs/review-submission/submission-walkthrough.md` | ✅ 作成済（2026-05-16）| Meta App Dashboard 操作手順・提出ボタン押下まで・最終チェックリスト（日本語）|
 
 ### 7.2 確認
 

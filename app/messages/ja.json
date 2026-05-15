@@ -1,5 +1,6 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
+  "login_tagline": "Messenger + Instagram DM を半自動で。",
   "login_email_label": "メールアドレス",
   "login_password_label": "パスワード",
   "login_submit_button": "ログイン",

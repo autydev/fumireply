@@ -1,5 +1,6 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
+  "login_tagline": "Semi-automate Messenger + Instagram DM.",
   "login_email_label": "Email",
   "login_password_label": "Password",
   "login_submit_button": "Sign in",

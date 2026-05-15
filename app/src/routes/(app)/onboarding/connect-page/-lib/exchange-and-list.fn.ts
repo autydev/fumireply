@@ -15,39 +15,48 @@ export type ExchangeAndListResult =
   | { ok: true }
   | { ok: false; error: 'token_expired' | 'permission_missing' | 'rate_limited' | 'meta_unavailable' | 'internal_error'; message: string }
 
+export const SESSION_COOKIE = 'fb_connect_session'
+
+// Exported for integration testing — exercises the full exchange + encrypt + cookie
+// flow. Calls setCookie directly so tests can assert the httpOnly cookie attributes
+// (mirrors performSetLocale / handleSendReply conventions in this codebase).
+export async function performExchangeAndList(
+  data: { shortLivedUserToken: string },
+): Promise<ExchangeAndListResult> {
+  try {
+    const appSecret = await getSsmParameter(env.META_APP_SECRET_SSM_KEY)
+    const { accessToken: longToken } = await exchangeUserToken(
+      data.shortLivedUserToken,
+      env.META_APP_ID,
+      appSecret,
+    )
+
+    // Store the long user token server-side only — never send it to the browser.
+    // connectPageFn will read this cookie to fetch the page access token for
+    // the user-entered page id.
+    const masterKey = await getMasterKey()
+    const encryptedLongToken = encryptToken(longToken, masterKey)
+    setCookie(SESSION_COOKIE, encryptedLongToken.toString('base64'), {
+      httpOnly: true,
+      // secure:true requires HTTPS; disable on non-production to allow localhost dev
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 600, // 10 minutes — long enough for the user to paste a page id
+    })
+
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown'
+    if (msg === 'token_expired') return { ok: false, error: 'token_expired', message: 'Token expired.' }
+    if (msg === 'permission_missing') return { ok: false, error: 'permission_missing', message: 'Missing pages_show_list permission.' }
+    if (msg === 'rate_limited') return { ok: false, error: 'rate_limited', message: 'Rate limited. Please wait.' }
+    if (msg === 'meta_unavailable') return { ok: false, error: 'meta_unavailable', message: 'Facebook API unavailable.' }
+    return { ok: false, error: 'internal_error', message: 'Internal error.' }
+  }
+}
+
 export const exchangeAndListFn = createServerFn({ method: 'POST' })
   .middleware([authMiddleware])
   .inputValidator(Input)
-  .handler(async ({ data }): Promise<ExchangeAndListResult> => {
-    try {
-      const appSecret = await getSsmParameter(env.META_APP_SECRET_SSM_KEY)
-      const { accessToken: longToken } = await exchangeUserToken(
-        data.shortLivedUserToken,
-        env.META_APP_ID,
-        appSecret,
-      )
-
-      // Store the long user token server-side only — never send it to the browser.
-      // connectPageFn will read this cookie to fetch the page access token for
-      // the user-entered page id.
-      const masterKey = await getMasterKey()
-      const encryptedLongToken = encryptToken(longToken, masterKey)
-      setCookie('fb_connect_session', encryptedLongToken.toString('base64'), {
-        httpOnly: true,
-        // secure:true requires HTTPS; disable on non-production to allow localhost dev
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 600, // 10 minutes — long enough for the user to paste a page id
-      })
-
-      return { ok: true }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'unknown'
-      if (msg === 'token_expired') return { ok: false, error: 'token_expired', message: 'Token expired.' }
-      if (msg === 'permission_missing') return { ok: false, error: 'permission_missing', message: 'Missing pages_show_list permission.' }
-      if (msg === 'rate_limited') return { ok: false, error: 'rate_limited', message: 'Rate limited. Please wait.' }
-      if (msg === 'meta_unavailable') return { ok: false, error: 'meta_unavailable', message: 'Facebook API unavailable.' }
-      return { ok: false, error: 'internal_error', message: 'Internal error.' }
-    }
-  })
+  .handler(async ({ data }): Promise<ExchangeAndListResult> => performExchangeAndList(data))
