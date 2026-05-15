@@ -84,7 +84,7 @@ function ThreadPage() {
         >
           <Link
             to="/inbox"
-            aria-label="受信トレイに戻る"
+            aria-label={m.thread_back_to_inbox()}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -141,7 +141,7 @@ function ThreadPage() {
           </div>
 
           <button
-            aria-label="スターを付ける"
+            aria-label={m.thread_star_aria()}
             style={{
               padding: 6,
               borderRadius: 7,
@@ -153,7 +153,7 @@ function ThreadPage() {
             <StarIcon size={16} />
           </button>
           <button
-            aria-label="その他の操作"
+            aria-label={m.thread_more_actions_aria()}
             style={{
               padding: 6,
               borderRadius: 7,

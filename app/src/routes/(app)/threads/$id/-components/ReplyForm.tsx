@@ -232,7 +232,7 @@ export function ReplyForm({
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
               <button
                 onClick={() => setFeedback(feedback === 'up' ? null : 'up')}
-                aria-label="このドラフトは良い"
+                aria-label={m.reply_feedback_good()}
                 aria-pressed={feedback === 'up'}
                 style={{
                   padding: '3px 6px',
@@ -249,7 +249,7 @@ export function ReplyForm({
               </button>
               <button
                 onClick={() => setFeedback(feedback === 'down' ? null : 'down')}
-                aria-label="このドラフトは悪い"
+                aria-label={m.reply_feedback_bad()}
                 aria-pressed={feedback === 'down'}
                 style={{
                   padding: '3px 6px',
@@ -355,7 +355,7 @@ export function ReplyForm({
               }}
             >
               <XIcon size={12} />
-              破棄
+              {m.reply_discard_button()}
             </button>
           )}
 

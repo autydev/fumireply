@@ -11,6 +11,7 @@ import {
   LogOutIcon,
   ChevronDownIcon,
 } from '~/components/ui/icons'
+import { m } from '~/paraglide/messages'
 
 export const Route = createFileRoute('/(app)')({
   beforeLoad: async ({ location }) => {
@@ -36,10 +37,10 @@ function AppLayout() {
 }
 
 const NAV_ITEMS = [
-  { key: 'inbox', label: '受信トレイ', icon: InboxIcon, href: '/inbox' },
-  { key: 'customers', label: '顧客管理', icon: UsersIcon, href: '#' },
-  { key: 'products', label: '商品管理', icon: PackageIcon, href: '#' },
-  { key: 'settings', label: '設定', icon: SettingsIcon, href: '#' },
+  { key: 'inbox', label: m.nav_inbox, icon: InboxIcon, href: '/inbox' },
+  { key: 'customers', label: m.nav_customers, icon: UsersIcon, href: '#' },
+  { key: 'products', label: m.nav_products, icon: PackageIcon, href: '#' },
+  { key: 'settings', label: m.nav_settings, icon: SettingsIcon, href: '#' },
 ]
 
 function Sidebar() {
@@ -117,7 +118,7 @@ function Sidebar() {
             return (
               <span key={item.key} aria-disabled="true" style={sharedStyle}>
                 <Icon size={15} />
-                <span>{item.label}</span>
+                <span>{item.label()}</span>
               </span>
             )
           }
@@ -155,7 +156,7 @@ function Sidebar() {
                 />
               )}
               <Icon size={15} />
-              <span>{item.label}</span>
+              <span>{item.label()}</span>
             </Link>
           )
         })}
@@ -197,7 +198,7 @@ function Sidebar() {
           }}
         >
           <LogOutIcon size={14} />
-          <span>ログアウト</span>
+          <span>{m.nav_logout()}</span>
           <ChevronDownIcon size={12} style={{ marginLeft: 'auto', opacity: 0 }} />
         </button>
       </div>

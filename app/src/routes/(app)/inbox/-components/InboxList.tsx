@@ -52,14 +52,14 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
       {/* Header */}
       <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--color-line)' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-          <span style={{ fontSize: 15, fontWeight: 700 }}>受信トレイ</span>
+          <span style={{ fontSize: 15, fontWeight: 700 }}>{m.nav_inbox()}</span>
           <span style={{ fontSize: 11.5, color: 'var(--color-ink-3)', fontFamily: 'var(--font-mono)' }}>
-            {conversations.length} 会話
+            {m.inbox_conversation_count({ count: conversations.length })}
           </span>
         </div>
         {/* Search box (visual only) */}
         <button
-          aria-label="会話を検索"
+          aria-label={m.inbox_search_aria()}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -74,7 +74,7 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
           }}
         >
           <SearchIcon size={13} />
-          <span style={{ fontSize: 12.5, color: 'var(--color-ink-4)' }}>顧客・メッセージを検索…</span>
+          <span style={{ fontSize: 12.5, color: 'var(--color-ink-4)' }}>{m.inbox_search_placeholder()}</span>
           <span
             style={{
               marginLeft: 'auto',
@@ -246,9 +246,9 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
                     }}
                   >
                     {conv.last_message_direction === 'outbound' && (
-                      <span style={{ color: 'var(--color-ink-4)' }}>あなた: </span>
+                      <span style={{ color: 'var(--color-ink-4)' }}>{m.inbox_you_prefix()}</span>
                     )}
-                    {conv.last_message_preview || '(メッセージなし)'}
+                    {conv.last_message_preview || m.inbox_no_message()}
                   </div>
 
                   {/* Meta: 24h window + SLA */}
@@ -324,7 +324,7 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
                           padding: '1px 6px',
                         }}
                       >
-                        24h迫る
+                        {m.thread_window_24h_approaching()}
                       </span>
                     )}
                     {isUnread && conv.unread_count > 0 && (

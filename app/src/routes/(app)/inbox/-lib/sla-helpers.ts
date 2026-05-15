@@ -1,4 +1,5 @@
 import type { ConversationSummary } from './list-conversations.fn'
+import { m } from '~/paraglide/messages'
 
 export const HOUR_MS = 3_600_000
 export const DAY_MS = 24 * HOUR_MS
@@ -19,8 +20,8 @@ export function formatTime(isoStr: string): string {
   const d = new Date(isoStr)
   const now = Date.now()
   const diff = now - d.getTime()
-  if (diff < 60_000) return 'たった今'
-  if (diff < HOUR_MS) return `${Math.floor(diff / 60_000)}分前`
-  if (diff < DAY_MS) return `${Math.floor(diff / HOUR_MS)}時間前`
-  return `${Math.floor(diff / DAY_MS)}日前`
+  if (diff < 60_000) return m.time_just_now()
+  if (diff < HOUR_MS) return m.time_minutes_ago({ minutes: Math.floor(diff / 60_000) })
+  if (diff < DAY_MS) return m.time_hours_ago({ hours: Math.floor(diff / HOUR_MS) })
+  return m.time_days_ago({ days: Math.floor(diff / DAY_MS) })
 }

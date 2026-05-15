@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { listConversationsFn } from './-lib/list-conversations.fn'
 import { InboxList } from './-components/InboxList'
+import { m } from '~/paraglide/messages'
 
 type FilterKey = 'all' | 'unread' | 'draft' | 'overdue'
 
@@ -38,7 +39,7 @@ function InboxPage() {
         }}
       >
         <div style={{ fontSize: 32, opacity: 0.3 }}>💬</div>
-        <div>会話を選択してください</div>
+        <div>{m.inbox_empty_state()}</div>
       </div>
     </div>
   )

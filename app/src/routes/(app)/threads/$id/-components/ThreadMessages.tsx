@@ -22,7 +22,7 @@ export function ThreadMessages({ messages }: { messages: MessageWithDraft[] }) {
           fontSize: 13,
         }}
       >
-        メッセージはありません
+        {m.thread_no_messages()}
       </div>
     )
   }
@@ -145,13 +145,13 @@ function MessageBubble({ msg }: { msg: MessageWithDraft }) {
           </span>
         )}
         {isSent && (
-          <span aria-label="送信済み" style={{ display: 'inline-flex', color: 'var(--color-primary)', gap: '-2px' }}>
+          <span aria-label={m.thread_message_sent()} style={{ display: 'inline-flex', color: 'var(--color-primary)', gap: '-2px' }}>
             <CheckIcon size={11} stroke={2.5} />
             <CheckIcon size={11} stroke={2.5} style={{ marginLeft: -6 }} />
           </span>
         )}
         {isFailed && (
-          <span style={{ color: 'var(--color-rose-ink)', fontSize: 11 }}>送信失敗</span>
+          <span style={{ color: 'var(--color-rose-ink)', fontSize: 11 }}>{m.thread_message_failed()}</span>
         )}
       </div>
     </div>
