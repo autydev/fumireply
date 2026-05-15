@@ -37,7 +37,7 @@ $CLEANUP_DATA && log "  --cleanup-recording-data: 撮影データを削除しま
 
 # ── 事前チェック ──────────────────────────────────────────────────────────────
 log "依存ツールの確認..."
-for cmd in aws curl jq psql; do
+for cmd in aws curl jq psql python3; do
   command -v "$cmd" &>/dev/null || { log "ERROR: '$cmd' が見つかりません。インストールしてください。"; exit 1; }
 done
 $ROTATE_PASSWORD && { command -v openssl &>/dev/null || { log "ERROR: 'openssl' が見つかりません (--rotate-password に必要)。インストールしてください。"; exit 1; }; }
@@ -220,7 +220,7 @@ AUDIT_ENTRY="
 - **時刻 (UTC)**: \`$(date -u +"%Y-%m-%dT%H:%M:%SZ")\`
 - **操作**:
   - reviewer ($REVIEWER_EMAIL) 再 ban (banned_until ≈ $BAN_UNTIL_DEFAULT)
-  - --rotate-password: \`${ROTATE_PASSWORD}\`$(${ROTATE_PASSWORD} && [[ -n "${NEW_PASSWORD}" ]] && echo " → SSM 更新済み" || true)
+  - --rotate-password: \`${ROTATE_PASSWORD}\`$( [[ "$ROTATE_PASSWORD" == "true" && -n "$NEW_PASSWORD" ]] && echo " → SSM 更新済み" || true )
   - --cleanup-recording-data: \`${CLEANUP_DATA}\`
 - **dry-run**: \`${DRY_RUN}\`
 "
