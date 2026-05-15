@@ -44,7 +44,7 @@ Host: graph.facebook.com
 
 | フィールド | 抽出 |
 |---|---|
-| `access_token` | これが長期 user access token、次の `/me/accounts` 呼出で使用 |
+| `access_token` | これが長期 user access token。暗号化して httpOnly Cookie に退避し、次の単一 Page 取得（`GET /{page-id}`）で使用 |
 | `expires_in` | 約 60 日（実用上は再交換不要だが、ログに残す） |
 
 ### Error Response (4xx)
@@ -83,77 +83,65 @@ Host: graph.facebook.com
 
 ---
 
-## 2. `GET /v19.0/me/accounts` — Page 一覧取得
+## 2. `GET /v19.0/{page-id}` — 単一 Page 取得（`fetchPageWithToken`）
 
-長期 user access token を使ってユーザーが管理する Page の一覧を取得する。
+長期 user access token と、**ユーザーが手入力した Page ID** を使い、その 1 ページの正式名称と長期 Page Access Token をサーバ側で取得する。
+
+> **重要（App Review 説明への影響）**: 現行フローは `/me/accounts` による Page 一覧列挙を行わない。`pages_show_list` は「ユーザーが管理する Page の `access_token` フィールドを Graph 経由で取得できる」ために依然必要だが、その使われ方は「一覧を列挙してユーザーに選ばせる」ではなく「ユーザーが指定した 1 ページのトークンをサーバ側で解決する」である。use-case-description.md の `pages_show_list` 説明文はこの実態に合わせること。`listPages`（`/me/accounts`）ヘルパは `facebook.ts` に残置されているが connect フローからは**未使用**（将来の複数ページ対応用）。
 
 ### Request
 
 ```http
-GET /v19.0/me/accounts?access_token={LONG_LIVED_USER_TOKEN}&fields=id,name,access_token
+GET /v19.0/{PAGE_ID}?access_token={LONG_LIVED_USER_TOKEN}&fields=id,name,access_token
 Host: graph.facebook.com
 ```
 
 | パラメータ | 値 |
 |---|---|
-| `access_token` | fb_exchange_token で得た長期 user access token |
-| `fields` | `id,name,access_token`（`access_token` は Page Access Token） |
+| `{PAGE_ID}` | ユーザーが入力欄に手入力した数値 Page ID（Zod `^\d{5,20}$`） |
+| `access_token` | fb_exchange_token で得た長期 user access token（httpOnly Cookie から復号） |
+| `fields` | `id,name,access_token`（`access_token` は当該 Page の Page Access Token） |
 
 ### Success Response (200)
 
 ```json
 {
-  "data": [
-    {
-      "id": "1234567890",
-      "name": "Malbek Test Page",
-      "access_token": "EAAxxx...(Page Access Token)..."
-    }
-  ],
-  "paging": {
-    "cursors": { "before": "...", "after": "..." },
-    "next": "...(URL)..."
-  }
+  "id": "1234567890",
+  "name": "Malbek Test Page",
+  "access_token": "EAAxxx...(Page Access Token)..."
 }
 ```
 
 | フィールド | 抽出 |
 |---|---|
-| `data[].id` | Page ID（DB 保存対象） |
-| `data[].name` | Page 表示名（DB 保存対象 + UI に表示） |
-| `data[].access_token` | 長期 Page Access Token（暗号化して DB 保存対象） |
-| `paging.next` | 複数ページがある場合の次ページ URL（後述） |
+| `id` | Page ID（DB 保存対象） |
+| `name` | Page 表示名（サーバが解決した正式名称。DB 保存対象） |
+| `access_token` | 長期 Page Access Token（暗号化して DB 保存対象） |
 
-### ページネーション
-
-通常 1 user が 25 Page 未満のため 1 ページで完結するが、`paging.next` が存在する場合は再帰的に追加取得する。**MVP では 50 件で打ち切り**（それ以上は UI で「絞り込み検索を実装してください」とエラー）。
-
-### Empty Response
-
-`data: []` の場合、ユーザーが Page を 1 つも管理していない。UI に「Facebook Page がありません。Facebook for Business で Page を作成してください」と案内し、再試行不可の状態にする。
+`access_token` フィールドが返らない場合（ユーザーが当該 Page の管理権限を持たない等）は `permission_missing`（code 200 相当）として扱う。
 
 ### Error Response
 
 | エラーコード | 意味 | server fn の挙動 |
 |---|---|---|
-| 190 | 長期トークンが失効 | UI に再 Login 促し（fb_exchange_token から再実行） |
-| 200 | 権限不足（pages_show_list が同意されていない） | UI に「pages_show_list 権限が必要です」、再 Login 促し |
-| 4 | レート制限 | 指数バックオフ |
+| 100 | 指定 Page ID が存在しない / ユーザーがアクセスできない | `page_not_found` → UI は `token_invalid`「Page が見つからないかアクセス権がありません」、再入力を促す |
+| 190 | 長期トークンが失効 | `token_expired` → UI は再 Login 促し（fb_exchange_token から再実行） |
+| 200 | 権限不足（pages_show_list 未同意 / 当該 Page 非管理） | `permission_missing` → UI に「pages_show_list 権限が必要です」、再 Login |
+| 4 | レート制限 | 指数バックオフ 3 回、最終失敗時 `rate_limited` |
 
 ### Logging
 
 ```typescript
 {
-  event: "me_accounts",
+  event: "fetch_page",
   status: "success" | "failure",
-  page_count: number,
-  has_next_page: boolean,
+  page_id: string,
   error_code?: number,
   duration_ms: number
 }
 ```
 
-**Page Access Token はログに出さない**。
+**Page Access Token / long user token はログに出さない**。
 
 ---
 
@@ -173,7 +161,7 @@ Host: graph.facebook.com
 | パラメータ | 値 |
 |---|---|
 | `subscribed_fields` | `messages,messaging_postbacks`（カンマ区切り、001 と統一） |
-| `access_token` | Page Access Token（/me/accounts のレスポンスから取得） |
+| `access_token` | Page Access Token（`fetchPageWithToken` (`GET /{page-id}`) のレスポンスから取得） |
 
 ### Success Response (200)
 
@@ -233,9 +221,11 @@ server fn 全体を `withTenant(tenant_id, async (tx) => {...})` で囲み、**W
 
 ## 5. 契約のテスト方針
 
+> **実装ステータス注記**: MSW ハンドラ `app/src/test/msw/facebook-handlers.ts` は fb_exchange_token / `/me/accounts` / subscribed_apps をモック済みだが、現行フローが使う `GET /v19.0/{page-id}`（`fetchPageWithToken`）のハンドラは**未追加**。下表の `{page-id}` 行と、tasks.md T035/T036 はこのハンドラ追加が前提（tasks.md T017 STATUS 注記参照）。
+
 | 契約 | テスト方法 |
 |---|---|
 | fb_exchange_token | MSW で `https://graph.facebook.com/v19.0/oauth/access_token*` を mock し、success / 190 / 100 / 4 の各レスポンスを返して server fn の挙動を確認 |
-| /me/accounts | 同上（MSW）で 0 件 / 1 件 / 25 件 / paging next 付きの各パターン |
+| `GET /{page-id}`（fetchPageWithToken） | MSW で `https://graph.facebook.com/v19.0/:pageId` を mock し、success（id/name/access_token）/ access_token 欠落 / 100 / 190 / 200 / 4 の各パターン |
 | subscribed_apps | 同上で success / 190 / 200 / 803 の各パターン |
-| 統合 | 上記 3 つを連続して mock し、server fn が全段階を順序通り呼ぶことを確認 |
+| 統合 | exchange → (cookie) → fetchPage → subscribe を連続 mock し、server fn が全段階を順序通り呼ぶことを確認 |

@@ -21,18 +21,18 @@
 
 ### User Story 1 - オペレーターが Facebook Login で自社のページを接続できる (Priority: P1)
 
-ログイン直後で `connected_pages` が未登録のオペレーター（または Meta レビュワー）は、強制的に Page 接続オンボーディング画面に誘導される。Facebook Login のポップアップで 4 権限（pages_show_list / pages_manage_metadata / pages_read_engagement / pages_messaging）への同意を求められ、同意後は自分が管理する Facebook ページの一覧から接続対象を選択できる。選択するとアプリ側が長期 Page Access Token を取得し、Webhook 購読（messages / messaging_postbacks）を有効化し、暗号化したトークンを保存する。完了後はオペレーターは管理画面（受信トレイ）に進むことができる。
+ログイン直後で `connected_pages` が未登録のオペレーター（または Meta レビュワー）は、強制的に Page 接続オンボーディング画面に誘導される。Facebook Login for Business のポップアップ（4 権限 pages_show_list / pages_manage_metadata / pages_read_engagement / pages_messaging を束ねた Login Configuration を `config_id` で指定）への同意を求められ、同意後はサーバ側で短期トークンを長期 user access token に交換し、暗号化して httpOnly Cookie に一時保管する。続いてオペレーターは接続対象 Facebook ページの**数値 Page ID を入力欄に手入力**する。アプリ側は Cookie の長期 user token を使ってサーバ側で当該ページの正式名称と長期 Page Access Token を取得し（Page Access Token はブラウザに一切送出しない）、Webhook 購読（messages / messaging_postbacks）を有効化し、暗号化したトークンを保存する。完了後はオペレーターは管理画面（受信トレイ）に進むことができる。
 
 **Why this priority**: Meta が screencast で明示するよう要求している「アクセス許可付与シーン」が成立する唯一のフローであり、これがないと申請対象の 4 権限すべてが承認されないリスクが極めて高い。本機能群全体の中で最も承認確率に直結するため P1。
 
-**Independent Test**: 新規 reviewer 用テストアカウントで `https://review.fumireply.ecsuite.work/login` から始め、Facebook Login → 権限同意 → ページ選択 → 受信トレイ到達までを単独で再現でき、その間に既存の Webhook 受信 / AI 下書き生成 / 返信送信機能（001 で実装済み）が新たに接続されたページに対して機能することを確認できる。
+**Independent Test**: 新規 reviewer 用テストアカウントで `https://review.fumireply.ecsuite.work/login` から始め、Facebook Login for Business → 権限同意 → Page ID 入力 → 受信トレイ到達までを単独で再現でき、その間に既存の Webhook 受信 / AI 下書き生成 / 返信送信機能（001 で実装済み）が新たに接続されたページに対して機能することを確認できる。
 
 **Acceptance Scenarios**:
 
 1. **Given** Operator がアプリにメール+パスワードでログインしたが、所属テナントに紐づく `connected_pages` レコードが 0 件である、**When** Operator が任意の認証必須ルート（例: `/inbox`）にアクセスする、**Then** システムは `/onboarding/connect-page` に強制リダイレクトする。
-2. **Given** Operator がオンボーディング画面にいる、**When** Operator が「Connect Facebook Page」ボタンをクリックする、**Then** Facebook Login のポップアップが開き、pages_show_list / pages_manage_metadata / pages_read_engagement / pages_messaging の 4 権限について同意を求められる。
-3. **Given** Operator が 4 権限に同意した、**When** ポップアップが閉じる、**Then** Operator が管理権限を持つ Facebook ページ一覧が画面に表示され、各行にページ名と ID が見える。
-4. **Given** ページ一覧が表示されている、**When** Operator が 1 つのページを選択して「Connect」ボタンを押す、**Then** システムは長期 Page Access Token を取得し、Webhook 購読を有効化し、Token を暗号化して保存し、`/inbox` に遷移する。
+2. **Given** Operator がオンボーディング画面にいる、**When** Operator が「Connect Facebook Page」ボタンをクリックする、**Then** Facebook Login for Business のポップアップが開き、`config_id` で指定した Login Configuration により pages_show_list / pages_manage_metadata / pages_read_engagement / pages_messaging の 4 権限について同意を求められる。
+3. **Given** Operator が 4 権限に同意した、**When** ポップアップが閉じる、**Then** サーバ側でトークン長期化が完了し、画面に Page ID 入力欄（数値 ID、入力例・取得方法のヘルプ文付き）が表示される。
+4. **Given** Page ID 入力欄が表示されている、**When** Operator が接続対象ページの数値 Page ID を入力して「Connect」ボタンを押す、**Then** システムはサーバ側で当該ページの正式名称と長期 Page Access Token を取得し、Webhook 購読を有効化し、Token を暗号化して保存し、`/inbox` に遷移する。
 5. **Given** ページ接続が完了した、**When** スマホ Messenger アプリから接続済みページにメッセージを送る、**Then** 30 秒以内に受信トレイにメッセージが現れ、AI 下書きが生成される（001 既存機能の継続動作）。
 6. **Given** 既に `connected_pages` レコードが存在する Operator、**When** `/onboarding/connect-page` に直接アクセスする、**Then** 強制的に `/inbox` に戻され、二重接続は防止される。
 7. **Given** Operator が Facebook Login のポップアップで権限同意をキャンセルした、**When** ポップアップが閉じる、**Then** オンボーディング画面に「権限が付与されなかったため接続できませんでした。再試行してください」相当の説明と再試行ボタンが表示される。
@@ -111,7 +111,7 @@ screencast の撮影者は、撮影前に「ログアウト状態」「reviewer 
 
 ### Edge Cases
 
-- **Facebook Login で Operator が複数の Page を管理している**：Page 一覧から複数選択は不可（MVP では 1 テナント = 1 ページ）。1 ページのみ選択可能で、選択 UI でその制約を明示する。
+- **Facebook Login で Operator が複数の Page を管理している**：Page 一覧表示は行わない。Operator は接続対象 1 ページの数値 Page ID を自分で入力する（1 テナント = 1 ページの MVP 制約は維持）。Page ID の調べ方（Facebook ページの「概要」/ Meta Business Suite）は入力欄のヘルプ文で案内する。入力 ID が user token で管理権限を持たないページの場合はサーバ側取得が失敗し、再試行を促すエラーになる。
 - **Operator が Facebook Login のポップアップでブロッカーに遭遇**：ブラウザがサードパーティ Cookie を強制ブロック / ポップアップブロッカーが発動した場合、フォールバックとして同一画面でのリダイレクト型 OAuth に切り替えるか、エラー画面で「ポップアップを許可してください」と案内する。
 - **fb_exchange_token が失敗（短期トークンが既に失効）**：エラーを表示して再試行を促す。Long-lived Token を取得できない場合は接続を完了させない（短期 Token は審査期間中に失効するため）。
 - **既存のテナントに別の Operator が新規接続を試みる**：1 テナント = 1 ページの制約により、既存接続を上書きするか拒否するかを選ぶ UI を出す（MVP では拒否し、既存接続を解除する別操作を求める）。
@@ -125,15 +125,15 @@ screencast の撮影者は、撮影前に「ログアウト状態」「reviewer 
 
 #### Connect Facebook Page (Story 1)
 
-- **FR-001**: System MUST automatically redirect any authenticated Operator to `/onboarding/connect-page` when their tenant has zero rows in `connected_pages`, on every navigation to authenticated routes (`/inbox`, `/threads/*`, etc.).
+- **FR-001**: System MUST automatically redirect any authenticated Operator to `/onboarding/connect-page` when their tenant has zero **active** rows in `connected_pages` (`is_active = true`), on every navigation to authenticated routes (`/inbox`, `/threads/*`, etc.), except `/onboarding/*` itself to avoid a redirect loop.
 - **FR-002**: System MUST present a clearly labeled "Connect Facebook Page" call-to-action on the onboarding screen that initiates the Facebook Login consent flow.
-- **FR-003**: System MUST request the four permissions `pages_show_list`, `pages_manage_metadata`, `pages_read_engagement`, and `pages_messaging` together in a single consent dialog, so reviewers can record all four being granted in one step.
-- **FR-004**: System MUST retrieve the list of Pages that the authenticated Facebook user manages and display them with at least Page name and Page ID for selection.
-- **FR-005**: When the Operator selects a Page and confirms, System MUST: (a) exchange the short-lived user token for a long-lived user token; (b) retrieve the long-lived Page Access Token; (c) subscribe the Page to the `messages` and `messaging_postbacks` Webhook fields; (d) encrypt the Page Access Token at field level; (e) persist the encrypted token, Page ID, and Page name to the `connected_pages` table for the Operator's tenant.
+- **FR-003**: System MUST request the four permissions `pages_show_list`, `pages_manage_metadata`, `pages_read_engagement`, and `pages_messaging` together in a single consent dialog by invoking Facebook Login for Business with a `config_id` pointing at a Login Configuration that bundles exactly those four permissions (with `auth_type: 'reauthenticate'` so the dialog appears on every attempt), so reviewers can record all four being granted in one step.
+- **FR-004**: System MUST let the Operator specify the Page to connect by entering its numeric Page ID into a text field (with client-side format validation and on-screen help on where to find the ID). System MUST NOT enumerate the user's Pages to the browser; the Page name and Page Access Token are resolved server-side from the entered Page ID using the long-lived user token, and the Page Access Token MUST NOT be sent to the browser.
+- **FR-005**: When the Operator confirms a Page ID, System MUST: (a) have already exchanged the short-lived user token for a long-lived user token server-side and held it encrypted in a short-lived httpOnly cookie; (b) retrieve the long-lived Page Access Token server-side via a direct Page query keyed by the entered Page ID; (c) subscribe the Page to the `messages` and `messaging_postbacks` Webhook fields; (d) encrypt the Page Access Token at field level; (e) persist the encrypted token, Page ID, and Page name to the `connected_pages` table for the Operator's tenant.
 - **FR-006**: System MUST redirect the Operator to `/inbox` immediately after Page connection succeeds.
-- **FR-007**: System MUST prevent direct access to `/onboarding/connect-page` for Operators whose tenant already has a `connected_pages` row, redirecting them to `/inbox` instead.
+- **FR-007**: System MUST prevent direct access to `/onboarding/connect-page` for Operators whose tenant already has an active `connected_pages` row (`is_active = true`), redirecting them to `/inbox` instead.
 - **FR-008**: System MUST present a clear human-readable error and a retry control if any step in the Page connection flow fails (consent denied, token exchange failure, Webhook subscription failure, encryption failure, or DB write failure).
-- **FR-009**: System MUST NOT persist any Facebook user access token; only the long-lived Page Access Token is retained, and only in encrypted form.
+- **FR-009**: System MUST NOT persist any Facebook user access token in the database. The long-lived user access token MAY be held only transiently in an encrypted httpOnly cookie (max age ≤ 10 minutes) bridging the consent step and the Page ID submission, and MUST be cleared once the connection completes. Only the long-lived Page Access Token is persisted, and only in encrypted form.
 
 #### Internationalization (Story 2)
 

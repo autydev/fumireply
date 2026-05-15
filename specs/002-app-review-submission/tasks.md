@@ -16,6 +16,7 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 - **[P]**: 並列実行可（異なるファイルで未完依存なし）
 - **[Story]**: US1/US2/US3/US4/US5（Setup/Foundational/Polish フェーズには付けない）
 - 各タスクに具体ファイルパスを含む
+- チェックボックス: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装（タスク本文の **STATUS:** 注記参照）
 
 ## Path Conventions
 
@@ -60,9 +61,9 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 
 <!-- unit: U2.2 | deps: U1.2,U1.3 | scope: backend | tasks: T014-T017 | files: ~4 | automation: auto -->
 - [x] T014 [P] Implement Facebook JS SDK loader in `app/src/lib/facebook-sdk.ts` — Promise-cached dynamic `<script src="https://connect.facebook.net/en_US/sdk.js">` injection, exposes `loadFbSdk(appId): Promise<typeof FB>`
-- [x] T015 [P] Implement Graph API wrapper in `app/src/server/services/facebook.ts` with three exports: `exchangeUserToken(shortToken)`, `listPages(longUserToken)`, `subscribePageWebhook(pageId, pageAccessToken)` — all use global `fetch` + `AbortSignal.timeout(10000)` + exponential backoff for 5xx, no axios (per contracts/facebook-graph.md §1〜3, plan.md HTTP クライアント方針)
-- [x] T016 [P] Implement `checkConnectedPagesFn` server fn in `app/src/server/services/check-connected-pages.fn.ts` — returns `{ count: number }` for the JWT's tenant_id (used by both forward and reverse guards, per contracts/connect-page-fn.md §4)
-- [x] T017 [P] Add MSW Graph API handlers in `app/src/test/msw/facebook-handlers.ts` — happy paths for fb_exchange_token, /me/accounts, /{page-id}/subscribed_apps, plus error variants (190, 200, 4, 803) per contracts/facebook-graph.md test matrix
+- [x] T015 [P] Implement Graph API wrapper in `app/src/server/services/facebook.ts` with exports: `exchangeUserToken(shortToken, appId, appSecret)`, `fetchPageWithToken(pageId, longUserToken)` (direct `GET /{pageId}?fields=id,name,access_token` — resolves canonical Page name + Page Access Token server-side from a user-entered Page ID), `subscribePageWebhook(pageId, pageAccessToken)`. `listPages(longUserToken)` (`/me/accounts`) is also exported but **currently unused** by the connect flow (kept for potential future multi-page support) — all use global `fetch` + `AbortSignal.timeout(10000)` + exponential backoff for 5xx, no axios (per contracts/facebook-graph.md §1〜3, plan.md HTTP クライアント方針)
+- [x] T016 [P] Implement `checkConnectedPagesFn` server fn in `app/src/routes/(app)/onboarding/connect-page/-lib/check-connected-pages.fn.ts` — no client input; reads `tenant_id` from the JWT context, returns `{ count: number }` of **active** rows (`is_active = true`) for that tenant (used by both forward and reverse guards, per contracts/connect-page-fn.md §4)
+- [~] T017 [P] Add MSW Graph API handlers in `app/src/test/msw/facebook-handlers.ts` — happy paths for fb_exchange_token, /me/accounts, /{page-id}/subscribed_apps, plus error variants (190, 200, 4, 803) per contracts/facebook-graph.md test matrix. **STATUS: partial** — file exists with fb_exchange_token / `/me/accounts` / subscribed_apps handlers, but the current connect flow uses `fetchPageWithToken` (`GET /v19.0/{page-id}`); a handler for that endpoint (incl. `page_not_found` code 100) is **missing** and is required before T035/T036 can be written
 
 **Checkpoint**: i18n SSR + Cookie が機能、Graph API ラッパーが MSW で叩け、guard の前提 fn が呼べる状態。
 
@@ -121,42 +122,42 @@ description: "Tasks for App Review Submission Readiness — Connect Page UI + i1
 
 ## Phase 4: User Story 1 — Connect Facebook Page UI (Priority: P1) 🎯 MVP Core
 
-**Goal**: ログイン後 connected_pages 未登録の operator を `/onboarding/connect-page` に強制誘導し、FB JS SDK で 4 権限同意 → ページ選択 → 長期 Page Access Token 取得 → 暗号化保存 → /inbox 着地、までを完結させる。
+**Goal**: ログイン後 connected_pages 未登録の operator を `/onboarding/connect-page` に強制誘導し、FB JS SDK（config_id Login for Business）で 4 権限同意 → 長期 user token をサーバ側で暗号化 httpOnly Cookie 退避 → operator が数値 Page ID 手入力 → サーバ側で長期 Page Access Token 取得 → 暗号化保存 → /inbox 着地、までを完結させる。
 
-**Independent Test**: 撮影前 prep スクリプト（または `psql DELETE FROM connected_pages...`）で接続済み状態を解除 → ログイン → onboarding 画面 → FB Test User で Login → 4 権限同意 → Test Page 選択 → /inbox 到達、までを単独で再現できる。
+**Independent Test**: 撮影前 prep スクリプト（または `psql DELETE FROM connected_pages...`）で接続済み状態を解除 → ログイン → onboarding 画面 → FB Test User で Login for Business → 4 権限同意 → Test Page の数値 Page ID 入力 → /inbox 到達、までを単独で再現できる。
 
 ### Tests for User Story 1
 
 <!-- unit: U4.1 | deps: U2.2 | scope: backend | tasks: T035-T040 | files: ~6 | automation: auto -->
-- [x] T035 [P] [US1] Integration test for `exchangeAndListFn` in `app/tests/integration/exchange-and-list-fn.test.ts` using MSW (T017 handlers): happy path / token_expired (190) / permission_missing (200) / no_pages (empty data) / rate_limited (4) variants
-- [x] T036 [P] [US1] Integration test for `connectPageFn` in `app/tests/integration/connect-page-fn.test.ts` using MSW: happy path UPSERT verifies DB row, already_connected returns error without DB write, subscribe_failed returns error without DB write, encryption round-trip via decrypt
-- [x] T037 [P] [US1] Integration test for forward guard in `app/tests/integration/onboarding-guard.test.ts` — request `/inbox` with empty connected_pages returns 302 to `/onboarding/connect-page`; with a row present returns inbox HTML
-- [x] T038 [P] [US1] Integration test for reverse guard — request `/onboarding/connect-page` with a connected_pages row returns 302 to `/inbox`
-- [x] T039 [P] [US1] Cross-tenant safety test — tenant A's JWT calling connectPageFn with tenant_id field in input forged or attempting to write tenant B's row is blocked by RLS (within `withTenant` wrapper)
-- [x] T040 [US1] E2E test in `app/tests/e2e/connect-page-flow.spec.ts` using Playwright + FB Test User — full flow: login → onboarding → FB.login popup → page selection → /inbox; gated behind `FB_TEST_USER_EMAIL` env var
+- [ ] T035 [P] [US1] Integration test for `exchangeAndListFn` in `app/tests/integration/exchange-and-list-fn.test.ts` using MSW (T017 handlers): happy path (returns `{ ok: true }` and sets the encrypted `fb_connect_session` httpOnly cookie) / token_expired (190) / permission_missing (200) / rate_limited (4) / meta_unavailable (5xx) variants. **STATUS: not implemented** — no test file exists for `exchangeAndListFn`
+- [ ] T036 [P] [US1] Integration test for `connectPageFn` in `app/tests/integration/connect-page-fn.test.ts` using MSW: input is `{ pageId }` only with the `fb_connect_session` cookie present; happy path resolves Page name/token server-side via `fetchPageWithToken` then UPSERT verifies DB row, already_connected returns error without DB write, subscribe_failed returns error without DB write, missing/expired session cookie returns `token_invalid`, encryption round-trip via decrypt. **STATUS: not implemented** — no test file exists for `connectPageFn`
+- [~] T037 [P] [US1] Integration test for forward guard — spec'd as `app/tests/integration/onboarding-guard.test.ts` (request `/inbox` with empty connected_pages → 302 to `/onboarding/connect-page`; row present → inbox HTML). **STATUS: partial** — forward-guard behavior is covered as a *mocked unit test* (`checkConnectedPagesFn` stubbed) in `app/src/test/routes/(app)/onboarding/connect-page/index.test.tsx`, not as the full request-level MSW/DB integration test specified here
+- [~] T038 [P] [US1] Integration test for reverse guard — request `/onboarding/connect-page` with a connected_pages row returns 302 to `/inbox`. **STATUS: partial** — reverse-guard behavior covered as a mocked unit test in the same `index.test.tsx`, not as a request-level integration test
+- [ ] T039 [P] [US1] Cross-tenant safety test — tenant A's JWT calling connectPageFn with tenant_id field in input forged or attempting to write tenant B's row is blocked by RLS (within `withTenant` wrapper). **STATUS: not implemented** — no cross-tenant RLS test exists for the connect-page fns
+- [x] T040 [US1] E2E test in `app/tests/e2e/connect-page-flow.spec.ts` using Playwright + FB Test User — full flow: login → onboarding → FB.login popup → **Page ID entry** → /inbox; gated behind `FB_TEST_USER_EMAIL` env var
 
 ### Onboarding-screen translation keys
 
 <!-- unit: U4.2 | deps: U3.2 | scope: frontend | tasks: T041 | files: ~2 | automation: auto -->
-- [ ] T041 [US1] Add onboarding keys (`onboarding_title`, `onboarding_description`, `onboarding_connect_button`, `onboarding_consent_denied`, `onboarding_select_page_heading`, `onboarding_connecting`, `onboarding_no_pages`, `onboarding_error_token_expired`, `onboarding_error_permission_missing`, `onboarding_error_subscribe_failed`, `onboarding_error_generic`, `onboarding_retry_button`) to both `app/messages/en.json` and `app/messages/ja.json` and re-compile
+- [x] T041 [US1] Add onboarding keys to both `app/messages/en.json` and `app/messages/ja.json` and re-compile. Implemented set reflects the Page-ID-input flow: `onboarding_title`, `onboarding_description`, `onboarding_connect_button`, `onboarding_consent_denied`, `onboarding_connecting`, `onboarding_enter_page_id_heading`, `onboarding_page_id_placeholder`, `onboarding_page_id_help`, `onboarding_invalid_page_id`, `onboarding_already_connected`, `onboarding_error_token_expired`, `onboarding_error_permission_missing`, `onboarding_error_subscribe_failed`, `onboarding_error_generic`, `onboarding_retry_button` (spec-original `onboarding_select_page_heading` / `onboarding_no_pages` dropped — no page-list UI)
 
 ### Server functions
 
 <!-- unit: U4.3 | deps: U2.2 | scope: backend | tasks: T042-T043 | files: ~2 | automation: auto -->
-- [x] T042 [US1] Implement `exchangeAndListFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/exchange-and-list.fn.ts` — Zod input/output per contracts/connect-page-fn.md §1, calls T015 wrapper functions, structured logging per facebook-graph.md
-- [x] T043 [US1] Implement `connectPageFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/connect-page.fn.ts` — Zod input/output per contracts/connect-page-fn.md §2, performs subscribe → encrypt (existing `crypto.ts`) → UPSERT within `withTenant`, full error mapping including `already_connected`
+- [x] T042 [US1] Implement `exchangeAndListFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/exchange-and-list.fn.ts` — Zod input `{ shortLivedUserToken }`; exchanges short→long **user** token via T015 `exchangeUserToken`, encrypts it with the master key and stores it in a httpOnly `fb_connect_session` cookie (maxAge 600s), returns `{ ok: true }` only (no page list, no token in the response body) per contracts/connect-page-fn.md §1, structured logging per facebook-graph.md
+- [x] T043 [US1] Implement `connectPageFn` in `app/src/routes/(app)/onboarding/connect-page/-lib/connect-page.fn.ts` — Zod input `{ pageId }` only; reverse-guard active row → decrypt `fb_connect_session` long user token → `fetchPageWithToken(pageId, longToken)` resolves canonical name + Page Access Token server-side → `subscribePageWebhook` → encrypt (existing `crypto.ts`) → UPSERT within `withTenant` (UPDATE same tenant+pageId else INSERT; global pageId unique-constraint 23505 → `already_connected`) → clear session cookie, full error mapping per contracts/connect-page-fn.md §2
 
 ### UI components
 
 <!-- unit: U4.4 | deps: U2.2,U4.2 | scope: frontend | tasks: T044-T046 | files: ~3 | automation: auto -->
-- [x] T044 [P] [US1] Implement `ConnectFacebookButton` in `app/src/routes/(app)/onboarding/connect-page/-components/ConnectFacebookButton.tsx` — uses T014 SDK loader, calls `FB.login` with the four permissions in one consent dialog (`auth_type: 'reauthenticate'` so reviewers see the dialog every time), invokes T042 server fn on success
-- [x] T045 [P] [US1] Implement `PageList` in `app/src/routes/(app)/onboarding/connect-page/-components/PageList.tsx` — displays pages from T042 response, single-select UI, calls T043 server fn on confirm, displays page name + page ID
-- [x] T046 [P] [US1] Implement `ConnectErrorPanel` in `app/src/routes/(app)/onboarding/connect-page/-components/ConnectErrorPanel.tsx` — displays mapped error messages from T042/T043 plus a Retry button that resets the flow
+- [x] T044 [P] [US1] Implement `ConnectFacebookButton` in `app/src/routes/(app)/onboarding/connect-page/-components/ConnectFacebookButton.tsx` — uses T014 SDK loader, calls `FB.login` with `config_id` (a Facebook Login for Business Login Configuration bundling the four permissions; `VITE_FB_LOGIN_CONFIG_ID`) and `auth_type: 'reauthenticate'` so reviewers see the dialog every time, invokes T042 server fn on success, then signals `onSessionReady`
+- [x] T045 [P] [US1] Implement `PageIdInput` in `app/src/routes/(app)/onboarding/connect-page/-components/PageIdInput.tsx` — numeric Page ID text field with client-side validation (`^\d{5,20}$`) and on-screen help text, calls T043 `connectPageFn` with `{ pageId }` on confirm, navigates to `/inbox` on success (no page-list display — replaces the spec-original `PageList`)
+- [x] T046 [P] [US1] Implement `ConnectErrorPanel` in `app/src/routes/(app)/onboarding/connect-page/-components/ConnectErrorPanel.tsx` — maps every T042/T043 error code (incl. `consent_denied`, `already_connected`, `token_invalid`, `webhook_url_failed`, …) to a localized message plus a Retry button that resets the flow to `initial`
 
 ### Route + guards
 
 <!-- unit: U4.5 | deps: U4.3,U4.4 | scope: frontend | tasks: T047-T049 | files: ~3 | automation: auto -->
-- [x] T047 [US1] Create `/onboarding/connect-page` route at `app/src/routes/(app)/onboarding/connect-page/index.tsx` — composes ConnectFacebookButton / PageList / ConnectErrorPanel; manages flow state (initial / consent_done / pages_loaded / connecting / error); reverse guard via `beforeLoad` redirecting to `/inbox` if already connected
+- [x] T047 [US1] Create `/onboarding/connect-page` route at `app/src/routes/(app)/onboarding/connect-page/index.tsx` — composes ConnectFacebookButton / PageIdInput / ConnectErrorPanel; manages flow state (`initial` / `session_ready` / `connecting` / `error`); reverse guard via `beforeLoad` calling `checkConnectedPagesFn` and redirecting to `/inbox` if an active page is already connected
 - [x] T048 [US1] Add forward guard to `app/src/routes/(app)/route.tsx` `beforeLoad` — calls T016 `checkConnectedPagesFn`, throws redirect to `/onboarding/connect-page` if count==0; do NOT trigger guard on `/onboarding/*` paths to avoid loop
 - [x] T049 [US1] Update `app/src/routes/(app)/-components/LanguageToggle.tsx` Header insertion to also render on `/onboarding/connect-page` (so reviewer can pick EN before connecting)
 

@@ -44,11 +44,11 @@ updated: 2026-05-07
 
 | Unit | tasks | scope | deps | files | automation | 概要 |
 |------|-------|-------|------|-------|------------|------|
-| U4.1 | T035-T040 | backend | U2.2 | ~6 | auto | server fn integration + E2E tests |
-| U4.2 | T041 | frontend | U3.2 | ~2 | auto | onboarding 翻訳キー追加 |
-| U4.3 | T042-T043 | backend | U2.2 | ~2 | auto | exchangeAndListFn + connectPageFn server fns |
-| U4.4 | T044-T046 | frontend | U2.2,U4.2 | ~3 | auto | ConnectFacebookButton + PageList + ConnectErrorPanel |
-| U4.5 | T047-T049 | frontend | U4.3,U4.4 | ~3 | auto | onboarding route + guards |
+| U4.1 | T035-T040 | backend | U2.2 | ~6 | auto | server fn integration + E2E tests — ⚠️ **未完**: T040 E2E のみ実在、T035/T036/T039 統合テスト未作成、T037/T038 はモックユニットで部分カバー |
+| U4.2 | T041 | frontend | U3.2 | ~2 | auto | onboarding 翻訳キー追加（Page ID 入力フロー用キー: enter_page_id_heading / page_id_placeholder / page_id_help / invalid_page_id / already_connected）|
+| U4.3 | T042-T043 | backend | U2.2 | ~2 | auto | exchangeAndListFn（token 長期化 + 暗号化 httpOnly Cookie 保管、ページ一覧は返さない）+ connectPageFn（Cookie の user token で fetchPageWithToken → subscribe → 暗号化 → UPSERT）|
+| U4.4 | T044-T046 | frontend | U2.2,U4.2 | ~3 | auto | ConnectFacebookButton（FB Login for Business, config_id）+ PageIdInput（数値 Page ID 手入力）+ ConnectErrorPanel |
+| U4.5 | T047-T049 | frontend | U4.3,U4.4 | ~3 | auto | onboarding route（initial/session_ready/connecting/error）+ forward/reverse guards |
 | U4.6 | T050 | frontend | U4.5 | 0 | manual | 手動動作確認 |
 
 ## Phase 5: US3 — Submission documentation

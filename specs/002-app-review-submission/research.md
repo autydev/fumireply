@@ -67,25 +67,33 @@
 **実装メモ**:
 - SDK 動的ロード: `app/src/lib/facebook-sdk.ts` に Promise キャッシュ付きの `loadFbSdk()` を実装
 - App ID は `import.meta.env.VITE_FB_APP_ID` 経由でビルド時注入（クライアント側に App ID を埋めてよい、Meta は App ID の機密性を主張しない）
+- Login Config ID は `import.meta.env.VITE_FB_LOGIN_CONFIG_ID` 経由でビルド時注入
 - App Secret は **絶対にクライアント側に出さない**（既存 SSM `/fumireply/review/meta/app-secret` を server fn 内でのみ使う）
-- スコープ: `pages_show_list,pages_manage_metadata,pages_read_engagement,pages_messaging` を 1 回の同意で取得
+- 権限取得方式: `FB.login` に `scope` 文字列は渡さず、`config_id`（Facebook Login for Business の Login Configuration、`pages_show_list,pages_manage_metadata,pages_read_engagement,pages_messaging` の 4 権限を束ねたもの）+ `auth_type:'reauthenticate'` を指定。1 回の同意ダイアログで 4 権限を取得し、撮影時は毎回ダイアログを表示
 - ポップアップブロッカーが効いた場合のフォールバックは「ボタンを押してください」のメッセージ表示のみ（redirect 切替えはやらない、複雑性回避）
 
 ---
 
 ## R-004: Page Access Token の取得と長期化
 
-**決定**: Facebook JS SDK のポップアップで取得した**短期 user access token を server fn に POST**。サーバ側で：
-1. `GET /v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=APP_ID&client_secret=APP_SECRET&fb_exchange_token=SHORT_TOKEN` で長期 user token に交換
-2. `GET /v19.0/me/accounts?access_token=LONG_USER_TOKEN` でページ一覧を取得し、レスポンスの `data[].access_token` が**長期 Page Access Token**となる
-3. 長期 Page Access Token は理論上は無期限（Facebook が "Never-expiring Page Token" として扱う）
+**決定**: Facebook JS SDK のポップアップで取得した**短期 user access token を server fn に POST**。フローを 2 つの server fn に分割する：
+
+**`exchangeAndListFn`**:
+1. `GET /v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=APP_ID&client_secret=APP_SECRET&fb_exchange_token=SHORT_TOKEN` で長期 **user** token に交換
+2. 長期 user token を master key で AES-256-GCM 暗号化し、httpOnly Cookie `fb_connect_session`（maxAge 600s、`secure` 本番のみ）に退避。**Page 一覧（`/me/accounts`）は取得せず、トークン・一覧をクライアントに返さない**
+
+**`connectPageFn`**（ユーザーが数値 Page ID を手入力した後）:
+3. Cookie を復号して長期 user token を復元し、`GET /v19.0/{PAGE_ID}?fields=id,name,access_token&access_token=LONG_USER_TOKEN`（`fetchPageWithToken`）で当該 Page の正式名称と**長期 Page Access Token**をサーバ側取得
+4. 長期 Page Access Token は理論上は無期限（Facebook が "Never-expiring Page Token" として扱う）
 
 **根拠**:
-- Meta 公式ドキュメント `Long-Lived Tokens` の手順に厳密準拠
-- 短期 user token を **DB に保存しない** ことでトークン窃取のリスクを最小化
-- Page 単位の Token のみ保存することで「user が他の Page を扱う権限を失っても本 Page の Webhook と Send API は継続動作」する
+- Meta 公式ドキュメント `Long-Lived Tokens` の手順に準拠
+- 短期/長期 user token も Page Access Token も **ブラウザに送出しない**（user token は暗号化 httpOnly Cookie でのみ往復、Page Access Token はサーバ内で取得・暗号化）。`/me/accounts` 列挙をやめ、ユーザー指定 1 ページのみをサーバ側で解決することで、クライアントが Page 名・トークンを観測/詐称できない
+- Page 単位の Token のみ DB 保存することで「user が他の Page を扱う権限を失っても本 Page の Webhook と Send API は継続動作」する
 
 **代替案と却下理由**:
+- **長期 Page Access Token をクライアントに返し即再送（旧ドラフト案）**：DevTools/拡張機能からトークンが観測可能。サーバ側 httpOnly Cookie 保持に変更（security hardening、PR #32）→ 却下
+- **`/me/accounts` で一覧表示しユーザーに選ばせる（旧ドラフト案）**：一覧と各 Page のトークンをクライアントに渡す必要がある。Page ID 手入力 + サーバ側単一取得に変更 → 却下（`pages_show_list` は単一 Page の `access_token` フィールド取得目的で依然必要）
 - **クライアント側で長期化**：JS SDK では fb_exchange_token を呼べない（App Secret が必要）→ サーバ側必須
 - **System User token**：Business Manager で発行する半永久 Token。本 MVP では運用簡素化のため使わない（Phase 2 検討）
 
@@ -98,7 +106,7 @@
 
 ## R-005: Webhook 購読の冪等性
 
-**決定**: ページ選択完了時に `POST /v19.0/{page-id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks` を Page Access Token 付きで呼ぶ。**既に購読済みでも 200 が返る**ため冪等。失敗時は server fn 全体を rollback し、`connected_pages` への INSERT を行わない。
+**決定**: Page ID 入力 → `fetchPageWithToken` で Page Access Token 取得後に `POST /v19.0/{page-id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks` を Page Access Token 付きで呼ぶ。**既に購読済みでも 200 が返る**ため冪等。失敗時は server fn 全体を rollback し、`connected_pages` への INSERT を行わない。
 
 **根拠**:
 - Meta の `subscribed_apps` API は idempotent（公式ドキュメント記載）
@@ -175,7 +183,7 @@
 | 画面 | 翻訳対象 |
 |---|---|
 | `(auth)/login` | LoginForm の入力ラベル、ボタン、エラーメッセージ |
-| `(app)/onboarding/connect-page` | 全文（説明、ボタン、Page 一覧、エラー、再試行）|
+| `(app)/onboarding/connect-page` | 全文（説明、Connect ボタン、Page ID 入力欄ラベル/プレースホルダ/ヘルプ、エラー、再試行）|
 | `(app)/inbox` | InboxList のフィルタ、空状態、未読バッジ ARIA、ヘッダー |
 | `(app)/threads/$id` | スレッドヘッダー、24h 窓バッジ、メッセージ吹き出しの aria-label |
 | `(app)/threads/$id` ReplyForm | プレースホルダー、Send ボタン、AI suggestion ラベル、保存済バッジ、エラー、24h 窓バナー |
@@ -240,7 +248,7 @@
 
 **決定**:
 - **unit/integration（vitest）**: Connect Page server fn の各段階を Graph API モック（MSW）で検証。i18n の Cookie 読み書きと Paraglide メッセージ出力を検証。
-- **E2E（Playwright）**: ログイン → onboarding → Connect Page（FB Test User）→ Page 一覧から選択 → /inbox 着地、までを 1 シナリオで通す。FB Test User のパスワードは GitHub Actions secrets に保管。
+- **E2E（Playwright）**: ログイン → onboarding → Connect Page（FB Test User、Login for Business 同意）→ Test Page の数値 Page ID 入力 → /inbox 着地、までを 1 シナリオで通す。FB Test User のパスワード・Test Page ID は GitHub Actions secrets に保管。
 - **手動スモーク**: 本番に対して reviewer 認証情報で実機確認（提出前 1 回 + 撮影前 1 回）。
 
 **根拠**:

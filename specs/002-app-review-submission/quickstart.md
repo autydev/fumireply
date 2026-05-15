@@ -251,7 +251,7 @@ npm run deploy:review
 2. macOS QuickTime で全画面録画開始
 3. Chrome incognito で `https://review.fumireply.ecsuite.work/login` を開く
 4. EN モードに切替（Header の `EN` をクリック）
-5. ログアウト状態 → ログイン → /onboarding/connect-page → Facebook Login → ページ選択 → /inbox → スマホ Messenger からテストメッセージ送信 → AI 下書き表示 → 編集 → 送信、までを通しで操作
+5. ログアウト状態 → ログイン → /onboarding/connect-page → Facebook Login for Business → Test Page の数値 Page ID 入力 → /inbox → スマホ Messenger からテストメッセージ送信 → AI 下書き表示 → 編集 → 送信、までを通しで操作
 6. `bash scripts/post-screencast.sh` で reviewer 無効化等の cleanup
 7. 録画ファイルを CapCut / iMovie で字幕付加 → MP4 export
 8. YouTube に Unlisted でアップロード → URL を控える
@@ -300,11 +300,14 @@ npx paraglide-js compile --project ./project.inlang
 
 - Chrome のポップアップブロッカー設定を確認
 - Allowed Domains に `review.fumireply.ecsuite.work` が登録されているか
-- App ID（VITE_FB_APP_ID）が正しいか
+- App ID（VITE_FB_APP_ID）/ Login Config ID（VITE_FB_LOGIN_CONFIG_ID）が正しいか
+- `config_id` の Login Configuration に 4 権限（pages_show_list / pages_manage_metadata / pages_read_engagement / pages_messaging）が束ねられているか
 
-### `/me/accounts` が空配列
+### Page ID 入力後に接続できない（token_invalid / permission_missing）
 
-- Test User が Page を持っていない可能性。Facebook for Business で Page 作成済みか確認
+- 入力した数値 Page ID が、同意した Facebook ユーザーが管理権限を持つ Page のものか確認（`fetchPageWithToken` がトークンを返せないと失敗）
+- 同意から Page ID 入力までに 10 分以上経過すると httpOnly Cookie `fb_connect_session` が失効（`token_invalid`）→ Connect からやり直す
+- Test User が Page を持っていない場合は Facebook for Business で Page 作成済みか確認
 
 ### Webhook 購読が成功しているのに inbox にメッセージが来ない
 

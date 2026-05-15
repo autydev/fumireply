@@ -81,27 +81,34 @@
 ### 3.1 Connect Page Flow（書き込み）
 
 ```
-[Operator] /onboarding/connect-page
+[Operator] /onboarding/connect-page  （state: initial）
     ↓ クリック「Connect Facebook Page」
-[Client] FB.login({ scope: 'pages_show_list,pages_manage_metadata,pages_read_engagement,pages_messaging' })
+[Client] FB.login({ config_id: VITE_FB_LOGIN_CONFIG_ID, auth_type: 'reauthenticate' })
+         // 4 権限は config_id の Login for Business Configuration 側に束ねる（scope 文字列は渡さない）
     ↓ ポップアップで 4 権限同意
 [Client] FB.login のコールバックで shortLivedUserToken 取得
     ↓ POST shortLivedUserToken to server fn
 [Server] exchangeAndListFn
-    ├ 1. SSM /fumireply/review/meta/app-secret 取得
+    ├ 1. SSM から App Secret 取得
     ├ 2. fb_exchange_token API 呼び出し → longLivedUserToken
-    └ 3. /me/accounts API 呼び出し → pages[]（各 page に長期 Page Access Token）
-    ↓ pages[] を Client に返す
-[Client] PageList を表示
-    ↓ Operator がページ選択
-[Client] POST { pageId, pageName, pageAccessToken } to server fn
+    └ 3. longLivedUserToken を AES-256-GCM 暗号化 → httpOnly Cookie fb_connect_session（maxAge 600s）
+    ↓ { ok: true } のみ返す（pages[]・トークンは返さない）
+[Client] PageIdInput を表示（state: session_ready）
+    ↓ Operator が接続対象の数値 Page ID を手入力
+[Client] POST { pageId } to server fn   ← Page 名・トークンは送らない
 [Server] connectPageFn (within `withTenant(tenant_id, fn)`)
-    ├ 1. POST /v19.0/{pageId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks
-    ├ 2. crypto.encrypt(pageAccessToken) で AES-256-GCM 暗号化
-    └ 3. INSERT INTO connected_pages ... ON CONFLICT (tenant_id) DO UPDATE SET ...
-    ↓ 成功レスポンス
+    ├ 1. 逆 guard: active 行ありなら already_connected で中断
+    ├ 2. Cookie fb_connect_session 復号 → longLivedUserToken
+    ├ 3. GET /v19.0/{pageId}?fields=id,name,access_token（fetchPageWithToken）
+    │      → 正式 pageName + 長期 Page Access Token をサーバ側取得
+    ├ 4. POST /v19.0/{pageId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks
+    ├ 5. crypto.encrypt(pageAccessToken) で AES-256-GCM 暗号化
+    ├ 6. 同一 (tenant_id, page_id) 行 SELECT → あれば UPDATE / 無ければ INSERT
+    │      （page_id グローバル一意制約 23505 → already_connected）
+    └ 7. Cookie fb_connect_session を maxAge:0 で失効
+    ↓ 成功レスポンス { ok, pageId, pageName }
 [Client] navigate('/inbox')
-[Server] (app)/route.tsx の guard が connected_pages 件数 >= 1 を確認 → 通過
+[Server] (app)/route.tsx の guard が connected_pages の active 件数 >= 1 を確認 → 通過
 [Operator] /inbox 着地
 ```
 
