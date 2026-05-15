@@ -35,7 +35,7 @@
   "onboarding_connect_button": "Connect with Facebook",
   "onboarding_consent_denied": "Permission denied. Please allow the required permissions to continue.",
   "onboarding_enter_page_id_heading": "Enter the Page ID to connect",
-  "onboarding_page_id_placeholder": "e.g. 731325636740278",
+  "onboarding_page_id_placeholder": "e.g. 100000000000001",
   "onboarding_page_id_help": "Find the Page ID at the bottom of your Facebook Page's Settings → About section.",
   "onboarding_invalid_page_id": "Page ID must be 5-20 digits.",
   "onboarding_connecting": "Connecting...",

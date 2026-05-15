@@ -35,7 +35,7 @@
   "onboarding_connect_button": "Facebook で連携する",
   "onboarding_consent_denied": "権限が拒否されました。続けるには必要な権限をすべて許可してください。",
   "onboarding_enter_page_id_heading": "連携するページの ID を入力してください",
-  "onboarding_page_id_placeholder": "例: 731325636740278",
+  "onboarding_page_id_placeholder": "例: 100000000000001",
   "onboarding_page_id_help": "Facebook ページの「設定」→「基本データ」または「About」セクションの最下部に表示されている「ページ ID」を入力してください。",
   "onboarding_invalid_page_id": "ページ ID は 5〜20 桁の数字で入力してください。",
   "onboarding_connecting": "連携中…",
