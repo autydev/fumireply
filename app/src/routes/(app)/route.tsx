@@ -49,7 +49,7 @@ function Sidebar() {
 
   async function handleLogout() {
     await logoutFn()
-    await router.navigate({ to: '/login' })
+    await router.navigate({ to: '/login', search: { returnTo: undefined, error: undefined } })
   }
 
   return (

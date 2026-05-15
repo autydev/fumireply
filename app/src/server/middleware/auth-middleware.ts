@@ -18,7 +18,7 @@ export const authMiddleware = createMiddleware({ type: 'function' }).server(
     const accessToken = getCookie('sb-access-token')
 
     if (!accessToken) {
-      throw redirect({ to: '/login' })
+      throw redirect({ to: '/login', search: { returnTo: undefined, error: undefined } })
     }
 
     let user = await verifyAccessToken(accessToken)
@@ -26,11 +26,11 @@ export const authMiddleware = createMiddleware({ type: 'function' }).server(
     if (!user) {
       const refreshToken = getCookie('sb-refresh-token')
       if (!refreshToken) {
-        throw redirect({ to: '/login' })
+        throw redirect({ to: '/login', search: { returnTo: undefined, error: undefined } })
       }
       const refreshed = await refreshSession(refreshToken)
       if (!refreshed) {
-        throw redirect({ to: '/login' })
+        throw redirect({ to: '/login', search: { returnTo: undefined, error: undefined } })
       }
       setCookie('sb-access-token', refreshed.accessToken, {
         httpOnly: true,
@@ -51,7 +51,7 @@ export const authMiddleware = createMiddleware({ type: 'function' }).server(
 
     const tenantId = (user.app_metadata?.tenant_id as string | undefined) ?? ''
     if (!tenantId) {
-      throw redirect({ to: '/login?error=no_tenant' })
+      throw redirect({ to: '/login', search: { returnTo: undefined, error: 'no_tenant' } })
     }
 
     const tenantRows = await dbAdmin
@@ -62,7 +62,7 @@ export const authMiddleware = createMiddleware({ type: 'function' }).server(
 
     const tenant = tenantRows[0]
     if (!tenant || tenant.status !== 'active') {
-      throw redirect({ to: '/login?error=tenant_suspended' })
+      throw redirect({ to: '/login', search: { returnTo: undefined, error: 'tenant_suspended' } })
     }
 
     const rawRole = user.app_metadata?.role as string | undefined
