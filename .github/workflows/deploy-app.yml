@@ -41,6 +41,15 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # ─── Build-time client env (VITE_*) ───────────────────────────────────
+      # VITE_* vars are statically inlined into the client bundle by `vite build`,
+      # so they must exist in process.env at build time (NOT Lambda runtime).
+      # Pulled from the same SSM params consumed server-side / by Terraform.
+      - name: Load VITE_FB_* from SSM
+        run: |
+          echo "VITE_FB_APP_ID=$(aws ssm get-parameter --name /fumireply/review/meta/app-id --with-decryption --query Parameter.Value --output text)" >> "$GITHUB_ENV"
+          echo "VITE_FB_LOGIN_CONFIG_ID=$(aws ssm get-parameter --name /fumireply/review/meta/login-config-id --with-decryption --query Parameter.Value --output text)" >> "$GITHUB_ENV"
+
       # ─── Build ────────────────────────────────────────────────────────────
 
       - name: Install + build app

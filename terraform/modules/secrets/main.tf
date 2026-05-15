@@ -48,6 +48,32 @@ resource "aws_ssm_parameter" "meta_webhook_verify_token" {
   tags = var.tags
 }
 
+resource "aws_ssm_parameter" "meta_app_id" {
+  name        = "${local.review_prefix}/meta/app-id"
+  description = "Meta App ID (public value; consumed server-side as META_APP_ID and bundled client-side as VITE_FB_APP_ID)"
+  type        = "SecureString"
+  value       = "placeholder"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+
+  tags = var.tags
+}
+
+resource "aws_ssm_parameter" "meta_login_config_id" {
+  name        = "${local.review_prefix}/meta/login-config-id"
+  description = "Facebook Login for Business configuration ID (bundled client-side as VITE_FB_LOGIN_CONFIG_ID)"
+  type        = "SecureString"
+  value       = "placeholder"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+
+  tags = var.tags
+}
+
 resource "aws_ssm_parameter" "supabase_url" {
   name        = "${local.review_prefix}/supabase/url"
   description = "Supabase project URL (e.g. https://xxxx.supabase.co)"

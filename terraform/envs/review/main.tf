@@ -100,6 +100,10 @@ module "queue" {
 # (app の env.ts は process.env を直接読むため、起動時に値を持っている必要がある)
 ###############################################################################
 
+data "aws_ssm_parameter" "meta_app_id" {
+  name = "/fumireply/review/meta/app-id"
+}
+
 data "aws_ssm_parameter" "supabase_url" {
   name = "/fumireply/review/supabase/url"
 }
@@ -134,6 +138,7 @@ module "app_lambda" {
   supabase_url              = data.aws_ssm_parameter.supabase_url.value
   supabase_publishable_key  = data.aws_ssm_parameter.supabase_publishable_key.value
   supabase_secret_key       = data.aws_ssm_parameter.supabase_secret_key.value
+  meta_app_id               = data.aws_ssm_parameter.meta_app_id.value
 
   # 値ではなく SSM のキーパス（コード側がランタイムで読む）
   meta_app_secret_ssm_key      = "/fumireply/review/meta/app-secret"

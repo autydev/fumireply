@@ -50,6 +50,11 @@ variable "supabase_url" {
   type        = string
 }
 
+variable "meta_app_id" {
+  description = "Meta App ID (public value; required at runtime by env.ts for the FB token exchange)"
+  type        = string
+}
+
 variable "supabase_publishable_key" {
   description = "Supabase anon (publishable) key"
   type        = string

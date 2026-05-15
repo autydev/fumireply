@@ -115,6 +115,7 @@ resource "aws_lambda_function" "app" {
       SUPABASE_URL                 = var.supabase_url
       SUPABASE_PUBLISHABLE_KEY     = var.supabase_publishable_key
       SUPABASE_SECRET_KEY          = var.supabase_secret_key
+      META_APP_ID                  = var.meta_app_id
       META_APP_SECRET_SSM_KEY      = var.meta_app_secret_ssm_key
       WEBHOOK_VERIFY_TOKEN_SSM_KEY = var.webhook_verify_token_ssm_key
       ANTHROPIC_API_KEY_SSM_KEY    = var.anthropic_api_key_ssm_key
