@@ -3,10 +3,10 @@ import { useState } from 'react'
 import * as m from '~/paraglide/messages'
 import { checkConnectedPagesFn } from './-lib/check-connected-pages.fn'
 import { ConnectFacebookButton } from './-components/ConnectFacebookButton'
-import { PageList } from './-components/PageList'
+import { PageIdInput } from './-components/PageIdInput'
 import { ConnectErrorPanel } from './-components/ConnectErrorPanel'
 
-type FlowState = 'initial' | 'pages_loaded' | 'connecting' | 'error'
+type FlowState = 'initial' | 'session_ready' | 'connecting' | 'error'
 
 export const Route = createFileRoute('/(app)/onboarding/connect-page/')({
   beforeLoad: async () => {
@@ -19,15 +19,14 @@ export const Route = createFileRoute('/(app)/onboarding/connect-page/')({
 })
 
 const FB_APP_ID = (import.meta.env.VITE_FB_APP_ID as string | undefined) ?? ''
+const FB_LOGIN_CONFIG_ID = (import.meta.env.VITE_FB_LOGIN_CONFIG_ID as string | undefined) ?? ''
 
 function ConnectPageRoute() {
   const [state, setState] = useState<FlowState>('initial')
-  const [pages, setPages] = useState<Array<{ id: string; name: string }>>([])
   const [error, setError] = useState<string | null>(null)
 
-  function handlePagesLoaded(loaded: typeof pages) {
-    setPages(loaded)
-    setState('pages_loaded')
+  function handleSessionReady() {
+    setState('session_ready')
   }
 
   function handleError(err: string) {
@@ -37,7 +36,6 @@ function ConnectPageRoute() {
 
   function handleRetry() {
     setError(null)
-    setPages([])
     setState('initial')
   }
 
@@ -68,17 +66,14 @@ function ConnectPageRoute() {
         {state === 'initial' && (
           <ConnectFacebookButton
             fbAppId={FB_APP_ID}
-            onPagesLoaded={handlePagesLoaded}
+            fbLoginConfigId={FB_LOGIN_CONFIG_ID}
+            onSessionReady={handleSessionReady}
             onError={handleError}
           />
         )}
 
-        {state === 'pages_loaded' && (
-          <PageList
-            pages={pages}
-            onError={handleError}
-            onConnecting={() => setState('connecting')}
-          />
+        {state === 'session_ready' && (
+          <PageIdInput onError={handleError} onConnecting={() => setState('connecting')} />
         )}
 
         {state === 'connecting' && (

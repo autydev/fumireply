@@ -6,7 +6,7 @@ import { authMiddleware } from '~/server/middleware/auth-middleware'
 import { connectedPages } from '~/server/db/schema'
 import { withTenant } from '~/server/db/with-tenant'
 import { decryptToken, encryptToken, getMasterKey } from '~/server/services/crypto'
-import { listPages, subscribePageWebhook } from '~/server/services/facebook'
+import { fetchPageWithToken, subscribePageWebhook } from '~/server/services/facebook'
 import { env } from '~/server/env'
 
 const Input = z.object({
@@ -59,16 +59,14 @@ export const connectPageFn = createServerFn({ method: 'POST' })
     try {
       const masterKey = await getMasterKey()
       const longToken = decryptToken(Buffer.from(encodedSession, 'base64'), masterKey)
-      const pages = await listPages(longToken)
-      const page = pages.find((p) => p.id === data.pageId)
-      if (!page) {
-        return { ok: false, error: 'token_invalid', message: 'Selected page not found. Please reconnect.' }
-      }
-      // Use server-fetched name to prevent client-side spoofing
+      // Direct page fetch — works for both personal-owned and Business-owned pages.
+      // Server fetches the canonical name + access_token so the browser cannot spoof either.
+      const page = await fetchPageWithToken(data.pageId, longToken)
       pageAccessToken = page.pageAccessToken
       pageName = page.name
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown'
+      if (msg === 'page_not_found') return { ok: false, error: 'token_invalid', message: 'Page not found or you do not have access.' }
       if (msg === 'token_expired') return { ok: false, error: 'token_invalid', message: 'Session expired. Please reconnect.' }
       if (msg === 'permission_missing') return { ok: false, error: 'permission_missing', message: 'Missing pages_show_list permission.' }
       if (msg === 'rate_limited') return { ok: false, error: 'rate_limited', message: 'Rate limited. Please wait.' }

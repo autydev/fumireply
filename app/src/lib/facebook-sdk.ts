@@ -21,6 +21,7 @@ export type FbLoginResponse = {
 
 export type FbLoginOptions = {
   scope?: string
+  config_id?: string
   auth_type?: 'rerequest' | 'reauthenticate' | 'reauthorize'
   return_scopes?: boolean
 }

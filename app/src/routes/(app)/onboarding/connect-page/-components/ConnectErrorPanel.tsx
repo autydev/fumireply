@@ -5,7 +5,6 @@ const ERROR_MESSAGES: Record<string, () => string> = {
   permission_missing: m.onboarding_error_permission_missing,
   subscribe_failed: m.onboarding_error_subscribe_failed,
   consent_denied: m.onboarding_consent_denied,
-  no_pages: m.onboarding_no_pages,
   internal_error: m.onboarding_error_generic,
   meta_unavailable: m.onboarding_error_generic,
   rate_limited: m.onboarding_error_generic,

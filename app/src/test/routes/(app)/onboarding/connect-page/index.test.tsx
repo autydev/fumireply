@@ -15,7 +15,10 @@ vi.mock('~/paraglide/messages', () => ({
   onboarding_error_subscribe_failed: () => 'Subscribe failed.',
   onboarding_error_generic: () => 'Something went wrong.',
   onboarding_consent_denied: () => 'Permission denied.',
-  onboarding_no_pages: () => 'No pages found.',
+  onboarding_enter_page_id_heading: () => 'Enter the Page ID to connect',
+  onboarding_page_id_placeholder: () => 'e.g. 731325636740278',
+  onboarding_page_id_help: () => 'Find the Page ID at the bottom of Settings → About.',
+  onboarding_invalid_page_id: () => 'Page ID must be 5-20 digits.',
 }))
 vi.mock('~/routes/(app)/-components/TokenStatusBanner', () => ({ TokenStatusBanner: () => null }))
 vi.mock('~/routes/(app)/-components/LanguageToggle', () => ({ LanguageToggle: () => null }))
@@ -38,8 +41,8 @@ vi.mock(
   () => ({ ConnectFacebookButton: () => <button type="button">Connect with Facebook</button> }),
 )
 vi.mock(
-  '~/routes/(app)/onboarding/connect-page/-components/PageList',
-  () => ({ PageList: () => <div>PageList</div> }),
+  '~/routes/(app)/onboarding/connect-page/-components/PageIdInput',
+  () => ({ PageIdInput: () => <div>PageIdInput</div> }),
 )
 vi.mock(
   '~/routes/(app)/onboarding/connect-page/-components/ConnectErrorPanel',

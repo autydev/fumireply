@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fumireply 認証フロー 解説</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+      :root {
+        --bg: #fafafa;
+        --fg: #1f2328;
+        --muted: #6b7280;
+        --accent: #2563eb;
+        --accent-soft: #dbeafe;
+        --border: #e5e7eb;
+        --code-bg: #f3f4f6;
+        --warn-bg: #fef3c7;
+        --warn-fg: #92400e;
+        --green-bg: #dcfce7;
+        --green-fg: #166534;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', Meiryo,
+          sans-serif;
+        line-height: 1.7;
+        font-size: 15px;
+      }
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 40px 28px 120px;
+      }
+      h1 {
+        font-size: 28px;
+        margin: 0 0 8px;
+      }
+      h2 {
+        font-size: 22px;
+        margin: 56px 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid var(--accent-soft);
+      }
+      h3 {
+        font-size: 17px;
+        margin: 32px 0 8px;
+        color: var(--accent);
+      }
+      h4 {
+        font-size: 15px;
+        margin: 20px 0 6px;
+        color: var(--muted);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      p {
+        margin: 8px 0 14px;
+      }
+      code {
+        font-family: 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 0.88em;
+        background: var(--code-bg);
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+      pre {
+        background: #0d1117;
+        color: #e6edf3;
+        padding: 14px 18px;
+        border-radius: 8px;
+        overflow-x: auto;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      pre code {
+        background: transparent;
+        color: inherit;
+        padding: 0;
+      }
+      .lead {
+        color: var(--muted);
+        font-size: 16px;
+      }
+      .toc {
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px 22px;
+        margin: 24px 0 40px;
+      }
+      .toc ol {
+        margin: 6px 0;
+        padding-left: 22px;
+      }
+      .toc a {
+        color: var(--fg);
+        text-decoration: none;
+      }
+      .toc a:hover {
+        color: var(--accent);
+      }
+      .mermaid {
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        margin: 18px 0;
+        text-align: center;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0 22px;
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+        font-size: 14px;
+      }
+      th {
+        background: var(--accent-soft);
+        font-weight: 600;
+        font-size: 13px;
+      }
+      tr:last-child td {
+        border-bottom: none;
+      }
+      .callout {
+        background: white;
+        border-left: 4px solid var(--accent);
+        padding: 12px 16px;
+        margin: 16px 0;
+        border-radius: 4px;
+      }
+      .callout.warn {
+        background: var(--warn-bg);
+        border-color: var(--warn-fg);
+        color: var(--warn-fg);
+      }
+      .callout.good {
+        background: var(--green-bg);
+        border-color: var(--green-fg);
+        color: var(--green-fg);
+      }
+      .actor-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 14px 0 24px;
+      }
+      .actor-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: white;
+        border: 1px solid var(--border);
+        font-size: 13px;
+      }
+      .actor-chip .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .file-ref {
+        font-family: 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      header.hero {
+        padding: 18px 22px;
+        background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+        color: white;
+        border-radius: 12px;
+        margin-bottom: 12px;
+      }
+      header.hero h1 {
+        color: white;
+      }
+      header.hero .lead {
+        color: rgba(255, 255, 255, 0.85);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <h1>Fumireply 認証フロー 解説</h1>
+        <p class="lead">
+          Supabase Auth + Facebook Login for Business + connected_pages の連携を、
+          実際に呼ばれる関数 / API レベルで一覧する資料。
+        </p>
+      </header>
+
+      <div class="actor-legend">
+        <span class="actor-chip"><span class="dot" style="background: #2563eb"></span>Browser</span>
+        <span class="actor-chip"><span class="dot" style="background: #16a34a"></span>TanStack Start Server</span>
+        <span class="actor-chip"><span class="dot" style="background: #dc2626"></span>Supabase Auth</span>
+        <span class="actor-chip"><span class="dot" style="background: #0ea5e9"></span>Facebook Graph API</span>
+        <span class="actor-chip"><span class="dot" style="background: #f59e0b"></span>AWS SSM</span>
+        <span class="actor-chip"><span class="dot" style="background: #6366f1"></span>Postgres (Supabase DB)</span>
+      </div>
+
+      <nav class="toc">
+        <strong>目次</strong>
+        <ol>
+          <li><a href="#overview">全体像 — 5 アクター</a></li>
+          <li><a href="#login">Part 1. Email/Password ログイン (Supabase)</a></li>
+          <li><a href="#middleware">Part 2. 認証付きリクエスト (authMiddleware)</a></li>
+          <li><a href="#fb-exchange">Part 3. Facebook Login for Business (Step 1: トークン交換 & Page 列挙)</a></li>
+          <li><a href="#fb-connect">Part 4. Page 確定 & Webhook 購読 (Step 2)</a></li>
+          <li><a href="#storage">付録 A. データ保管場所</a></li>
+          <li><a href="#env">付録 B. 環境変数</a></li>
+          <li><a href="#reference">付録 C. 関数 / API リファレンス表</a></li>
+        </ol>
+      </nav>
+
+      <!-- ========== Overview ========== -->
+      <h2 id="overview">全体像 — 5 アクター</h2>
+      <p>このアプリの認証は <strong>2 段構え</strong>です。</p>
+      <ol>
+        <li><strong>Supabase Auth</strong> でアプリ自体のログイン (Email/Password)。Cookie ベース。</li>
+        <li>ログイン後、各テナントが <strong>Facebook Login for Business</strong> で
+          Facebook Page を 1 つ連携 (= <code>connected_pages</code> に row が入る) して初めて
+          <code>/inbox</code> 等の業務画面に到達できる。
+        </li>
+      </ol>
+
+      <div class="mermaid">
+graph LR
+  B[Browser]
+  S[Start Server<br/>app/]
+  SA[Supabase Auth]
+  FB[Facebook Graph API<br/>v19.0]
+  SSM[AWS SSM<br/>Parameter Store]
+  PG[(Postgres<br/>tenants /<br/>connected_pages)]
+
+  B -->|"loginFn / connectPageFn<br/>(POST server fn)"| S
+  S -->|signInWithPassword<br/>getUser / refreshSession| SA
+  S -->|"/oauth/access_token<br/>/me/accounts<br/>/{pageId}/subscribed_apps"| FB
+  S -->|"GetParameter<br/>(app_secret, master_key)"| SSM
+  S -->|drizzle ORM| PG
+  B -.->|"fb.login()<br/>direct popup"| FB
+
+  style B fill:#dbeafe,stroke:#2563eb
+  style S fill:#dcfce7,stroke:#16a34a
+  style SA fill:#fee2e2,stroke:#dc2626
+  style FB fill:#e0f2fe,stroke:#0ea5e9
+  style SSM fill:#fef3c7,stroke:#f59e0b
+  style PG fill:#e0e7ff,stroke:#6366f1
+      </div>
+
+      <div class="callout">
+        <strong>重要な設計判断</strong>:
+        Browser は <strong>FB の short-lived user token しか触らない</strong>。
+        Long-lived user token と Page access token は全部サーバー側でしか復号できない暗号化済みで
+        Cookie / DB に保管される。これにより JS の流出経路で page を勝手に subscribe される攻撃を遮断している。
+      </div>
+
+      <!-- ========== Part 1: Login ========== -->
+      <h2 id="login">Part 1. Email/Password ログイン (Supabase)</h2>
+
+      <h3>登場ファイル</h3>
+      <table>
+        <thead>
+          <tr><th>レイヤー</th><th>ファイル</th><th>役割</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>UI</td>
+            <td><span class="file-ref">app/src/routes/(auth)/login/index.tsx</span><br/>+ <span class="file-ref">.../-components/LoginForm.tsx</span></td>
+            <td>email/password フォーム。送信時 <code>loginFn</code> を呼ぶ</td>
+          </tr>
+          <tr>
+            <td>Server Fn</td>
+            <td><span class="file-ref">.../-lib/login.fn.ts</span></td>
+            <td>POST server function。zod で input 検証</td>
+          </tr>
+          <tr>
+            <td>Handler</td>
+            <td><span class="file-ref">.../-lib/login.server.ts</span> — <code>performLogin()</code></td>
+            <td>Supabase 呼び出し + Cookie set</td>
+          </tr>
+          <tr>
+            <td>Supabase Client</td>
+            <td><span class="file-ref">app/src/server/services/auth.ts</span></td>
+            <td><code>getSupabaseClient()</code> / <code>verifyAccessToken</code> / <code>refreshSession</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>シーケンス</h3>
+      <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as User<br/>(Browser)
+  participant L as LoginForm.tsx
+  participant SF as loginFn<br/>(server fn)
+  participant H as performLogin()<br/>login.server.ts
+  participant SA as Supabase Auth<br/>(auth.signInWithPassword)
+  participant DB as Postgres<br/>(tenants)
+
+  U->>L: email + password 入力 / Submit
+  L->>SF: loginFn({ data: { email, password } })
+  SF->>H: 入力検証後 invoke
+  H->>SA: signInWithPassword({ email, password })
+  SA-->>H: { session: { access_token, refresh_token }, user }
+  H->>H: user.app_metadata から<br/>tenant_id, role を取得
+  H->>DB: SELECT tenants WHERE id=tenant_id<br/>(status='active' 確認は middleware 側)
+  H-->>U: Set-Cookie:<br/>sb-access-token (1h)<br/>sb-refresh-token (30d)<br/>+ { ok:true }
+  L->>L: navigate('/inbox')
+      </div>
+
+      <div class="callout warn">
+        <strong>注意</strong>: Supabase の公式 SSR ヘルパー (<code>@supabase/ssr</code>)
+        は使っていない。Cookie 名 <code>sb-access-token</code> / <code>sb-refresh-token</code> は
+        <strong>このアプリ独自</strong>で、Supabase 標準の <code>sb-&lt;project&gt;-auth-token</code>
+        とは別物。クライアント側に Supabase JS を入れて <code>auth.onAuthStateChange</code>
+        を聞かせる類の使い方は出来ない構成。
+      </div>
+
+      <!-- ========== Part 2: Middleware ========== -->
+      <h2 id="middleware">Part 2. 認証付きリクエスト (authMiddleware)</h2>
+
+      <p>
+        <code>(app)</code> ルートグループ配下のあらゆる server function は
+        <span class="file-ref">app/src/server/middleware/auth-middleware.ts</span>
+        の <code>authMiddleware</code> を通る。これが session の真偽 + tenant の生存確認を行い、
+        <code>context.user</code> に <code>{ id, email, tenantId, role }</code> を載せる。
+      </p>
+
+      <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant B as Browser<br/>(any server fn call)
+  participant M as authMiddleware
+  participant SA as Supabase Auth
+  participant DB as Postgres<br/>(tenants)
+  participant H as Inner Handler<br/>(例: exchangeAndListFn)
+
+  B->>M: HTTP request<br/>Cookie: sb-access-token, sb-refresh-token
+  M->>M: getCookie('sb-access-token')
+  alt access token 無し
+    M-->>B: 302 → /login
+  end
+  M->>SA: auth.getUser(accessToken)
+  alt 有効
+    SA-->>M: user
+  else 失効
+    M->>SA: auth.refreshSession({ refresh_token })
+    SA-->>M: 新しい access_token + refresh_token + user
+    M-->>B: Set-Cookie で更新 (1h / 30d)
+  end
+  M->>M: user.app_metadata.tenant_id 抽出
+  M->>DB: SELECT tenants.status WHERE id = tenant_id
+  alt status != 'active'
+    M-->>B: 302 → /login?error=tenant_suspended
+  end
+  M->>H: next({ context: { user } })
+  H-->>B: handler の結果
+      </div>
+
+      <div class="callout">
+        <strong>テナント停止 (banned) の運用</strong>: レビュワーアカウント
+        (<code>reviewer@malbek.co.jp</code>) は平常時 Supabase 側で
+        <code>banned_until</code> 未来日に設定されている。これは <code>signInWithPassword</code>
+        段階で弾かれる。一方 <code>tenants.status='suspended'</code> は
+        この middleware が弾く層。<strong>「Supabase 個人」と「アプリのテナント」が 2 重 gate になっている</strong>。
+      </div>
+
+      <!-- ========== Part 3: FB exchange ========== -->
+      <h2 id="fb-exchange">Part 3. Facebook Login for Business — Step 1: トークン交換 & Page 列挙</h2>
+
+      <p>
+        ログイン後、テナントに connected_pages が 1 件も無いと
+        <code>/onboarding/connect-page</code> に強制リダイレクトされる
+        (<span class="file-ref">app/src/routes/(app)/route.tsx</span> の
+        <code>beforeLoad</code> + <code>checkConnectedPagesFn</code>)。
+        以下は <strong>ユーザーが「Facebook と連携」ボタンを押してから Page 一覧が画面に並ぶまで</strong>。
+      </p>
+
+      <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as User<br/>(Browser)
+  participant CB as ConnectFacebookButton.tsx
+  participant SDK as window.FB<br/>(connect.facebook.net<br/>sdk.js)
+  participant FBD as Facebook<br/>OAuth Dialog
+  participant SF as exchangeAndListFn<br/>(server fn)
+  participant SSM as AWS SSM
+  participant FB as Graph API<br/>v19.0
+  participant C as Cookie<br/>fb_connect_session
+
+  U->>CB: 「Facebook と連携」クリック
+  CB->>SDK: loadFbSdk(VITE_FB_APP_ID)<br/>→ FB.init({appId, version:'v19.0'})
+  CB->>SDK: FB.login(cb, { config_id: VITE_FB_LOGIN_CONFIG_ID,<br/>auth_type: 'reauthenticate' })
+  SDK->>FBD: popup で /v19.0/dialog/oauth
+  Note over FBD: パスワード再入力<br/>→ 同意 / Page 選択<br/>(Login for Business)
+  FBD-->>SDK: postMessage で<br/>{ status:'connected',<br/>authResponse:{ accessToken:<br/>SHORT_USER_TOKEN } }
+  SDK-->>CB: callback
+  CB->>SF: exchangeAndListFn({ shortLivedUserToken })
+  Note over SF: authMiddleware 通過済
+  SF->>SSM: GetParameter<br/>(META_APP_SECRET_SSM_KEY)
+  SSM-->>SF: app_secret (5min cache)
+  SF->>FB: GET /oauth/access_token?<br/>grant_type=fb_exchange_token&<br/>client_id&client_secret&<br/>fb_exchange_token=SHORT_TOKEN
+  FB-->>SF: { access_token: LONG_USER_TOKEN, expires_in }
+  SF->>FB: GET /me/accounts?<br/>fields=id,name,access_token
+  FB-->>SF: { data: [{ id, name, access_token }, ...] }
+  alt data.length === 0
+    SF-->>CB: { ok:false, error:'no_pages' }
+    Note over U: 「ページが見つかりません」<br/>表示
+  end
+  SF->>SF: encryptToken(LONG_USER_TOKEN, masterKey)<br/>※ getMasterKey() も SSM 経由
+  SF->>C: Set-Cookie fb_connect_session<br/>(httpOnly, maxAge=600s)
+  SF-->>CB: { ok:true, pages: [{ id, name }, ...] }
+  CB->>U: PageList で表示
+      </div>
+
+      <div class="callout warn">
+        <strong>このフェーズの典型エラー</strong>:
+        <ul>
+          <li><code>token_expired</code> (FB code 190) — short token が古い</li>
+          <li><code>permission_missing</code> (code 200) — Login config に <code>pages_show_list</code> が無い</li>
+          <li><code>no_pages</code> — <code>/me/accounts</code> が空配列。<strong>Business Portfolio 所有 Page</strong> や <strong>Task access のみの NPE Page</strong> はここに出ない</li>
+        </ul>
+      </div>
+
+      <!-- ========== Part 4: connectPage ========== -->
+      <h2 id="fb-connect">Part 4. Page 確定 & Webhook 購読 (Step 2)</h2>
+
+      <p>
+        Step 1 で受け取った Pages 一覧から 1 つを選び「連携」を押した瞬間。
+        <strong>Page access token は Cookie から取り出した long user token を使ってサーバー側で再取得する</strong>
+        (browser を信用しない設計)。
+      </p>
+
+      <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as User<br/>(Browser)
+  participant PL as PageList.tsx
+  participant SF as connectPageFn<br/>(server fn)
+  participant C as Cookie<br/>fb_connect_session
+  participant SSM as AWS SSM<br/>master_key
+  participant FB as Graph API
+  participant DB as Postgres<br/>connected_pages
+
+  U->>PL: page を選択して「連携」クリック
+  PL->>SF: connectPageFn({ pageId })
+  Note over SF: authMiddleware で context.user 取得
+  SF->>DB: SELECT connected_pages<br/>WHERE tenantId=? AND isActive=true
+  alt 既に有効な page あり
+    SF-->>PL: { ok:false, error:'already_connected' }
+  end
+  SF->>C: getCookie('fb_connect_session')
+  alt 無い (>10min 経過)
+    SF-->>PL: { ok:false, error:'token_invalid' }
+  end
+  SF->>SSM: getMasterKey()
+  SSM-->>SF: master_key (cached)
+  SF->>SF: decryptToken(blob, masterKey)<br/>→ LONG_USER_TOKEN
+  SF->>FB: GET /me/accounts<br/>(再列挙 / anti-spoof)
+  FB-->>SF: pages[]
+  SF->>SF: pages.find(p => p.id === pageId)<br/>→ pageAccessToken, pageName
+  SF->>FB: POST /{pageId}/subscribed_apps?<br/>subscribed_fields=messages,<br/>messaging_postbacks&<br/>access_token=PAGE_TOKEN
+  FB-->>SF: 200 OK
+  SF->>SF: encryptToken(pageAccessToken, masterKey)
+  SF->>DB: INSERT or UPDATE connected_pages<br/>(tenantId, pageId, pageName,<br/>pageAccessTokenEncrypted,<br/>webhookVerifyTokenSsmKey,<br/>isActive=true)
+  SF->>C: Set-Cookie fb_connect_session=''<br/>maxAge=0 (削除)
+  SF-->>PL: { ok:true, pageId, pageName }
+  PL->>U: navigate('/inbox')
+      </div>
+
+      <div class="callout good">
+        <strong>なぜ再度 <code>/me/accounts</code> を叩くのか</strong>: Step 1 のレスポンスで
+        Page 一覧を browser に返したあと、browser 側で <code>pageId</code> だけ書き換えて submit する攻撃を
+        防ぐため。<strong>サーバーは Cookie 内の long user token と Graph API の応答だけを信用する</strong>。
+      </div>
+
+      <!-- ========== Storage ========== -->
+      <h2 id="storage">付録 A. データ保管場所</h2>
+      <table>
+        <thead>
+          <tr><th>場所</th><th>名前</th><th>中身</th><th>寿命</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Cookie (httpOnly)</td>
+            <td><code>sb-access-token</code></td>
+            <td>Supabase JWT (access)</td>
+            <td>1h</td>
+          </tr>
+          <tr>
+            <td>Cookie (httpOnly)</td>
+            <td><code>sb-refresh-token</code></td>
+            <td>Supabase refresh token</td>
+            <td>30d</td>
+          </tr>
+          <tr>
+            <td>Cookie (httpOnly)</td>
+            <td><code>fb_connect_session</code></td>
+            <td>AES-256-GCM 暗号化された<br/>FB long user token (base64)</td>
+            <td>10min<br/>(Page 選択完了 or タイムアウトで消す)</td>
+          </tr>
+          <tr>
+            <td>Postgres</td>
+            <td><code>auth.users</code> (Supabase)</td>
+            <td>email, encrypted_password,<br/><code>app_metadata: { tenant_id, role }</code></td>
+            <td>永続</td>
+          </tr>
+          <tr>
+            <td>Postgres</td>
+            <td><code>public.tenants</code></td>
+            <td>id, slug, name, plan, <code>status</code></td>
+            <td>永続</td>
+          </tr>
+          <tr>
+            <td>Postgres</td>
+            <td><code>public.connected_pages</code></td>
+            <td>tenantId, pageId, pageName,<br/><code>pageAccessTokenEncrypted</code> (bytea),<br/>webhookVerifyTokenSsmKey, isActive</td>
+            <td>永続</td>
+          </tr>
+          <tr>
+            <td>AWS SSM</td>
+            <td><code>/fumireply/master-encryption-key</code></td>
+            <td>AES-256 鍵 (base64, 32B)<br/>→ <code>encryptToken</code> / <code>decryptToken</code> で使用</td>
+            <td>運用ローテ対象</td>
+          </tr>
+          <tr>
+            <td>AWS SSM</td>
+            <td><code>/fumireply/.../meta/app-secret</code></td>
+            <td>FB App Secret<br/>(<code>fb_exchange_token</code> で使用)</td>
+            <td>運用ローテ対象</td>
+          </tr>
+          <tr>
+            <td>AWS SSM</td>
+            <td><code>/fumireply/.../meta/webhook-verify-token</code></td>
+            <td>Webhook verify token<br/>(webhook Lambda が照合)</td>
+            <td>運用ローテ対象</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- ========== Env ========== -->
+      <h2 id="env">付録 B. 環境変数</h2>
+
+      <h4>サーバー側 (process.env, zod 検証)</h4>
+      <table>
+        <thead><tr><th>名前</th><th>用途</th><th>定義箇所</th></tr></thead>
+        <tbody>
+          <tr><td><code>DATABASE_URL</code></td><td>Postgres pooler 接続</td><td>env.ts</td></tr>
+          <tr><td><code>DATABASE_URL_SERVICE_ROLE</code></td><td>RLS バイパス (admin)</td><td>env.ts</td></tr>
+          <tr><td><code>SUPABASE_URL</code></td><td>Supabase project URL</td><td>env.ts</td></tr>
+          <tr><td><code>SUPABASE_PUBLISHABLE_KEY</code></td><td>SDK の anon 相当 (signInWithPassword 用)</td><td>env.ts</td></tr>
+          <tr><td><code>SUPABASE_SECRET_KEY</code></td><td>service_role (auth.admin で seed 等)</td><td>env.ts</td></tr>
+          <tr><td><code>META_APP_ID</code></td><td>FB App ID (token exchange)</td><td>env.ts</td></tr>
+          <tr><td><code>META_APP_SECRET_SSM_KEY</code></td><td>SSM 上の App Secret パス</td><td>env.ts</td></tr>
+          <tr><td><code>WEBHOOK_VERIFY_TOKEN_SSM_KEY</code></td><td>SSM 上の verify token パス</td><td>env.ts</td></tr>
+          <tr><td><code>ANTHROPIC_API_KEY_SSM_KEY</code></td><td>Claude API key SSM パス (ai-worker)</td><td>env.ts</td></tr>
+          <tr><td><code>AWS_REGION</code></td><td>SSM client region</td><td>env.ts</td></tr>
+        </tbody>
+      </table>
+
+      <h4>ブラウザ側 (Vite で bundle される)</h4>
+      <table>
+        <thead><tr><th>名前</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td><code>VITE_FB_APP_ID</code></td><td><code>FB.init({appId})</code> の値 (公開して良い)</td></tr>
+          <tr><td><code>VITE_FB_LOGIN_CONFIG_ID</code></td><td>Facebook Login for Business 構成 ID。permissions + asset type をここに固める</td></tr>
+        </tbody>
+      </table>
+
+      <!-- ========== Reference ========== -->
+      <h2 id="reference">付録 C. 関数 / API リファレンス表</h2>
+
+      <h4>Server Functions (TanStack Start)</h4>
+      <table>
+        <thead><tr><th>関数</th><th>method</th><th>middleware</th><th>役割</th></tr></thead>
+        <tbody>
+          <tr><td><code>loginFn</code><br/><span class="file-ref">(auth)/login/-lib/login.fn.ts</span></td><td>POST</td><td>—</td><td>email/password を受けて performLogin に渡す</td></tr>
+          <tr><td><code>logoutFn</code><br/><span class="file-ref">server/fns/logout.fn.ts</span></td><td>POST</td><td>—</td><td>signOut + sb-* Cookie を maxAge:0</td></tr>
+          <tr><td><code>checkConnectedPagesFn</code></td><td>GET</td><td><code>authMiddleware</code></td><td>tenant に active な connected_pages 行があるか</td></tr>
+          <tr><td><code>exchangeAndListFn</code><br/><span class="file-ref">.../onboarding/.../exchange-and-list.fn.ts</span></td><td>POST</td><td><code>authMiddleware</code></td><td>SHORT→LONG 交換、<code>/me/accounts</code>、long token を Cookie に</td></tr>
+          <tr><td><code>connectPageFn</code><br/><span class="file-ref">.../onboarding/.../connect-page.fn.ts</span></td><td>POST</td><td><code>authMiddleware</code></td><td>page 確定、Webhook subscribe、DB upsert</td></tr>
+        </tbody>
+      </table>
+
+      <h4>Supabase Auth 呼び出し (<span class="file-ref">server/services/auth.ts</span>)</h4>
+      <table>
+        <thead><tr><th>関数</th><th>Supabase API</th><th>呼び出し元</th></tr></thead>
+        <tbody>
+          <tr><td><code>signInWithPassword</code></td><td><code>POST /auth/v1/token?grant_type=password</code></td><td>performLogin</td></tr>
+          <tr><td><code>verifyAccessToken</code></td><td><code>GET /auth/v1/user</code> (Bearer)</td><td>authMiddleware</td></tr>
+          <tr><td><code>refreshSession</code></td><td><code>POST /auth/v1/token?grant_type=refresh_token</code></td><td>authMiddleware</td></tr>
+          <tr><td><code>signOut({ scope:'global' })</code></td><td><code>POST /auth/v1/logout</code></td><td>logoutFn</td></tr>
+        </tbody>
+      </table>
+
+      <h4>Facebook Graph API 呼び出し (<span class="file-ref">server/services/facebook.ts</span>)</h4>
+      <table>
+        <thead><tr><th>関数</th><th>HTTP</th><th>戻り値</th><th>主な FB エラーコード</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>exchangeUserToken</code></td>
+            <td><code>GET /v19.0/oauth/access_token?grant_type=fb_exchange_token</code></td>
+            <td>{ accessToken (long), expiresIn }</td>
+            <td>190 = token_expired / 4 = rate_limited</td>
+          </tr>
+          <tr>
+            <td><code>listPages</code></td>
+            <td><code>GET /v19.0/me/accounts?fields=id,name,access_token</code> (paginated, limit=50)</td>
+            <td>FbPage[]</td>
+            <td>200 = permission_missing / 190 / 4</td>
+          </tr>
+          <tr>
+            <td><code>subscribePageWebhook</code></td>
+            <td><code>POST /v19.0/{pageId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks</code></td>
+            <td>void</td>
+            <td>190 = token_invalid / 200 = permission_missing / 803 = webhook_url_failed</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4>Crypto / SSM (<span class="file-ref">server/services/{crypto,ssm}.ts</span>)</h4>
+      <table>
+        <thead><tr><th>関数</th><th>I/O</th><th>備考</th></tr></thead>
+        <tbody>
+          <tr><td><code>getMasterKey()</code></td><td>SSM GetParameter → Buffer(32B)</td><td>プロセス内 cache</td></tr>
+          <tr><td><code>encryptToken(plain, key)</code></td><td>string → Buffer<br/>(IV[12] ‖ tag[16] ‖ cipher[N])</td><td>AES-256-GCM</td></tr>
+          <tr><td><code>decryptToken(blob, key)</code></td><td>Buffer → string</td><td>blob 長検証付き</td></tr>
+          <tr><td><code>getSsmParameter(name, ttl=300s)</code></td><td>name → decrypted string</td><td>5min 期限の memory cache</td></tr>
+          <tr><td><code>getPageAccessTokenForTenant(tenantId)</code></td><td>tenantId → page access token (decrypted)</td><td>Send API などで使う</td></tr>
+        </tbody>
+      </table>
+
+      <h4>ブラウザ側 FB SDK (<span class="file-ref">app/src/lib/facebook-sdk.ts</span>)</h4>
+      <table>
+        <thead><tr><th>関数</th><th>役割</th></tr></thead>
+        <tbody>
+          <tr><td><code>loadFbSdk(appId)</code></td><td>connect.facebook.net/en_US/sdk.js を遅延ロード、<code>FB.init({version:'v19.0'})</code> 実行、window.FB を返す Promise</td></tr>
+          <tr><td><code>FB.login(cb, { config_id, auth_type })</code></td><td>popup で <code>dialog/oauth</code> を開く。Login for Business なら <code>config_id</code> 必須。<code>auth_type:'reauthenticate'</code> は毎回パス再入力</td></tr>
+          <tr><td><code>FB.getLoginStatus(cb)</code></td><td>現在の session 確認 (本コードでは未使用)</td></tr>
+        </tbody>
+      </table>
+
+      <h2>用語メモ</h2>
+      <ul>
+        <li><strong>short-lived user token</strong> — <code>FB.login</code> 直後に取れる ~1h 有効のユーザートークン。漏れても被害が限定的</li>
+        <li><strong>long-lived user token</strong> — <code>fb_exchange_token</code> で交換した ~60d 有効のユーザートークン。<code>/me/accounts</code> はこれを使う</li>
+        <li><strong>page access token</strong> — <code>/me/accounts</code> が返す各 Page 固有のトークン。Send API / subscribed_apps はこれを使う。基本「never expire」(Login for Business 経由なら data_access 期限あり)</li>
+        <li><strong>Login for Business (config_id)</strong> — 旧 Facebook Login の後継。permissions / asset types を App Dashboard 側の構成 ID に固定する方式</li>
+      </ul>
+    </main>
+
+    <script>
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: 'default',
+        securityLevel: 'loose',
+        sequence: {
+          actorMargin: 60,
+          boxMargin: 10,
+          messageFontSize: 13,
+          noteFontSize: 12,
+        },
+      });
+    </script>
+  </body>
+</html>

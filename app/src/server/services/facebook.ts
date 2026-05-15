@@ -112,6 +112,33 @@ export async function listPages(longUserToken: string): Promise<FbPage[]> {
   return pages
 }
 
+export async function fetchPageWithToken(
+  pageId: string,
+  longUserToken: string,
+): Promise<FbPage> {
+  const params = new URLSearchParams({
+    access_token: longUserToken,
+    fields: 'id,name,access_token',
+  })
+
+  const res = await fetchWithRetry(`${GRAPH_API_BASE}/${pageId}?${params}`)
+  const body = (await res.json()) as unknown
+
+  if (isFbError(body)) {
+    const code = (body as FbErrorResponse).error.code
+    if (code === 100) throw Object.assign(new Error('page_not_found'), { fbCode: code })
+    if (code === 190) throw Object.assign(new Error('token_expired'), { fbCode: code })
+    if (code === 200) throw Object.assign(new Error('permission_missing'), { fbCode: code })
+    if (code === 4) throw Object.assign(new Error('rate_limited'), { fbCode: code })
+    throw Object.assign(new Error('meta_unavailable'), { fbCode: code })
+  }
+
+  const data = body as { id: string; name: string; access_token?: string }
+  if (!data.access_token) throw Object.assign(new Error('permission_missing'), { fbCode: 200 })
+
+  return { id: data.id, name: data.name, pageAccessToken: data.access_token }
+}
+
 export async function subscribePageWebhook(
   pageId: string,
   pageAccessToken: string,

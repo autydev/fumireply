@@ -5,11 +5,12 @@ import { exchangeAndListFn, type ExchangeAndListResult } from '../-lib/exchange-
 
 interface Props {
   fbAppId: string
-  onPagesLoaded: (pages: Array<{ id: string; name: string }>) => void
+  fbLoginConfigId: string
+  onSessionReady: () => void
   onError: (error: string) => void
 }
 
-export function ConnectFacebookButton({ fbAppId, onPagesLoaded, onError }: Props) {
+export function ConnectFacebookButton({ fbAppId, fbLoginConfigId, onSessionReady, onError }: Props) {
   const [loading, setLoading] = useState(false)
 
   async function handleConnect() {
@@ -20,7 +21,7 @@ export function ConnectFacebookButton({ fbAppId, onPagesLoaded, onError }: Props
       const fbResponse = await new Promise<{ status: string; authResponse: { accessToken: string } | null }>(
         (resolve) => {
           fb.login((res) => resolve(res as never), {
-            scope: 'pages_show_list,pages_manage_metadata,pages_read_engagement,pages_messaging',
+            config_id: fbLoginConfigId,
             auth_type: 'reauthenticate',
           })
         },
@@ -40,7 +41,7 @@ export function ConnectFacebookButton({ fbAppId, onPagesLoaded, onError }: Props
         return
       }
 
-      onPagesLoaded(result.pages)
+      onSessionReady()
     } catch {
       onError('internal_error')
     } finally {

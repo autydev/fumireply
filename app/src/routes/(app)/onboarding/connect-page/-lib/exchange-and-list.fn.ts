@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { authMiddleware } from '~/server/middleware/auth-middleware'
 import { env } from '~/server/env'
 import { getSsmParameter } from '~/server/services/ssm'
-import { exchangeUserToken, listPages } from '~/server/services/facebook'
+import { exchangeUserToken } from '~/server/services/facebook'
 import { encryptToken, getMasterKey } from '~/server/services/crypto'
 
 const Input = z.object({
@@ -12,8 +12,8 @@ const Input = z.object({
 })
 
 export type ExchangeAndListResult =
-  | { ok: true; pages: Array<{ id: string; name: string }> }
-  | { ok: false; error: 'token_expired' | 'permission_missing' | 'no_pages' | 'rate_limited' | 'meta_unavailable' | 'internal_error'; message: string }
+  | { ok: true }
+  | { ok: false; error: 'token_expired' | 'permission_missing' | 'rate_limited' | 'meta_unavailable' | 'internal_error'; message: string }
 
 export const exchangeAndListFn = createServerFn({ method: 'POST' })
   .middleware([authMiddleware])
@@ -27,14 +27,9 @@ export const exchangeAndListFn = createServerFn({ method: 'POST' })
         appSecret,
       )
 
-      const pages = await listPages(longToken)
-
-      if (pages.length === 0) {
-        return { ok: false, error: 'no_pages', message: 'No Facebook Pages found.' }
-      }
-
       // Store the long user token server-side only — never send it to the browser.
-      // connectPageFn will read this cookie to retrieve the page access token.
+      // connectPageFn will read this cookie to fetch the page access token for
+      // the user-entered page id.
       const masterKey = await getMasterKey()
       const encryptedLongToken = encryptToken(longToken, masterKey)
       setCookie('fb_connect_session', encryptedLongToken.toString('base64'), {
@@ -43,10 +38,10 @@ export const exchangeAndListFn = createServerFn({ method: 'POST' })
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         path: '/',
-        maxAge: 600, // 10 minutes — long enough for the user to pick a page
+        maxAge: 600, // 10 minutes — long enough for the user to paste a page id
       })
 
-      return { ok: true, pages: pages.map(({ id, name }) => ({ id, name })) }
+      return { ok: true }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown'
       if (msg === 'token_expired') return { ok: false, error: 'token_expired', message: 'Token expired.' }
