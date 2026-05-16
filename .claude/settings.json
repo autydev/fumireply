@@ -38,5 +38,19 @@
       "Bash(npx vitest run)",
       "Bash(mkdir *)"
     ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/ci-check.sh\"",
+            "timeout": 300,
+            "statusMessage": "コミット前 CI チェック (typecheck + lint) 実行中..."
+          }
+        ]
+      }
+    ]
   }
 }

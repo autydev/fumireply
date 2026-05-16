@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import type { ConversationSummary } from '../-lib/list-conversations.fn'
 import { slaState, formatTime } from '../-lib/sla-helpers'
 import { Avatar } from '~/components/ui/avatar'
-import { SearchIcon, ClockIcon } from '~/components/ui/icons'
+import { SearchIcon, ClockIcon, InboxIcon } from '~/components/ui/icons'
 import { m } from '~/paraglide/messages'
 
 type FilterKey = 'all' | 'unread' | 'draft' | 'overdue'
@@ -136,20 +136,47 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
       </div>
 
       {/* Conversation list */}
-      <ul role="list" style={{ flex: 1, overflowY: 'auto', listStyle: 'none', margin: 0, padding: 0 }}>
-        {filtered.length === 0 ? (
-          <li
+      {filtered.length === 0 ? (
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+            textAlign: 'center',
+            gap: 10,
+          }}
+        >
+          <div
             style={{
-              padding: '40px 20px',
-              textAlign: 'center',
-              color: 'var(--color-ink-3)',
-              fontSize: 13,
+              width: 48,
+              height: 48,
+              borderRadius: 14,
+              background: 'var(--color-bg-sunken)',
+              border: '1px solid var(--color-line)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--color-ink-4)',
+              marginBottom: 2,
             }}
           >
-            {m.inbox_empty_state()}
-          </li>
-        ) : (
-          filtered.map((conv, i) => {
+            {conversations.length === 0 ? <InboxIcon size={22} /> : <SearchIcon size={20} />}
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-2)' }}>
+            {conversations.length === 0 ? m.inbox_list_empty_title() : m.inbox_list_filtered_empty()}
+          </span>
+          {conversations.length === 0 && (
+            <span style={{ fontSize: 12, color: 'var(--color-ink-4)', lineHeight: 1.6, maxWidth: 210 }}>
+              {m.inbox_list_empty_subtitle()}
+            </span>
+          )}
+        </div>
+      ) : (
+        <ul role="list" style={{ flex: 1, overflowY: 'auto', listStyle: 'none', margin: 0, padding: 0 }}>
+          {filtered.map((conv, i) => {
             const sla = slaState(conv)
             const isSelected = selectedId === conv.id
             const isUnread = conv.unread_count > 0
@@ -349,9 +376,9 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
               </Link>
               </li>
             )
-          })
-        )}
-      </ul>
+          })}
+        </ul>
+      )}
     </div>
   )
 }
