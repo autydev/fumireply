@@ -47,7 +47,7 @@ afterAll(() => {
   vi.unstubAllEnvs()
 })
 
-import { handleConnectPage } from '~/routes/(app)/onboarding/connect-page/-lib/connect-page.fn'
+import { handleConnectPage } from '~/routes/(app)/onboarding/connect-page/-lib/connect-page.server'
 
 // Mock tx whose select() chain resolves in handleConnectPage's call order:
 //   select #1 → reverse-guard active row

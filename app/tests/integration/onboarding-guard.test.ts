@@ -26,7 +26,7 @@ beforeAll(() => {
 afterEach(() => vi.clearAllMocks())
 afterAll(() => vi.unstubAllEnvs())
 
-import { performCheckConnectedPages } from '~/routes/(app)/onboarding/connect-page/-lib/check-connected-pages.fn'
+import { performCheckConnectedPages } from '~/routes/(app)/onboarding/connect-page/-lib/check-connected-pages.server'
 
 function buildTx(rows: Array<{ count: number | string }>) {
   const where = vi.fn().mockResolvedValue(rows)

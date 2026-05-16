@@ -43,7 +43,7 @@ afterAll(() => {
   vi.unstubAllEnvs()
 })
 
-import { handleConnectPage } from '~/routes/(app)/onboarding/connect-page/-lib/connect-page.fn'
+import { handleConnectPage } from '~/routes/(app)/onboarding/connect-page/-lib/connect-page.server'
 
 describe('connectPageFn cross-tenant safety (T039)', () => {
   it('tenant A connecting tenant B\'s pageId → 23505 → already_connected, no UPDATE on B row', async () => {

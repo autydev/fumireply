@@ -45,7 +45,7 @@ afterAll(() => {
   vi.unstubAllEnvs()
 })
 
-import { performExchangeAndList, SESSION_COOKIE } from '~/routes/(app)/onboarding/connect-page/-lib/exchange-and-list.fn'
+import { performExchangeAndList, SESSION_COOKIE } from '~/routes/(app)/onboarding/connect-page/-lib/exchange-and-list.server'
 
 describe('exchangeAndListFn integration — performExchangeAndList', () => {
   it('happy path: returns { ok: true } and sets the encrypted httpOnly session cookie (no page list)', async () => {
