@@ -155,6 +155,7 @@ module "webhook_lambda" {
 
   name_prefix               = var.name_prefix
   ssm_path_prefix           = module.secrets.ssm_path_prefix
+  master_key_ssm_arn        = module.secrets.master_key_ssm_arn
   sqs_queue_arn             = module.queue.queue_arn
   sqs_queue_url             = module.queue.queue_url
   api_gateway_id            = module.app_lambda.api_gateway_id

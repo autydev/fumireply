@@ -53,6 +53,12 @@ data "aws_iam_policy_document" "webhook_lambda_policy" {
   }
 
   statement {
+    sid       = "SSMReadMasterKey"
+    actions   = ["ssm:GetParameter"]
+    resources = [var.master_key_ssm_arn]
+  }
+
+  statement {
     sid       = "SQSSendMessage"
     actions   = ["sqs:SendMessage"]
     resources = [var.sqs_queue_arn]

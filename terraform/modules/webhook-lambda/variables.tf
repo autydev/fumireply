@@ -43,3 +43,8 @@ variable "lambda_package_s3_key" {
   description = "S3 key of the Lambda deployment package zip (built from webhook/dist/)"
   type        = string
 }
+
+variable "master_key_ssm_arn" {
+  description = "ARN of the master encryption key SSM parameter (lives outside ssm_path_prefix)"
+  type        = string
+}
