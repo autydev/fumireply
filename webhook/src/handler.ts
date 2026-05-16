@@ -41,10 +41,19 @@ async function fetchCustomerName(psid: string, pageAccessToken: string): Promise
       `${GRAPH_API_BASE}/${psid}?fields=name&access_token=${pageAccessToken}`,
       { signal: AbortSignal.timeout(5000) },
     )
-    if (!res.ok) return null
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => null)
+      console.error('fetch_customer_name_api_error', { psid, status: res.status, body: errBody })
+      return null
+    }
     const data = (await res.json()) as { name?: string }
-    return typeof data.name === 'string' ? data.name : null
-  } catch {
+    if (typeof data.name !== 'string') {
+      console.warn('fetch_customer_name_no_name_field', { psid, data })
+      return null
+    }
+    return data.name
+  } catch (err) {
+    console.error('fetch_customer_name_network_error', { psid, err })
     return null
   }
 }
