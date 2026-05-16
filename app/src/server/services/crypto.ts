@@ -2,9 +2,8 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { db } from '../db/client'
 import { connectedPages } from '../db/schema'
 import { getSsmParameter } from './ssm'
+import { env } from '../env'
 import { eq } from 'drizzle-orm'
-
-const MASTER_KEY_SSM_PATH = '/fumireply/master-encryption-key'
 const IV_LENGTH = 12
 const AUTH_TAG_LENGTH = 16
 const MASTER_KEY_LENGTH = 32
@@ -24,7 +23,7 @@ function decodeMasterKey(encoded: string): Buffer {
 
 export async function getMasterKey(): Promise<Buffer> {
   if (masterKeyCache) return masterKeyCache
-  const encoded = await getSsmParameter(MASTER_KEY_SSM_PATH)
+  const encoded = await getSsmParameter(env.MASTER_KEY_SSM_PATH)
   const masterKey = decodeMasterKey(encoded)
   masterKeyCache = masterKey
   return masterKey

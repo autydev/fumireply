@@ -11,6 +11,7 @@ const envSchema = z.object({
   WEBHOOK_VERIFY_TOKEN_SSM_KEY: z.string().min(1),
   ANTHROPIC_API_KEY_SSM_KEY: z.string().min(1),
   AWS_REGION: z.string().min(1),
+  MASTER_KEY_SSM_PATH: z.string().min(1).default('/fumireply/master-encryption-key'),
 })
 
 export type Env = z.infer<typeof envSchema>

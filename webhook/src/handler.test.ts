@@ -215,7 +215,7 @@ describe('POST /api/webhook — signature verification', () => {
 describe('POST /api/webhook — text message', () => {
   it('returns 200, calls withTenant, enqueues SQS for new text message', async () => {
     mockSsm.mockResolvedValue(APP_SECRET)
-    mockDbAdminWhere.mockResolvedValue([{ tenantId: TENANT_ID, id: PAGE_UUID }])
+    mockDbAdminWhere.mockResolvedValue([{ tenantId: TENANT_ID, id: PAGE_UUID, pageAccessTokenEncrypted: Buffer.alloc(44) }])
     mockWithTenant.mockResolvedValue(NEW_MSG_UUID)
     sqsMock.on(SendMessageCommand).resolves({ MessageId: 'sqs-msg-id' })
 
@@ -231,7 +231,7 @@ describe('POST /api/webhook — text message', () => {
 
   it('does not enqueue SQS for duplicate mid (withTenant returns null)', async () => {
     mockSsm.mockResolvedValue(APP_SECRET)
-    mockDbAdminWhere.mockResolvedValue([{ tenantId: TENANT_ID, id: PAGE_UUID }])
+    mockDbAdminWhere.mockResolvedValue([{ tenantId: TENANT_ID, id: PAGE_UUID, pageAccessTokenEncrypted: Buffer.alloc(44) }])
     mockWithTenant.mockResolvedValue(null)
     sqsMock.on(SendMessageCommand).resolves({})
 
@@ -245,7 +245,7 @@ describe('POST /api/webhook — text message', () => {
 describe('POST /api/webhook — sticker message', () => {
   it('does not enqueue SQS for sticker', async () => {
     mockSsm.mockResolvedValue(APP_SECRET)
-    mockDbAdminWhere.mockResolvedValue([{ tenantId: TENANT_ID, id: PAGE_UUID }])
+    mockDbAdminWhere.mockResolvedValue([{ tenantId: TENANT_ID, id: PAGE_UUID, pageAccessTokenEncrypted: Buffer.alloc(44) }])
     mockWithTenant.mockResolvedValue(null)
     sqsMock.on(SendMessageCommand).resolves({})
 
@@ -273,7 +273,7 @@ describe('POST /api/webhook — unknown page', () => {
 describe('POST /api/webhook — SQS enqueue failure', () => {
   it('returns 200 even when SQS enqueue throws', async () => {
     mockSsm.mockResolvedValue(APP_SECRET)
-    mockDbAdminWhere.mockResolvedValue([{ tenantId: TENANT_ID, id: PAGE_UUID }])
+    mockDbAdminWhere.mockResolvedValue([{ tenantId: TENANT_ID, id: PAGE_UUID, pageAccessTokenEncrypted: Buffer.alloc(44) }])
     mockWithTenant.mockResolvedValue(NEW_MSG_UUID)
     sqsMock.on(SendMessageCommand).rejects(new Error('SQS unavailable'))
 

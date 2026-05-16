@@ -5,6 +5,10 @@ vi.mock('./ssm', () => ({
   getSsmParameter: vi.fn(),
 }))
 
+vi.mock('../env', () => ({
+  env: { MASTER_KEY_SSM_PATH: '/fumireply/master-encryption-key' },
+}))
+
 vi.mock('../db/client', () => ({
   db: {
     select: vi.fn().mockReturnThis(),

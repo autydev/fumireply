@@ -1,4 +1,5 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda'
+import { createDecipheriv } from 'node:crypto'
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs'
 import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -10,6 +11,43 @@ import { env } from './env'
 import { verifySignature } from './signature'
 
 const sqsClient = new SQSClient({ region: env.AWS_REGION })
+
+const GRAPH_API_BASE = 'https://graph.facebook.com/v19.0'
+const IV_LENGTH = 12
+const AUTH_TAG_LENGTH = 16
+
+let masterKeyCache: Buffer | null = null
+
+async function getMasterKey(): Promise<Buffer> {
+  if (masterKeyCache) return masterKeyCache
+  const encoded = await getSsmParameter(env.MASTER_KEY_SSM_PATH)
+  const key = Buffer.from(encoded.trim(), 'base64')
+  masterKeyCache = key
+  return key
+}
+
+function decryptToken(blob: Buffer, masterKey: Buffer): string {
+  const iv = blob.subarray(0, IV_LENGTH)
+  const authTag = blob.subarray(IV_LENGTH, IV_LENGTH + AUTH_TAG_LENGTH)
+  const ciphertext = blob.subarray(IV_LENGTH + AUTH_TAG_LENGTH)
+  const decipher = createDecipheriv('aes-256-gcm', masterKey, iv)
+  decipher.setAuthTag(authTag)
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8')
+}
+
+async function fetchCustomerName(psid: string, pageAccessToken: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `${GRAPH_API_BASE}/${psid}?fields=name&access_token=${pageAccessToken}`,
+      { signal: AbortSignal.timeout(5000) },
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as { name?: string }
+    return typeof data.name === 'string' ? data.name : null
+  } catch {
+    return null
+  }
+}
 
 const attachmentSchema = z.object({
   type: z.string(),
@@ -65,6 +103,7 @@ async function processMessagingEvent(
   event: MessagingEvent,
   tenantId: string,
   pageUuid: string,
+  pageAccessTokenEncrypted: Buffer,
 ): Promise<string | null> {
   const msg = event.message
   if (!msg) return null
@@ -85,7 +124,10 @@ async function processMessagingEvent(
   const psid = event.sender.id
   const { messageType, body } = determineMessageType(msg)
 
-  return withTenant(tenantId, async (tx) => {
+  let convId: string | null = null
+  let needsNameFetch = false
+
+  const newMessageId = await withTenant(tenantId, async (tx) => {
     const [conv] = await tx
       .insert(conversations)
       .values({
@@ -97,9 +139,12 @@ async function processMessagingEvent(
         target: [conversations.pageId, conversations.customerPsid],
         set: { customerPsid: sql`excluded.customer_psid` },
       })
-      .returning({ id: conversations.id })
+      .returning({ id: conversations.id, customerName: conversations.customerName })
 
     if (!conv) throw new Error('Failed to upsert conversation')
+
+    convId = conv.id
+    needsNameFetch = !conv.customerName
 
     const inserted = await tx
       .insert(messages)
@@ -137,6 +182,28 @@ async function processMessagingEvent(
 
     return draftInserted[0] ? newMsg.id : null
   })
+
+  // Fetch and store the sender's name only for new conversations (customerName is null).
+  // Done outside the transaction to avoid holding a DB connection during the API call.
+  if (needsNameFetch && convId) {
+    try {
+      const masterKey = await getMasterKey()
+      const pageAccessToken = decryptToken(pageAccessTokenEncrypted, masterKey)
+      const name = await fetchCustomerName(psid, pageAccessToken)
+      if (name) {
+        await withTenant(tenantId, async (tx) => {
+          await tx
+            .update(conversations)
+            .set({ customerName: name })
+            .where(eq(conversations.id, convId!))
+        })
+      }
+    } catch (err) {
+      console.error('fetch_customer_name_failed', { psid, err })
+    }
+  }
+
+  return newMessageId
 }
 
 async function handleGet(
@@ -192,7 +259,11 @@ async function handlePost(
 
     const dbAdmin = await getDbAdmin()
     const rows = await dbAdmin
-      .select({ tenantId: connectedPages.tenantId, id: connectedPages.id })
+      .select({
+        tenantId: connectedPages.tenantId,
+        id: connectedPages.id,
+        pageAccessTokenEncrypted: connectedPages.pageAccessTokenEncrypted,
+      })
       .from(connectedPages)
       .where(and(eq(connectedPages.pageId, pageId), eq(connectedPages.isActive, true)))
 
@@ -203,7 +274,7 @@ async function handlePost(
     }
 
     for (const msgEvent of entry.messaging) {
-      const newMessageId = await processMessagingEvent(msgEvent, page.tenantId, page.id)
+      const newMessageId = await processMessagingEvent(msgEvent, page.tenantId, page.id, page.pageAccessTokenEncrypted)
 
       if (newMessageId) {
         try {
