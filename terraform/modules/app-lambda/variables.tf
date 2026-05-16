@@ -83,3 +83,13 @@ variable "anthropic_api_key_ssm_key" {
   description = "SSM parameter key path that stores the Anthropic API key"
   type        = string
 }
+
+variable "deletion_log_hash_salt_ssm_key" {
+  description = "SSM parameter key path that stores the deletion-log hash salt (consumed at runtime by /api/data-deletion)"
+  type        = string
+}
+
+variable "public_app_origin" {
+  description = "Public HTTPS origin of the app, used to build the data-deletion status URL returned to Meta"
+  type        = string
+}

@@ -119,6 +119,10 @@ resource "aws_lambda_function" "app" {
       META_APP_SECRET_SSM_KEY      = var.meta_app_secret_ssm_key
       WEBHOOK_VERIFY_TOKEN_SSM_KEY = var.webhook_verify_token_ssm_key
       ANTHROPIC_API_KEY_SSM_KEY    = var.anthropic_api_key_ssm_key
+
+      # /api/data-deletion (Meta data deletion callback) が runtime に読む
+      DELETION_LOG_HASH_SALT_SSM_KEY = var.deletion_log_hash_salt_ssm_key
+      PUBLIC_APP_ORIGIN              = var.public_app_origin
     }
   }
 

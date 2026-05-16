@@ -144,6 +144,10 @@ module "app_lambda" {
   meta_app_secret_ssm_key      = "/fumireply/review/meta/app-secret"
   webhook_verify_token_ssm_key = "/fumireply/review/meta/webhook-verify-token"
   anthropic_api_key_ssm_key    = "/fumireply/review/anthropic/api-key"
+
+  # /api/data-deletion (Meta data deletion callback) 用
+  deletion_log_hash_salt_ssm_key = "/fumireply/review/deletion-log/hash-salt"
+  public_app_origin              = "https://review.fumireply.ecsuite.work"
 }
 
 ###############################################################################
