@@ -175,6 +175,42 @@ resource "aws_cloudfront_origin_request_policy" "dynamic" {
 }
 
 ###############################################################################
+# CloudFront Function: directory-index rewrite for S3-origin SSG pages
+#
+# The S3 REST origin (OAC) does not resolve directory indexes. Prerendered
+# routes are stored as `<route>/index.html`, but a request for `/privacy`
+# asks S3 for the key `privacy`, which does not exist; with ListBucket
+# denied, S3 returns 403 AccessDenied. This viewer-request function rewrites
+# the origin URI so the address bar stays clean (`/privacy`) while S3 is
+# asked for `/privacy/index.html`. Paths with a file extension (assets,
+# build chunks) are left untouched.
+###############################################################################
+
+resource "aws_cloudfront_function" "spa_index_rewrite" {
+  name    = "${var.name_prefix}-index-rewrite"
+  runtime = "cloudfront-js-2.0"
+  comment = "Append index.html to extensionless / trailing-slash URIs (S3 SSG pages)"
+  publish = true
+  code    = <<-EOT
+    function handler(event) {
+      var request = event.request;
+      var uri = request.uri;
+
+      if (uri.charAt(uri.length - 1) === '/') {
+        request.uri = uri + 'index.html';
+      } else {
+        var lastSegment = uri.substring(uri.lastIndexOf('/') + 1);
+        if (lastSegment.indexOf('.') === -1) {
+          request.uri = uri + '/index.html';
+        }
+      }
+
+      return request;
+    }
+  EOT
+}
+
+###############################################################################
 # CloudFront Distribution
 ###############################################################################
 
@@ -211,6 +247,11 @@ resource "aws_cloudfront_distribution" "app" {
     target_origin_id       = "S3-${var.name_prefix}"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.spa_index_rewrite.arn
+    }
 
     forwarded_values {
       query_string = false
