@@ -86,34 +86,68 @@ function makeApiError(status: number, message = 'API error'): Error & { status: 
   return err
 }
 
-// Build read transaction mock (first withTenant call: get message + history)
+// Build read transaction mock (first withTenant call: get message + settings + history)
 function buildReadTx({
   messageResult = [
     { body: 'Do you have Charizard?', messageType: 'text', conversationId: CONVERSATION_ID },
   ],
+  settingsResult = [
+    {
+      summary: null,
+      lastSummarizedAt: null,
+      tonePreset: null,
+      customPrompt: null,
+      pageCustomPrompt: null,
+    },
+  ],
   historyResult = [{ direction: 'inbound', body: 'Do you have Charizard?', messageType: 'text' }],
 }: {
   messageResult?: Array<{ body: string; messageType: string; conversationId: string }>
+  settingsResult?: Array<{
+    summary: string | null
+    lastSummarizedAt: Date | null
+    tonePreset: string | null
+    customPrompt: string | null
+    pageCustomPrompt: string | null
+  }>
   historyResult?: Array<{ direction: string; body: string; messageType: string }>
 } = {}) {
   let selectCallCount = 0
 
   return {
-    select: vi.fn(() => ({
-      from: vi.fn(() => ({
-        where: vi.fn(() => {
-          selectCallCount++
-          if (selectCallCount === 1) {
-            return Promise.resolve(messageResult)
-          }
-          return {
-            orderBy: vi.fn(() => ({
-              limit: vi.fn(() => Promise.resolve(historyResult)),
+    select: vi.fn(() => {
+      selectCallCount++
+      const currentCount = selectCallCount
+
+      if (currentCount === 1) {
+        // SELECT message
+        return {
+          from: vi.fn(() => ({
+            where: vi.fn(() => Promise.resolve(messageResult)),
+          })),
+        }
+      } else if (currentCount === 2) {
+        // SELECT conversation settings (with leftJoin)
+        return {
+          from: vi.fn(() => ({
+            leftJoin: vi.fn(() => ({
+              where: vi.fn(() => Promise.resolve(settingsResult)),
             })),
-          }
-        }),
-      })),
-    })),
+          })),
+        }
+      } else {
+        // SELECT history (cursor-aware, up to 50)
+        return {
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              orderBy: vi.fn(() => ({
+                limit: vi.fn(() => Promise.resolve(historyResult)),
+              })),
+            })),
+          })),
+        }
+      }
+    }),
   }
 }
 
@@ -322,7 +356,7 @@ describe('handler — Anthropic API errors', () => {
 })
 
 describe('handler — prompt building', () => {
-  it('builds prompt with conversation history (last 5, chronological)', async () => {
+  it('builds prompt with conversation history (up to 50, chronological)', async () => {
     const history = [
       { direction: 'inbound', body: 'Hi', messageType: 'text' },
       { direction: 'outbound', body: 'Hello!', messageType: 'text' },
@@ -343,5 +377,51 @@ describe('handler — prompt building', () => {
     expect(userContent).toContain('[operator]: Hello!')
     expect(userContent).toContain('[customer]: Do you have Charizard?')
     expect(userContent).toContain('Generate a reply to the latest customer message.')
+  })
+})
+
+describe('handler — SC-007 backward compat (all new columns NULL)', () => {
+  it('calls Anthropic with only BASE_SYSTEM_PROMPT when all new columns are NULL', async () => {
+    const readTx = buildReadTx({
+      settingsResult: [
+        {
+          summary: null,
+          lastSummarizedAt: null,
+          tonePreset: null,
+          customPrompt: null,
+          pageCustomPrompt: null,
+        },
+      ],
+    })
+    const { mockTx: writeTx } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
+    mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
+
+    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
+
+    expect(mockAnthropicCreate).toHaveBeenCalledOnce()
+    const createCall = mockAnthropicCreate.mock.calls[0][0]
+    // Only one system block (base prompt) when all settings are null
+    expect(createCall.system).toHaveLength(1)
+    expect(createCall.system[0].cache_control).toEqual({ type: 'ephemeral' })
+  })
+})
+
+describe('handler — summary jobType (stub)', () => {
+  it('handles jobType summary without throwing or calling Anthropic', async () => {
+    await handler(
+      makeSqsEvent({
+        jobType: 'summary',
+        conversationId: CONVERSATION_ID,
+        enqueuedAt: new Date().toISOString(),
+      }),
+      {} as never,
+      () => {},
+    )
+
+    expect(mockAnthropicCreate).not.toHaveBeenCalled()
+    expect(mockDbAdminWhere).not.toHaveBeenCalled()
   })
 })

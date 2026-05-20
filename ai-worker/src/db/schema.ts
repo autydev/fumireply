@@ -1,5 +1,7 @@
+import { sql } from 'drizzle-orm'
 import {
   boolean,
+  check,
   customType,
   index,
   integer,
@@ -44,8 +46,15 @@ export const connectedPages = pgTable(
     webhookVerifyTokenSsmKey: varchar('webhook_verify_token_ssm_key', { length: 255 }).notNull(),
     connectedAt: timestamp('connected_at', { withTimezone: true }).notNull().defaultNow(),
     isActive: boolean('is_active').notNull().default(true),
+    customPrompt: text('custom_prompt'),
   },
-  (t) => [index('connected_pages_tenant_id_idx').on(t.tenantId)],
+  (t) => [
+    index('connected_pages_tenant_id_idx').on(t.tenantId),
+    check(
+      'connected_pages_custom_prompt_length',
+      sql`${t.customPrompt} IS NULL OR char_length(${t.customPrompt}) <= 2000`,
+    ),
+  ],
 )
 
 export const conversations = pgTable(
@@ -64,11 +73,28 @@ export const conversations = pgTable(
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
     unreadCount: integer('unread_count').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    summary: text('summary'),
+    lastSummarizedAt: timestamp('last_summarized_at', { withTimezone: true }),
+    tonePreset: varchar('tone_preset', { length: 20 }),
+    customPrompt: text('custom_prompt'),
+    note: text('note'),
   },
   (t) => [
     unique('conversations_page_id_customer_psid_key').on(t.pageId, t.customerPsid),
     index('conversations_tenant_id_last_message_at_idx').on(t.tenantId, t.lastMessageAt),
     index('conversations_tenant_id_idx').on(t.tenantId),
+    check(
+      'conversations_tone_preset_values',
+      sql`${t.tonePreset} IS NULL OR ${t.tonePreset} IN ('friendly', 'professional', 'concise')`,
+    ),
+    check(
+      'conversations_custom_prompt_length',
+      sql`${t.customPrompt} IS NULL OR char_length(${t.customPrompt}) <= 1000`,
+    ),
+    check(
+      'conversations_note_length',
+      sql`${t.note} IS NULL OR char_length(${t.note}) <= 1000`,
+    ),
   ],
 )
 
