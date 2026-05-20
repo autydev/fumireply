@@ -40,3 +40,27 @@ variable "database_url_service_role" {
   type        = string
   sensitive   = true
 }
+
+variable "summary_queue_arn" {
+  description = "ARN of the ai-summary SQS queue (second event source mapping). Leave empty to disable."
+  type        = string
+  default     = ""
+}
+
+variable "summary_queue_url" {
+  description = "URL of the ai-summary SQS queue (injected as AI_SUMMARY_QUEUE_URL env var)."
+  type        = string
+  default     = ""
+}
+
+variable "summary_trigger_threshold_chars" {
+  description = "Character threshold to trigger summary job (default 2000)."
+  type        = string
+  default     = "2000"
+}
+
+variable "summary_pipeline_enabled" {
+  description = "Set to 'false' to disable the summary pipeline circuit-breaker."
+  type        = string
+  default     = "true"
+}

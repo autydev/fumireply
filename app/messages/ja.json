@@ -101,5 +101,6 @@
   "cp_toggle_hide": "顧客パネルを隠す",
   "autosave_editing": "編集中…",
   "autosave_saving": "保存中…",
-  "autosave_saved": "保存済み"
+  "autosave_saved": "保存済み",
+  "cp_persona_updated_at": "最終更新: {at}"
 }

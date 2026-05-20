@@ -409,8 +409,9 @@ describe('handler — SC-007 backward compat (all new columns NULL)', () => {
   })
 })
 
-describe('handler — summary jobType (stub)', () => {
-  it('handles jobType summary without throwing or calling Anthropic', async () => {
+describe('handler — summary jobType', () => {
+  it('handles summary job: resolves tenant and returns early below threshold', async () => {
+    // withTenant returns undefined (no mock impl) → threshold loop never runs → no Anthropic call
     await handler(
       makeSqsEvent({
         jobType: 'summary',
@@ -422,6 +423,26 @@ describe('handler — summary jobType (stub)', () => {
     )
 
     expect(mockAnthropicCreate).not.toHaveBeenCalled()
-    expect(mockDbAdminWhere).not.toHaveBeenCalled()
+    // dbAdmin IS called to resolve tenantId
+    expect(mockDbAdminWhere).toHaveBeenCalledOnce()
+  })
+
+  it('handles summary job when SUMMARY_PIPELINE_ENABLED=false without calling dbAdmin', async () => {
+    process.env.SUMMARY_PIPELINE_ENABLED = 'false'
+    try {
+      await handler(
+        makeSqsEvent({
+          jobType: 'summary',
+          conversationId: CONVERSATION_ID,
+        }),
+        {} as never,
+        () => {},
+      )
+
+      expect(mockAnthropicCreate).not.toHaveBeenCalled()
+      expect(mockDbAdminWhere).not.toHaveBeenCalled()
+    } finally {
+      delete process.env.SUMMARY_PIPELINE_ENABLED
+    }
   })
 })

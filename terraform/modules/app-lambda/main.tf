@@ -67,6 +67,15 @@ data "aws_iam_policy_document" "app_lambda_policy" {
       "${aws_cloudwatch_log_group.app_lambda.arn}:*",
     ]
   }
+
+  dynamic "statement" {
+    for_each = var.summary_queue_arn != "" ? [1] : []
+    content {
+      sid       = "SQSSendSummary"
+      actions   = ["sqs:SendMessage"]
+      resources = [var.summary_queue_arn]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "app_lambda" {
@@ -123,6 +132,11 @@ resource "aws_lambda_function" "app" {
       # /api/data-deletion (Meta data deletion callback) が runtime に読む
       DELETION_LOG_HASH_SALT_SSM_KEY = var.deletion_log_hash_salt_ssm_key
       PUBLIC_APP_ORIGIN              = var.public_app_origin
+
+      # Summary pipeline (003-customer-context-and-settings)
+      AI_SUMMARY_QUEUE_URL            = var.summary_queue_url
+      SUMMARY_TRIGGER_THRESHOLD_CHARS = var.summary_trigger_threshold_chars
+      SUMMARY_PIPELINE_ENABLED        = var.summary_pipeline_enabled
     }
   }
 

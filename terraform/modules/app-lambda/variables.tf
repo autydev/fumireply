@@ -93,3 +93,27 @@ variable "public_app_origin" {
   description = "Public HTTPS origin of the app, used to build the data-deletion status URL returned to Meta"
   type        = string
 }
+
+variable "summary_queue_url" {
+  description = "URL of the ai-summary SQS queue (injected as AI_SUMMARY_QUEUE_URL). Leave empty to disable."
+  type        = string
+  default     = ""
+}
+
+variable "summary_queue_arn" {
+  description = "ARN of the ai-summary SQS queue (for IAM SendMessage grant). Leave empty to skip."
+  type        = string
+  default     = ""
+}
+
+variable "summary_trigger_threshold_chars" {
+  description = "Character threshold to trigger summary job (default 2000)."
+  type        = string
+  default     = "2000"
+}
+
+variable "summary_pipeline_enabled" {
+  description = "Set to 'false' to disable the summary pipeline circuit-breaker."
+  type        = string
+  default     = "true"
+}

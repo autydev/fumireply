@@ -6,6 +6,7 @@ import { connectedPages, conversations, messages } from '~/server/db/schema'
 import { withTenant } from '~/server/db/with-tenant'
 import { decryptToken, getMasterKey } from '~/server/services/crypto'
 import { sendMessengerReply } from '~/server/services/messenger'
+import { maybeEnqueueSummaryJob } from '~/server/services/summary-trigger'
 import { TWENTY_FOUR_HOURS_MS, type SendReplyResult } from './send-reply.server'
 
 export type { SendReplyResult } from './send-reply.server'
@@ -84,7 +85,7 @@ export const sendReplyFn = createServerFn({ method: 'POST' })
     }
 
     // TX2 (short): UPDATE message to sent/failed → commit
-    return withTenant(tenantId, async (tx) => {
+    const result = await withTenant(tenantId, async (tx) => {
       if (sendResult.ok) {
         await tx.update(messages).set({ sendStatus: 'sent', metaMessageId: sendResult.messageId }).where(eq(messages.id, prep.insertedId))
         await tx.update(conversations).set({ lastMessageAt: new Date() }).where(eq(conversations.id, data.conversationId))
@@ -102,4 +103,10 @@ export const sendReplyFn = createServerFn({ method: 'POST' })
       await tx.update(messages).set({ sendStatus: 'failed', sendError }).where(eq(messages.id, prep.insertedId))
       return { ok: false as const, error: sendError }
     })
+
+    if (result.ok) {
+      await maybeEnqueueSummaryJob(data.conversationId, tenantId)
+    }
+
+    return result
   })

@@ -58,7 +58,7 @@ data "aws_iam_policy_document" "ai_worker_lambda_policy" {
       "sqs:DeleteMessage",
       "sqs:GetQueueAttributes",
     ]
-    resources = [var.sqs_queue_arn]
+    resources = compact([var.sqs_queue_arn, var.summary_queue_arn])
   }
 
   statement {
@@ -106,10 +106,13 @@ resource "aws_lambda_function" "ai_worker" {
 
   environment {
     variables = {
-      SSM_PATH_PREFIX           = var.ssm_path_prefix
-      ANTHROPIC_MODEL           = "claude-haiku-4-5-20251001"
-      DATABASE_URL              = var.database_url
-      DATABASE_URL_SERVICE_ROLE = var.database_url_service_role
+      SSM_PATH_PREFIX                 = var.ssm_path_prefix
+      ANTHROPIC_MODEL                 = "claude-haiku-4-5-20251001"
+      DATABASE_URL                    = var.database_url
+      DATABASE_URL_SERVICE_ROLE       = var.database_url_service_role
+      AI_SUMMARY_QUEUE_URL            = var.summary_queue_url
+      SUMMARY_TRIGGER_THRESHOLD_CHARS = var.summary_trigger_threshold_chars
+      SUMMARY_PIPELINE_ENABLED        = var.summary_pipeline_enabled
     }
   }
 
@@ -119,11 +122,18 @@ resource "aws_lambda_function" "ai_worker" {
 }
 
 ###############################################################################
-# SQS Event Source Mapping
+# SQS Event Source Mappings
 ###############################################################################
 
 resource "aws_lambda_event_source_mapping" "sqs" {
   event_source_arn = var.sqs_queue_arn
+  function_name    = aws_lambda_function.ai_worker.arn
+  batch_size       = 1
+}
+
+resource "aws_lambda_event_source_mapping" "summary_sqs" {
+  count            = var.summary_queue_arn != "" ? 1 : 0
+  event_source_arn = var.summary_queue_arn
   function_name    = aws_lambda_function.ai_worker.arn
   batch_size       = 1
 }

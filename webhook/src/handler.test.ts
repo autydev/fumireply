@@ -12,12 +12,14 @@ const PAGE_ID = '111222333'
 const CUSTOMER_PSID = '999888777'
 const MESSAGE_MID = 'm_abc123xyz'
 const NEW_MSG_UUID = 'msg-uuid-cccc'
+const CONV_UUID = 'conv-uuid-dddd'
 
 // hoisted mocks
-const { mockSsm, mockWithTenant, mockDbAdminWhere } = vi.hoisted(() => ({
+const { mockSsm, mockWithTenant, mockDbAdminWhere, mockMaybeEnqueueSummaryJob } = vi.hoisted(() => ({
   mockSsm: vi.fn(),
   mockWithTenant: vi.fn(),
   mockDbAdminWhere: vi.fn(),
+  mockMaybeEnqueueSummaryJob: vi.fn(),
 }))
 
 vi.mock('./env', () => ({
@@ -30,6 +32,10 @@ vi.mock('./env', () => ({
 
 vi.mock('./services/ssm', () => ({
   getSsmParameter: mockSsm,
+}))
+
+vi.mock('./services/summary-trigger', () => ({
+  maybeEnqueueSummaryJob: mockMaybeEnqueueSummaryJob,
 }))
 
 vi.mock('./db/client', () => ({
@@ -159,6 +165,8 @@ beforeEach(() => {
   mockSsm.mockReset()
   mockWithTenant.mockReset()
   mockDbAdminWhere.mockReset()
+  mockMaybeEnqueueSummaryJob.mockReset()
+  mockMaybeEnqueueSummaryJob.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -216,7 +224,7 @@ describe('POST /api/webhook — text message', () => {
   it('returns 200, calls withTenant, enqueues SQS for new text message', async () => {
     mockSsm.mockResolvedValue(APP_SECRET)
     mockDbAdminWhere.mockResolvedValue([{ tenantId: TENANT_ID, id: PAGE_UUID, pageAccessTokenEncrypted: Buffer.alloc(44) }])
-    mockWithTenant.mockResolvedValue(NEW_MSG_UUID)
+    mockWithTenant.mockResolvedValue({ conversationId: CONV_UUID, newMessageId: NEW_MSG_UUID, needsNameFetch: false })
     sqsMock.on(SendMessageCommand).resolves({ MessageId: 'sqs-msg-id' })
 
     const res = await handler(makePostEvent(textPayload))
@@ -227,6 +235,7 @@ describe('POST /api/webhook — text message', () => {
     expect(sqsMock.calls()).toHaveLength(1)
     const sqsInput = sqsMock.calls()[0].args[0].input as { MessageBody: string }
     expect(JSON.parse(sqsInput.MessageBody)).toEqual({ messageId: NEW_MSG_UUID })
+    expect(mockMaybeEnqueueSummaryJob).toHaveBeenCalledWith(CONV_UUID, TENANT_ID)
   })
 
   it('does not enqueue SQS for duplicate mid (withTenant returns null)', async () => {
@@ -274,7 +283,7 @@ describe('POST /api/webhook — SQS enqueue failure', () => {
   it('returns 200 even when SQS enqueue throws', async () => {
     mockSsm.mockResolvedValue(APP_SECRET)
     mockDbAdminWhere.mockResolvedValue([{ tenantId: TENANT_ID, id: PAGE_UUID, pageAccessTokenEncrypted: Buffer.alloc(44) }])
-    mockWithTenant.mockResolvedValue(NEW_MSG_UUID)
+    mockWithTenant.mockResolvedValue({ conversationId: CONV_UUID, newMessageId: NEW_MSG_UUID, needsNameFetch: false })
     sqsMock.on(SendMessageCommand).rejects(new Error('SQS unavailable'))
 
     const res = await handler(makePostEvent(textPayload))
