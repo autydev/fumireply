@@ -33,6 +33,11 @@ export type ConversationDetail = {
     last_inbound_at: string | null
     within_24h_window: boolean
     hours_remaining_in_window: number | null
+    summary: string | null
+    last_summarized_at: string | null
+    tone_preset: 'friendly' | 'professional' | 'concise' | null
+    custom_prompt: string | null
+    note: string | null
   }
   messages: MessageWithDraft[]
   latest_draft: {
@@ -154,6 +159,11 @@ export const getConversationFn = createServerFn({ method: 'POST' })
           last_inbound_at: lastInboundAt?.toISOString() ?? null,
           within_24h_window: within24h,
           hours_remaining_in_window: hoursRemaining,
+          summary: conv.summary ?? null,
+          last_summarized_at: conv.lastSummarizedAt?.toISOString() ?? null,
+          tone_preset: (conv.tonePreset as 'friendly' | 'professional' | 'concise' | null) ?? null,
+          custom_prompt: conv.customPrompt ?? null,
+          note: conv.note ?? null,
         },
         messages: mappedMessages,
         latest_draft: latestDraft,

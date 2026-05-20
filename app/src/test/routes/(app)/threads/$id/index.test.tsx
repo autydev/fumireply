@@ -30,6 +30,11 @@ function makeDetail(overrides: Partial<ConversationDetail> = {}): ConversationDe
       last_inbound_at: '2026-04-30T23:00:00.000Z',
       within_24h_window: true,
       hours_remaining_in_window: 23,
+      summary: null,
+      last_summarized_at: null,
+      tone_preset: null,
+      custom_prompt: null,
+      note: null,
     },
     messages: [],
     latest_draft: null,
@@ -282,6 +287,11 @@ describe('Thread page', () => {
         last_inbound_at: '2026-04-29T00:00:00.000Z',
         within_24h_window: false,
         hours_remaining_in_window: null,
+        summary: null,
+        last_summarized_at: null,
+        tone_preset: null,
+        custom_prompt: null,
+        note: null,
       },
     })
 
