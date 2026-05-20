@@ -1,12 +1,12 @@
 import { Avatar } from '~/components/ui/avatar'
 
 interface CustomerPanelHeaderProps {
-  customerId: string
+  conversationId: string
   customerName: string | null
   customerPsid: string
 }
 
-export function CustomerPanelHeader({ customerId, customerName, customerPsid }: CustomerPanelHeaderProps) {
+export function CustomerPanelHeader({ conversationId, customerName, customerPsid }: CustomerPanelHeaderProps) {
   const displayName = customerName ?? customerPsid
 
   return (
@@ -19,7 +19,7 @@ export function CustomerPanelHeader({ customerId, customerName, customerPsid }: 
         borderBottom: '1px solid var(--color-line)',
       }}
     >
-      <Avatar name={displayName} size={40} seed={customerId.charCodeAt(0)} />
+      <Avatar name={displayName} size={40} seed={conversationId.charCodeAt(0)} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{

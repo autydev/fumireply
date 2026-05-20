@@ -88,7 +88,7 @@ export function CustomerPanel({ conversation, isOpen }: CustomerPanelProps) {
 
   return (
     <div
-      className={`customer-panel${isOpen ? '' : ' customer-panel--hidden'}`}
+      className={`customer-panel${isOpen ? ' customer-panel--open' : ' customer-panel--hidden'}`}
       aria-hidden={!isOpen}
     >
       <div
@@ -100,7 +100,7 @@ export function CustomerPanel({ conversation, isOpen }: CustomerPanelProps) {
         }}
       >
         <CustomerPanelHeader
-          customerId={conversation.id}
+          conversationId={conversation.id}
           customerName={conversation.customer_name}
           customerPsid={conversation.customer_psid}
         />

@@ -36,6 +36,13 @@ export function DraftSettingsEditor({
   useEffect(() => { setTone(initialTone) }, [initialTone])
   useEffect(() => { setPrompt(initialPrompt ?? '') }, [initialPrompt])
 
+  // Cancel pending debounce on unmount or conversation change
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [conversationId])
+
   const saveTone = useCallback(async (value: TonePreset) => {
     try {
       await updateConversationSettingsFn({ data: { conversationId, tonePreset: value } })

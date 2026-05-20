@@ -19,6 +19,13 @@ export function InternalNoteEditor({ conversationId, note: initialNote, onUpdate
 
   useEffect(() => { setNote(initialNote ?? '') }, [initialNote])
 
+  // Cancel pending debounce on unmount or conversation change
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [conversationId])
+
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
     setNote(value)
