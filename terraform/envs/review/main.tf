@@ -104,8 +104,9 @@ resource "aws_sqs_queue" "ai_summary_dlq" {
 }
 
 resource "aws_sqs_queue" "ai_summary" {
-  name                       = "${var.name_prefix}-ai-summary-queue"
-  visibility_timeout_seconds = 60
+  name = "${var.name_prefix}-ai-summary-queue"
+  # 180s covers max Anthropic time (30s × 4 attempts) + backoff (1+3+9s) + margin.
+  visibility_timeout_seconds = 180
   message_retention_seconds  = 345600 # 4 days
   receive_wait_time_seconds  = 20
 
@@ -196,6 +197,10 @@ module "webhook_lambda" {
   api_gateway_execution_arn = module.app_lambda.api_gateway_execution_arn
   lambda_package_s3_bucket  = aws_s3_bucket.lambda_artifacts.id
   lambda_package_s3_key     = aws_s3_object.placeholder.key
+
+  # Summary pipeline (003-customer-context-and-settings)
+  summary_queue_url = aws_sqs_queue.ai_summary.url
+  summary_queue_arn = aws_sqs_queue.ai_summary.arn
 }
 
 ###############################################################################

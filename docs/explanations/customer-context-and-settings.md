@@ -41,7 +41,7 @@ The summary pipeline runs as a background job when the accumulated message char 
 
 ### Trigger points
 
-- **Inbound message** (webhook Lambda): after draft job enqueue
+- **Inbound message** (webhook Lambda): fires regardless of draft SQS success — summary tracks conversation content, not AI drafts
 - **Outbound reply** (app Lambda / `sendReplyFn`): after successful send
 
 Both paths call `maybeEnqueueSummaryJob(conversationId, tenantId)`, which:

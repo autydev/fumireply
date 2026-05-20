@@ -48,3 +48,27 @@ variable "master_key_ssm_arn" {
   description = "ARN of the master encryption key SSM parameter (lives outside ssm_path_prefix)"
   type        = string
 }
+
+variable "summary_queue_url" {
+  description = "URL of the summary SQS queue (injected as AI_SUMMARY_QUEUE_URL env var)"
+  type        = string
+  default     = ""
+}
+
+variable "summary_queue_arn" {
+  description = "ARN of the summary SQS queue (for sqs:SendMessage IAM)"
+  type        = string
+  default     = ""
+}
+
+variable "summary_trigger_threshold_chars" {
+  description = "Char count threshold to trigger summary job"
+  type        = string
+  default     = "2000"
+}
+
+variable "summary_pipeline_enabled" {
+  description = "Set to 'false' to disable the summary pipeline circuit-breaker"
+  type        = string
+  default     = "true"
+}

@@ -44,18 +44,29 @@ function makeConvoTx(
   lastSummarizedAt: Date | null = null,
   msgs: Array<{ direction: string; body: string; timestamp: Date }> = [],
 ) {
+  const totalChars = msgs.reduce((sum, m) => sum + m.body.length, 0)
   let callCount = 0
   return {
     select: vi.fn(() => {
       callCount++
       const n = callCount
       if (n === 1) {
+        // select({summary, lastSummarizedAt}).from(conversations).where(...)
         return {
           from: vi.fn(() => ({
             where: vi.fn(() => Promise.resolve([{ summary, lastSummarizedAt }])),
           })),
         }
       }
+      if (n === 2) {
+        // select({totalChars}).from(messages).where(...)  — aggregate, no orderBy/limit
+        return {
+          from: vi.fn(() => ({
+            where: vi.fn(() => Promise.resolve([{ totalChars }])),
+          })),
+        }
+      }
+      // select({direction, body, timestamp}).from(messages).where(...).orderBy(...).limit(...)
       return {
         from: vi.fn(() => ({
           where: vi.fn(() => ({

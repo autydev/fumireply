@@ -100,21 +100,20 @@ export async function processSummaryJob(body: unknown): Promise<void> {
     existingSummary = convo?.summary ?? null
     const cursor = convo?.lastSummarizedAt ?? new Date(0)
 
-    const msgs = await tx
-      .select({ direction: messages.direction, body: messages.body, timestamp: messages.timestamp })
-      .from(messages)
-      .where(
-        and(
-          eq(messages.conversationId, conversationId),
-          eq(messages.messageType, 'text'),
-          gt(messages.timestamp, cursor),
-        ),
-      )
-      .orderBy(asc(messages.timestamp))
-      .limit(SUMMARY_MAX_INPUT_MESSAGES)
+    // Use DB-side char_length without LIMIT for an accurate threshold check.
+    // (JS .length diverges from char_length on multi-byte chars like emoji.)
+    const msgWhere = and(
+      eq(messages.conversationId, conversationId),
+      eq(messages.messageType, 'text'),
+      gt(messages.timestamp, cursor),
+    )
 
-    const totalChars = msgs.reduce((sum, m) => sum + m.body.length, 0)
-    if (totalChars < SUMMARY_TRIGGER_THRESHOLD_CHARS) {
+    const [{ totalChars }] = await tx
+      .select({ totalChars: sql<number>`COALESCE(SUM(char_length(${messages.body})), 0)::int` })
+      .from(messages)
+      .where(msgWhere)
+
+    if ((totalChars ?? 0) < SUMMARY_TRIGGER_THRESHOLD_CHARS) {
       console.info({
         event: 'summary_skipped_below_threshold',
         tenantId,
@@ -124,6 +123,14 @@ export async function processSummaryJob(body: unknown): Promise<void> {
       msgsForSummary = []
       return
     }
+
+    // Fetch the most recent N messages for the prompt (separate query with LIMIT).
+    const msgs = await tx
+      .select({ direction: messages.direction, body: messages.body, timestamp: messages.timestamp })
+      .from(messages)
+      .where(msgWhere)
+      .orderBy(asc(messages.timestamp))
+      .limit(SUMMARY_MAX_INPUT_MESSAGES)
 
     msgsForSummary = msgs
     lastMsgTimestamp = msgs.length > 0 ? msgs[msgs.length - 1].timestamp : null

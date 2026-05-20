@@ -1,3 +1,4 @@
+import { getLocale } from '~/paraglide/runtime'
 import { m } from '~/paraglide/messages'
 
 interface AiPersonaSummaryProps {
@@ -6,11 +7,13 @@ interface AiPersonaSummaryProps {
 }
 
 export function AiPersonaSummary({ summary, lastSummarizedAt }: AiPersonaSummaryProps) {
+  // Use explicit locale + UTC timezone so SSR and client render identical strings.
   const formattedAt = lastSummarizedAt
-    ? new Date(lastSummarizedAt).toLocaleDateString(undefined, {
+    ? new Date(lastSummarizedAt).toLocaleDateString(getLocale(), {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
+        timeZone: 'UTC',
       })
     : null
 

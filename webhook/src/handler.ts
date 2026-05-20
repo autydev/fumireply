@@ -309,6 +309,8 @@ async function handlePost(
           console.error('sqs_enqueue_failed', { messageId: result.messageId, err })
         }
 
+        // Summary trigger is independent of draft SQS: fires even if draft enqueue failed,
+        // since it tracks conversation char count, not AI draft generation.
         await maybeEnqueueSummaryJob(result.conversationId, page.tenantId)
       }
     }
