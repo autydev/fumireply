@@ -104,8 +104,8 @@ resource "aws_sqs_queue" "ai_summary_dlq" {
 }
 
 resource "aws_sqs_queue" "ai_summary" {
-  name = "${var.name_prefix}-ai-summary-queue"
   # 180s covers max Anthropic time (30s × 4 attempts) + backoff (1+3+9s) + margin.
+  name                       = "${var.name_prefix}-ai-summary-queue"
   visibility_timeout_seconds = 180
   message_retention_seconds  = 345600 # 4 days
   receive_wait_time_seconds  = 20
