@@ -16,7 +16,7 @@ export function ConnectedPagesList({ connectedPages }: ConnectedPagesListProps) 
       {connectedPages.map((page) => (
         <PageCustomPromptEditor
           key={page.id}
-          pageId={page.id}
+          connectedPageId={page.id}
           pageName={page.pageName}
           customPrompt={page.customPrompt}
         />

@@ -6,16 +6,18 @@ import { PAGE_PROMPT_MAX } from '~/lib/settings/char-limits'
 import { m } from '~/paraglide/messages'
 
 interface PageCustomPromptEditorProps {
-  pageId: string
+  connectedPageId: string
   pageName: string
   customPrompt: string | null
 }
 
-export function PageCustomPromptEditor({ pageId, pageName, customPrompt }: PageCustomPromptEditorProps) {
+export function PageCustomPromptEditor({ connectedPageId, pageName, customPrompt }: PageCustomPromptEditorProps) {
   const [value, setValue] = useState(customPrompt ?? '')
   const [saveState, setSaveState] = useState<AutoSaveState>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestValueRef = useRef(value)
+  // Monotonically increasing save ID — only the latest save's completion updates state
+  const saveIdRef = useRef(0)
 
   useEffect(() => {
     latestValueRef.current = value
@@ -28,17 +30,17 @@ export function PageCustomPromptEditor({ pageId, pageName, customPrompt }: PageC
 
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
+      const currentSaveId = ++saveIdRef.current
       setSaveState('saving')
       try {
-        await updatePagePromptFn({ data: { pageId, customPrompt: latestValueRef.current } })
-        setSaveState('saved')
+        await updatePagePromptFn({ data: { connectedPageId, customPrompt: latestValueRef.current } })
+        if (saveIdRef.current === currentSaveId) setSaveState('saved')
       } catch {
-        setSaveState(null)
+        if (saveIdRef.current === currentSaveId) setSaveState(null)
       }
     }, 500)
   }
 
-  // cleanup on unmount
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -64,11 +66,15 @@ export function PageCustomPromptEditor({ pageId, pageName, customPrompt }: PageC
         <AutoSaveBadge state={saveState} />
       </div>
 
-      <label style={{ fontSize: 13, color: 'var(--color-ink-2)', fontWeight: 500 }}>
+      <label
+        htmlFor={`prompt-${connectedPageId}`}
+        style={{ fontSize: 13, color: 'var(--color-ink-2)', fontWeight: 500 }}
+      >
         {m.settings_page_prompt_label()}
       </label>
 
       <textarea
+        id={`prompt-${connectedPageId}`}
         value={value}
         onChange={handleChange}
         maxLength={PAGE_PROMPT_MAX}

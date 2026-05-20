@@ -109,22 +109,24 @@ describe('handleUpdatePagePrompt', () => {
 })
 
 // ── Zod validator (unit) ──────────────────────────────────────────────────────
+// Import PAGE_PROMPT_MAX from production source so the test stays in sync with the server fn
 
 import { z } from 'zod'
+import { PAGE_PROMPT_MAX } from '~/lib/settings/char-limits'
 
 const _updateSchema = z.object({
-  pageId: z.string().uuid(),
-  customPrompt: z.string().max(2000, { message: 'PAGE_PROMPT_TOO_LONG' }),
+  connectedPageId: z.string().uuid(),
+  customPrompt: z.string().max(PAGE_PROMPT_MAX, { message: 'PAGE_PROMPT_TOO_LONG' }),
 })
 
 describe('updatePagePromptFn input schema', () => {
-  it('rejects 2001-char prompt with PAGE_PROMPT_TOO_LONG', () => {
-    const parsed = _updateSchema.safeParse({ pageId: PAGE_UUID, customPrompt: 'a'.repeat(2001) })
+  it('rejects (PAGE_PROMPT_MAX + 1)-char prompt with PAGE_PROMPT_TOO_LONG', () => {
+    const parsed = _updateSchema.safeParse({ connectedPageId: PAGE_UUID, customPrompt: 'a'.repeat(PAGE_PROMPT_MAX + 1) })
     expect(parsed.success).toBe(false)
     if (!parsed.success) expect(parsed.error.issues[0].message).toBe('PAGE_PROMPT_TOO_LONG')
   })
 
-  it('accepts exactly 2000 chars', () => {
-    expect(_updateSchema.safeParse({ pageId: PAGE_UUID, customPrompt: 'a'.repeat(2000) }).success).toBe(true)
+  it('accepts exactly PAGE_PROMPT_MAX chars', () => {
+    expect(_updateSchema.safeParse({ connectedPageId: PAGE_UUID, customPrompt: 'a'.repeat(PAGE_PROMPT_MAX) }).success).toBe(true)
   })
 })
