@@ -22,13 +22,14 @@
 
 ## 2. DB マイグレーション
 
+マイグレーションファイルは既にリポジトリにコミット済 (`app/src/server/db/migrations/0002_customer_context.sql`)。適用のみ実行する:
+
 ```bash
 cd app
-# Drizzle で 0002_customer_context.sql を生成 (または手動で作成)
-npm run db:generate
-# 確認: app/src/server/db/migrations/0002_customer_context.sql が作られている
 npm run db:migrate
 ```
+
+> NOTE: `db:generate` スクリプトは未定義。schema.ts を変更して再生成したい場合は `npx drizzle-kit generate` を直接叩く。
 
 確認クエリ (Supabase Studio または psql で):
 
@@ -54,22 +55,18 @@ VALUES (gen_random_uuid(), 'YOUR_TENANT_ID', 'YOUR_PAGE_ID', 'test-psid', 'inval
 
 ## 3. ローカルでの要約パイプライン (Lambda 起動なし)
 
-ローカル開発では SQS を立てない。代わりに以下のいずれか:
+ローカル開発では SQS を立てない。`app/src/server/services/summary-trigger.ts` の `maybeEnqueueSummaryJob` は `AI_SUMMARY_QUEUE_URL` が未設定 or `SUMMARY_PIPELINE_ENABLED=false` の場合 `summary_enqueue_skipped_disabled` をログして no-op で抜けるので、`.env` で両者を未設定/false にしておけば inbox 経路は何も発火しない。
 
-### オプション A: 単体テストで完結 (推奨)
-
-`ai-worker/src/summary.test.ts` を vitest で実行。Anthropic SDK は `vi.mock` でモックされるので外部 API 呼び出しは発生しない。
+ローカルで要約ロジックを試したいときは vitest を使う:
 
 ```bash
 cd ai-worker
 npm test -- summary.test.ts
 ```
 
-### オプション B: 手動で summary を発火
+Anthropic SDK は `vi.mock` でモックされるので外部 API 呼び出しは発生しない。
 
-開発時に SQS なしで要約パイプラインを試したい場合、`app/src/server/services/summary-trigger.ts` の `maybeEnqueueSummaryJob` 内で `process.env.NODE_ENV === 'development'` かつ `AI_SUMMARY_QUEUE_URL` が未設定なら、`ai-worker` の `processSummaryJob` をその場で直接呼ぶ in-process フォールバック経路を用意する (実装時に追加。production では絶対に呼ばない)。
-
-スイッチは `AI_SUMMARY_QUEUE_URL` の有無のみ。`.env` に `AI_SUMMARY_QUEUE_URL=` (空) を入れてローカルでテスト。
+> NOTE: 「dev 環境で in-process に `processSummaryJob` を直接呼ぶフォールバック」は未実装。必要になったら summary-trigger.ts に追加する判断をする。
 
 ---
 
@@ -106,22 +103,26 @@ terraform init
 terraform plan
 ```
 
-期待される差分:
+期待される差分 (Plan: **3 to add, 6 to change, 0 to destroy**):
 
 ```
-# 新規リソース
-+ module.ai_summary_queue.aws_sqs_queue.main
-+ module.ai_summary_queue.aws_sqs_queue.dlq          # ai-summary-dlq
-+ aws_lambda_event_source_mapping.ai_summary_source
+# 新規リソース (envs/review/main.tf 直書き、モジュール化していない)
++ aws_sqs_queue.ai_summary                                              # fumireply-review-ai-summary-queue
++ aws_sqs_queue.ai_summary_dlq                                          # fumireply-review-ai-summary-dlq
++ module.ai_worker_lambda.aws_lambda_event_source_mapping.summary_sqs[0]
 
-# 変更リソース
-~ module.ai_worker_lambda.aws_iam_role_policy.main   # SQS receive 権限に新キュー追加
-~ module.ai_worker_lambda.aws_lambda_function.main   # 環境変数 AI_SUMMARY_QUEUE_URL / SUMMARY_PIPELINE_ENABLED 追加
-~ module.app_lambda.aws_lambda_function.main          # 環境変数 AI_SUMMARY_QUEUE_URL / SUMMARY_TRIGGER_THRESHOLD_CHARS 追加
-~ module.app_lambda.aws_iam_role_policy.main          # SQS send 権限に新キュー追加
+# 変更リソース (すべて update in-place)
+~ module.ai_worker_lambda.aws_iam_role_policy.ai_worker_lambda   # SQSConsume の resources に summary queue ARN 追加
+~ module.ai_worker_lambda.aws_lambda_function.ai_worker          # env に AI_SUMMARY_QUEUE_URL / SUMMARY_TRIGGER_THRESHOLD_CHARS / SUMMARY_PIPELINE_ENABLED 追加
+~ module.app_lambda.aws_iam_role_policy.app_lambda               # 同上 (app 側は SQS 権限なしで env のみ)
+~ module.app_lambda.aws_lambda_function.app                      # env に同上の 3 変数追加
+~ module.webhook_lambda.aws_iam_role_policy.webhook_lambda       # SQSSendMessage の resources に summary queue ARN 追加
+~ module.webhook_lambda.aws_lambda_function.webhook              # env に summary 関連変数追加
 ```
 
-新規 Lambda・新規 SSM パラメータが**ゼロ**であること、既存 4 Lambda 関数本体の差分は環境変数追加のみであることを確認する。
+新規 Lambda・新規 SSM パラメータが**ゼロ**であること、既存 4 Lambda 関数本体の差分は環境変数追加とポリシーへの ARN 追加のみであることを確認する。
+
+> NOTE: `~` ブロック内の policy / environment に大量の `-` 行が出るのは jsonencode/map が `(known after apply)` に置き換わる Terraform の表示仕様で、**実体は in-place 更新**。`0 to destroy` であることを必ず末尾で確認する。
 
 ---
 

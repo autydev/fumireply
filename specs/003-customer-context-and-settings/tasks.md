@@ -225,7 +225,7 @@ description: "Tasks for 003 — 会話コンテキストの永続化と設定の
 <!-- unit: U5.1 | deps: U4.1 | scope: infra | tasks: T056-T057 | files: 0 | automation: manual -->
 **Unit U5.1 (Manual verification — out-of-PR)**: U4.1 マージ後に運用者が個別に実施。Routine playbook は `automation: manual` を skip するため PR は作らない。手順は quickstart.md §5 と spec.md SC-007 を参照。
 
-- [ ] T056 Run `terraform plan` in `terraform/envs/review/` — verify the diff matches quickstart.md §5 expectation (1 new SQS queue + 1 new DLQ + 1 new event source mapping + IAM/env changes on existing modules, ZERO new Lambda functions / SSM params / DB tables)
+- [x] T056 Run `terraform plan` in `terraform/envs/review/` — verify the diff matches quickstart.md §5 expectation (1 new SQS queue + 1 new DLQ + 1 new event source mapping + IAM/env changes on existing modules, ZERO new Lambda functions / SSM params / DB tables)
 - [ ] T057 Verify SC-007 (backward compat) manually: create a fresh conversation with all 5 new columns NULL and the page custom_prompt NULL. Trigger an AI draft via inbound webhook. Confirm via CloudWatch / local logs that:
    - `draft_prompt_composed` event shows `page_prompt_present=false, tone_present=false, customer_prompt_present=false, summary_present=false`
    - The Anthropic system field contains only BASE_SYSTEM_PROMPT
