@@ -18,6 +18,15 @@ export function PageCustomPromptEditor({ connectedPageId, pageName, customPrompt
   const latestValueRef = useRef(value)
   // Monotonically increasing save ID — only the latest save's completion updates state
   const saveIdRef = useRef(0)
+  const isMountedRef = useRef(true)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     latestValueRef.current = value
@@ -31,21 +40,15 @@ export function PageCustomPromptEditor({ connectedPageId, pageName, customPrompt
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
       const currentSaveId = ++saveIdRef.current
-      setSaveState('saving')
+      if (isMountedRef.current) setSaveState('saving')
       try {
         await updatePagePromptFn({ data: { connectedPageId, customPrompt: latestValueRef.current } })
-        if (saveIdRef.current === currentSaveId) setSaveState('saved')
+        if (isMountedRef.current && saveIdRef.current === currentSaveId) setSaveState('saved')
       } catch {
-        if (saveIdRef.current === currentSaveId) setSaveState(null)
+        if (isMountedRef.current && saveIdRef.current === currentSaveId) setSaveState(null)
       }
     }, 500)
   }
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [])
 
   const remaining = PAGE_PROMPT_MAX - value.length
 

@@ -36,7 +36,16 @@ function AppLayout() {
   )
 }
 
-const NAV_ITEMS = [
+type NavHref = '/inbox' | '/settings'
+
+type NavItem = {
+  key: string
+  label: () => string
+  icon: React.ComponentType<{ size?: number }>
+  href: NavHref | '#'
+}
+
+const NAV_ITEMS: NavItem[] = [
   { key: 'inbox', label: m.nav_inbox, icon: InboxIcon, href: '/inbox' },
   { key: 'customers', label: m.nav_customers, icon: UsersIcon, href: '#' },
   { key: 'products', label: m.nav_products, icon: PackageIcon, href: '#' },
@@ -126,7 +135,7 @@ function Sidebar() {
           return (
             <Link
               key={item.key}
-              to={item.href as '/inbox'}
+              to={item.href as NavHref}
               style={sharedStyle}
               onMouseEnter={(e) => {
                 if (!isActive) {
