@@ -1,22 +1,29 @@
 import type { SQSEvent, SQSHandler, SQSRecord } from 'aws-lambda'
 import Anthropic from '@anthropic-ai/sdk'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, gt } from 'drizzle-orm'
 import { z } from 'zod'
 import { dbAdmin } from './db/client'
 import { withTenant } from './db/with-tenant'
-import { aiDrafts, messages } from './db/schema'
+import { aiDrafts, connectedPages, conversations, messages } from './db/schema'
 import { getSsmParameter } from './services/ssm'
-import { buildUserPrompt, SYSTEM_PROMPT } from './prompt'
+import { BASE_SYSTEM_PROMPT, buildAdditionalSystemPrompt, buildUserPrompt } from './prompt'
+import { RECENT_MESSAGES_CAP } from './config'
 
-const SQS_BODY_SCHEMA = z.object({
+const DRAFT_BODY_SCHEMA = z.object({
+  jobType: z.literal('draft').optional().default('draft'),
   messageId: z.string().uuid(),
+})
+
+const SUMMARY_BODY_SCHEMA = z.object({
+  jobType: z.literal('summary'),
+  conversationId: z.string().uuid(),
+  enqueuedAt: z.string().optional(),
 })
 
 const ANTHROPIC_API_KEY_SSM =
   process.env.ANTHROPIC_API_KEY_SSM_KEY ?? '/fumireply/review/anthropic/api-key'
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001'
 const ANTHROPIC_TIMEOUT_MS = 30_000
-const HISTORY_LIMIT = 5
 const RETRY_DELAYS_MS = [1000, 3000, 9000]
 
 interface ApiError {
@@ -42,6 +49,7 @@ type AiDraftUpdate =
 async function callAnthropicWithRetry(
   client: Anthropic,
   userPrompt: string,
+  systemBlocks: Anthropic.TextBlockParam[],
 ): Promise<Anthropic.Message> {
   let lastError: unknown = null
 
@@ -50,13 +58,7 @@ async function callAnthropicWithRetry(
       return await client.messages.create({
         model: ANTHROPIC_MODEL,
         max_tokens: 300,
-        system: [
-          {
-            type: 'text',
-            text: SYSTEM_PROMPT,
-            cache_control: { type: 'ephemeral' },
-          },
-        ],
+        system: systemBlocks,
         messages: [{ role: 'user', content: userPrompt }],
       })
     } catch (err) {
@@ -75,18 +77,8 @@ async function callAnthropicWithRetry(
   throw lastError
 }
 
-async function processRecord(record: SQSRecord): Promise<void> {
-  // 1. Parse SQS message
-  let messageId: string
-  try {
-    const parsed = SQS_BODY_SCHEMA.parse(JSON.parse(record.body))
-    messageId = parsed.messageId
-  } catch {
-    console.error({ event: 'sqs_parse_error', rawBody: record.body })
-    return
-  }
-
-  // 2. Resolve tenant_id with service role (bypasses RLS)
+async function processDraftJob(messageId: string): Promise<void> {
+  // 1. Resolve tenant_id with service role (bypasses RLS)
   const rows = await dbAdmin
     .select({ tenantId: messages.tenantId })
     .from(messages)
@@ -99,9 +91,14 @@ async function processRecord(record: SQSRecord): Promise<void> {
 
   const { tenantId } = rows[0]
 
-  // 3. Read message + history in a short RLS transaction, then release the connection
+  // 2. Read message + conversation settings + history in a single RLS transaction
   let history: HistoryItem[] = []
   let skipped = false
+  let pagePrompt: string | null = null
+  let tonePreset: string | null = null
+  let customerPrompt: string | null = null
+  let summary: string | null = null
+  let conversationId: string | null = null
 
   await withTenant(tenantId, async (tx) => {
     const [msg] = await tx
@@ -119,6 +116,48 @@ async function processRecord(record: SQSRecord): Promise<void> {
       return
     }
 
+    conversationId = msg.conversationId
+
+    // Fetch conversation settings + page custom_prompt in one join
+    let convoSettings: {
+      summary: string | null
+      lastSummarizedAt: Date | null
+      tonePreset: string | null
+      customPrompt: string | null
+      pageCustomPrompt: string | null
+    } | null = null
+
+    try {
+      const [convo] = await tx
+        .select({
+          summary: conversations.summary,
+          lastSummarizedAt: conversations.lastSummarizedAt,
+          tonePreset: conversations.tonePreset,
+          customPrompt: conversations.customPrompt,
+          pageCustomPrompt: connectedPages.customPrompt,
+        })
+        .from(conversations)
+        .leftJoin(connectedPages, eq(conversations.pageId, connectedPages.id))
+        .where(eq(conversations.id, msg.conversationId))
+
+      convoSettings = convo ?? null
+    } catch (err) {
+      console.error({
+        event: 'draft_settings_fetch_failed',
+        tenantId,
+        conversationId: msg.conversationId,
+        error: String(err),
+      })
+      // Fail-open: continue with all null settings
+    }
+
+    pagePrompt = convoSettings?.pageCustomPrompt ?? null
+    tonePreset = convoSettings?.tonePreset ?? null
+    customerPrompt = convoSettings?.customPrompt ?? null
+    summary = convoSettings?.summary ?? null
+
+    const cursor = convoSettings?.lastSummarizedAt ?? new Date(0)
+
     const historyDesc = await tx
       .select({
         direction: messages.direction,
@@ -126,14 +165,49 @@ async function processRecord(record: SQSRecord): Promise<void> {
         messageType: messages.messageType,
       })
       .from(messages)
-      .where(and(eq(messages.conversationId, msg.conversationId), eq(messages.messageType, 'text')))
+      .where(
+        and(
+          eq(messages.conversationId, msg.conversationId),
+          eq(messages.messageType, 'text'),
+          gt(messages.timestamp, cursor),
+        ),
+      )
       .orderBy(desc(messages.timestamp))
-      .limit(HISTORY_LIMIT)
+      .limit(RECENT_MESSAGES_CAP)
 
     history = historyDesc.reverse()
   })
 
   if (skipped) return
+
+  // 3. Build system prompt blocks
+  const additionalText = buildAdditionalSystemPrompt({
+    pagePrompt,
+    tonePreset: tonePreset as 'friendly' | 'professional' | 'concise' | null,
+    customerPrompt,
+    summary,
+  })
+
+  const systemBlocks: Anthropic.TextBlockParam[] = [
+    { type: 'text', text: BASE_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+  ]
+  if (additionalText) {
+    systemBlocks.push({ type: 'text', text: additionalText })
+  }
+
+  const _pp = pagePrompt as string | null
+  const _cp = customerPrompt as string | null
+  const _sm = summary as string | null
+  console.info({
+    event: 'draft_prompt_composed',
+    tenantId,
+    conversationId,
+    page_prompt_present: _pp != null && _pp.trim() !== '',
+    tone_present: tonePreset !== null,
+    customer_prompt_present: _cp != null && _cp.trim() !== '',
+    summary_present: _sm != null && _sm.trim() !== '',
+    messages_count: history.length,
+  })
 
   // 4. Call Anthropic OUTSIDE any DB transaction — no connection held during API latency
   const userPrompt = buildUserPrompt(history)
@@ -144,9 +218,8 @@ async function processRecord(record: SQSRecord): Promise<void> {
   let update: AiDraftUpdate
 
   try {
-    const response = await callAnthropicWithRetry(anthropic, userPrompt)
+    const response = await callAnthropicWithRetry(anthropic, userPrompt, systemBlocks)
 
-    // Collect all text blocks; treat empty result as unexpected failure
     const draftBody = response.content
       .filter((b) => b.type === 'text')
       .map((b) => (b.type === 'text' ? b.text : ''))
@@ -192,8 +265,50 @@ async function processRecord(record: SQSRecord): Promise<void> {
   })
 }
 
+async function processSummaryJob(body: unknown): Promise<void> {
+  // Stub: will be implemented in U4.1. Logs and returns to avoid DLQ flooding.
+  console.info({ event: 'summary_skipped_not_yet_implemented', body })
+}
+
+async function processRecord(record: SQSRecord): Promise<void> {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(record.body)
+  } catch {
+    console.error({ event: 'sqs_parse_error', rawBody: record.body })
+    return
+  }
+
+  // Dispatch on jobType (default 'draft' for backward compat)
+  const jobType =
+    parsed !== null && typeof parsed === 'object' && 'jobType' in parsed
+      ? (parsed as { jobType?: string }).jobType
+      : 'draft'
+
+  if (jobType === 'summary') {
+    await processSummaryJob(parsed)
+    return
+  }
+
+  // Draft job (default path)
+  const draftResult = DRAFT_BODY_SCHEMA.safeParse(parsed)
+  if (!draftResult.success) {
+    // Try legacy format: { messageId }
+    const legacy = z.object({ messageId: z.string().uuid() }).safeParse(parsed)
+    if (!legacy.success) {
+      console.error({ event: 'sqs_parse_error', rawBody: record.body })
+      return
+    }
+    await processDraftJob(legacy.data.messageId)
+    return
+  }
+
+  await processDraftJob(draftResult.data.messageId)
+}
+
 export const handler: SQSHandler = async (event: SQSEvent) => {
   for (const record of event.Records) {
     await processRecord(record)
   }
 }
+

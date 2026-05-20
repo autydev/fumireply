@@ -327,3 +327,45 @@ input, textarea {
   font-size: 11.5px;
   color: var(--color-ink-4);
 }
+
+/* --- 3-column layout for thread page (003-customer-context-and-settings) --- */
+:root {
+  --customer-panel-width: 320px;
+}
+
+.customer-panel {
+  width: var(--customer-panel-width);
+  min-width: var(--customer-panel-width);
+  border-left: 1px solid var(--color-line);
+  background: var(--color-bg-raised);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.customer-panel--hidden {
+  display: none;
+}
+
+.customer-panel__toggle {
+  display: none;
+}
+
+@media (max-width: 1279px) {
+  .customer-panel {
+    display: none;
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100%;
+    z-index: 40;
+    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.08);
+  }
+
+  .customer-panel--open {
+    display: block;
+  }
+
+  .customer-panel__toggle {
+    display: flex;
+  }
+}
