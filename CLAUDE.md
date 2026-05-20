@@ -1,16 +1,17 @@
 <!-- SPECKIT START -->
-Active feature plan: [specs/003-customer-context-and-settings/plan.md](specs/003-customer-context-and-settings/plan.md)
+Active feature plan: [specs/004-draft-actions-and-translation/plan.md](specs/004-draft-actions-and-translation/plan.md)
 
 Related artifacts (same directory):
-- spec.md — feature specification (会話コンテキスト永続化 + ページ/顧客の設定階層 + Settings ページ + CustomerPanel)
-- research.md — technology decisions (ai-worker 拡張で summary を相乗り、文字数ベースの要約閾値、5 段プロンプト合成)
-- data-model.md — connected_pages に custom_prompt 1 列、conversations に 5 列 (summary, last_summarized_at, tone_preset, custom_prompt, note)
-- contracts/ — Settings server fns, conversation server fns, summary job SQS contract, prompt composition order
-- quickstart.md — diff setup vs 002 (DB マイグレーション 1 本、SQS キュー 1 本追加、env 変数 3 つ)
+- spec.md — feature specification (破棄・再生成・日本語訳の 3 機能を 1 spec)
+- research.md — technology decisions (DeepL Free 採用、lifecycle_status 新列、ai-worker 翻訳 inline 統合)
+- data-model.md — ai_drafts に 3 列 (lifecycle_status, translation_ja, translation_status)、tenants に 1 列 (translation_enabled)、partial unique index 入れ替え
+- contracts/ — discardDraft / regenerateDraft server fns、ai-worker 翻訳パイプライン、Settings の translation_enabled トグル
+- quickstart.md — DeepL Free キー取得、SSM 登録、マイグレーション 0003、E2E 動作確認手順
 
 Predecessors:
-- [specs/002-app-review-submission/plan.md](specs/002-app-review-submission/plan.md) — Connect Page UI + Paraglide JS i18n、assumed deployed and stable.
-- [specs/001-mvp-app-review/plan.md](specs/001-mvp-app-review/plan.md) — MVP for the underlying Messenger inbox + AI draft pipeline.
+- [specs/003-customer-context-and-settings/plan.md](specs/003-customer-context-and-settings/plan.md) — 顧客コンテキスト + Settings ページ + CustomerPanel、本 spec の基盤として merge 済み前提
+- [specs/002-app-review-submission/plan.md](specs/002-app-review-submission/plan.md) — Connect Page UI + Paraglide JS i18n
+- [specs/001-mvp-app-review/plan.md](specs/001-mvp-app-review/plan.md) — MVP for the underlying Messenger inbox + AI draft pipeline
 
 Read the current plan for technology stack, project structure, and workflow conventions before starting implementation work.
 <!-- SPECKIT END -->
