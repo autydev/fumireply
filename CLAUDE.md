@@ -1,14 +1,16 @@
 <!-- SPECKIT START -->
-Active feature plan: [specs/002-app-review-submission/plan.md](specs/002-app-review-submission/plan.md)
+Active feature plan: [specs/003-customer-context-and-settings/plan.md](specs/003-customer-context-and-settings/plan.md)
 
 Related artifacts (same directory):
-- spec.md — feature specification
-- research.md — technology decisions (Paraglide JS, FB JS SDK, Cookie-based locale)
-- data-model.md — connected_pages reuse + Cookie-based Language Preference
-- contracts/ — Facebook Graph API, Connect Page server fns, Locale fn + SSR middleware
-- quickstart.md — diff setup vs 001 (Paraglide install, FB App settings, recording prep)
+- spec.md — feature specification (会話コンテキスト永続化 + ページ/顧客の設定階層 + Settings ページ + CustomerPanel)
+- research.md — technology decisions (ai-worker 拡張で summary を相乗り、文字数ベースの要約閾値、5 段プロンプト合成)
+- data-model.md — connected_pages に custom_prompt 1 列、conversations に 5 列 (summary, last_summarized_at, tone_preset, custom_prompt, note)
+- contracts/ — Settings server fns, conversation server fns, summary job SQS contract, prompt composition order
+- quickstart.md — diff setup vs 002 (DB マイグレーション 1 本、SQS キュー 1 本追加、env 変数 3 つ)
 
-Predecessor: [specs/001-mvp-app-review/plan.md](specs/001-mvp-app-review/plan.md) — MVP for the underlying Messenger inbox + AI draft pipeline; assumed deployed and stable.
+Predecessors:
+- [specs/002-app-review-submission/plan.md](specs/002-app-review-submission/plan.md) — Connect Page UI + Paraglide JS i18n、assumed deployed and stable.
+- [specs/001-mvp-app-review/plan.md](specs/001-mvp-app-review/plan.md) — MVP for the underlying Messenger inbox + AI draft pipeline.
 
 Read the current plan for technology stack, project structure, and workflow conventions before starting implementation work.
 <!-- SPECKIT END -->
