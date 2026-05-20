@@ -3,10 +3,8 @@ import { z } from 'zod'
 export const PAGE_PROMPT_MAX = 2000
 export const CUSTOMER_PROMPT_MAX = 1000
 export const NOTE_MAX = 1000
-export const SUMMARY_TRIGGER_THRESHOLD_CHARS = parseInt(
-  process.env.SUMMARY_TRIGGER_THRESHOLD_CHARS ?? '2000',
-  10,
-)
+const _threshold = parseInt(process.env.SUMMARY_TRIGGER_THRESHOLD_CHARS ?? '2000', 10)
+export const SUMMARY_TRIGGER_THRESHOLD_CHARS = Number.isFinite(_threshold) ? _threshold : 2000
 
 export const pagePromptSchema = z
   .string()

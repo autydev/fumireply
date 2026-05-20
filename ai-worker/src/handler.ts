@@ -20,10 +20,6 @@ const SUMMARY_BODY_SCHEMA = z.object({
   enqueuedAt: z.string().optional(),
 })
 
-const SQS_BODY_SCHEMA = z.union([DRAFT_BODY_SCHEMA, SUMMARY_BODY_SCHEMA]).or(
-  z.object({ messageId: z.string().uuid() }),
-)
-
 const ANTHROPIC_API_KEY_SSM =
   process.env.ANTHROPIC_API_KEY_SSM_KEY ?? '/fumireply/review/anthropic/api-key'
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001'
@@ -199,14 +195,17 @@ async function processDraftJob(messageId: string): Promise<void> {
     systemBlocks.push({ type: 'text', text: additionalText })
   }
 
+  const _pp = pagePrompt as string | null
+  const _cp = customerPrompt as string | null
+  const _sm = summary as string | null
   console.info({
     event: 'draft_prompt_composed',
     tenantId,
     conversationId,
-    page_prompt_present: pagePrompt !== null,
+    page_prompt_present: _pp != null && _pp.trim() !== '',
     tone_present: tonePreset !== null,
-    customer_prompt_present: customerPrompt !== null,
-    summary_present: summary !== null,
+    customer_prompt_present: _cp != null && _cp.trim() !== '',
+    summary_present: _sm != null && _sm.trim() !== '',
     messages_count: history.length,
   })
 
