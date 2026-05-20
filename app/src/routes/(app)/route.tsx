@@ -40,7 +40,7 @@ const NAV_ITEMS = [
   { key: 'inbox', label: m.nav_inbox, icon: InboxIcon, href: '/inbox' },
   { key: 'customers', label: m.nav_customers, icon: UsersIcon, href: '#' },
   { key: 'products', label: m.nav_products, icon: PackageIcon, href: '#' },
-  { key: 'settings', label: m.nav_settings, icon: SettingsIcon, href: '#' },
+  { key: 'settings', label: m.nav_settings, icon: SettingsIcon, href: '/settings' },
 ]
 
 function Sidebar() {
