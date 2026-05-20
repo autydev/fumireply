@@ -112,11 +112,12 @@ export function DraftSettingsEditor({
                   fontWeight: active ? 600 : 400,
                   cursor: 'pointer',
                   transition: 'background 120ms, color 120ms, border-color 120ms',
-                  background: active ? 'var(--color-accent-soft)' : 'var(--color-bg-raised)',
-                  color: active ? 'var(--color-accent)' : 'var(--color-ink-2)',
+                  background: active ? 'var(--color-primary)' : 'var(--color-bg-raised)',
+                  color: active ? '#fff' : 'var(--color-ink-2)',
                   border: active
-                    ? '1px solid var(--color-accent)'
+                    ? '1px solid var(--color-primary)'
                     : '1px solid var(--color-line)',
+                  boxShadow: active ? '0 1px 2px oklch(0.55 0.16 265 / 0.25)' : 'none',
                 }}
               >
                 {label()}

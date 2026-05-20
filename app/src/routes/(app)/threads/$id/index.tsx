@@ -173,7 +173,7 @@ function ThreadPage() {
             style={{
               padding: 6,
               borderRadius: 7,
-              color: panelOpen ? 'var(--color-accent)' : 'var(--color-ink-3)',
+              color: panelOpen ? 'var(--color-primary)' : 'var(--color-ink-3)',
               cursor: 'pointer',
               transition: 'background 120ms, color 120ms',
               fontSize: 11,

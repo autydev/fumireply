@@ -103,7 +103,7 @@ test.describe.skip('CustomerPanel — US2', () => {
     await page.waitForLoadState('networkidle')
 
     const conciseButton = page.getByRole('button', { name: /concise/i })
-    await expect(conciseButton).toHaveAttribute('style', /var\(--color-accent\)/)
+    await expect(conciseButton).toHaveAttribute('style', /var\(--color-primary\)/)
   })
 
   test('toggle button hides and shows CustomerPanel', async ({ page }) => {

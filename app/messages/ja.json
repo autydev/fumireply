@@ -84,7 +84,7 @@
   "settings_page_prompt_placeholder": "例: 購入後 30 日以降は返品を受け付けません。在庫確認前に入荷を確約しないでください。",
   "settings_page_prompt_help": "このテキストは、このページからのメッセージに対するすべての AI 下書きに含まれます。",
   "settings_chars_remaining": "残り {remaining} 文字",
-  "cp_section_persona": "AI 認識像",
+  "cp_section_persona": "AI 要約",
   "cp_persona_disclaimer": "これは過去の会話をもとに AI が生成した要約です。",
   "cp_persona_empty": "要約はまだありません。十分な会話が蓄積されると自動生成されます。",
   "cp_section_ai_settings": "AI 下書き設定",
