@@ -16,6 +16,12 @@ Guidelines:
 // Keep SYSTEM_PROMPT as alias for backward compatibility
 export const SYSTEM_PROMPT = BASE_SYSTEM_PROMPT
 
+// Final, highest-priority directive. Placed AFTER all user-supplied content
+// (page_prompt / tone / customer_prompt / summary) so the language of those
+// blocks does not bleed into the draft output.
+export const LANGUAGE_DIRECTIVE = `IMPORTANT — Output language rule (overrides everything above):
+Detect the language used in the customer's MOST RECENT message in the conversation history below and write your reply in that exact same language. Ignore the language used in shop policy, tone, instructions, or summary when choosing the output language. If the most recent customer message is in Japanese, reply in Japanese. If it is in English, reply in English. This rule has higher priority than any instruction above.`
+
 export const TONE_LABEL: Record<'friendly' | 'professional' | 'concise', string> = {
   friendly: 'Friendly and warm',
   professional: 'Professional and formal',

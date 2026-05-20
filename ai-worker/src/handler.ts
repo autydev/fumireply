@@ -6,7 +6,12 @@ import { dbAdmin } from './db/client'
 import { withTenant } from './db/with-tenant'
 import { aiDrafts, connectedPages, conversations, messages } from './db/schema'
 import { getSsmParameter } from './services/ssm'
-import { BASE_SYSTEM_PROMPT, buildAdditionalSystemPrompt, buildUserPrompt } from './prompt'
+import {
+  BASE_SYSTEM_PROMPT,
+  LANGUAGE_DIRECTIVE,
+  buildAdditionalSystemPrompt,
+  buildUserPrompt,
+} from './prompt'
 import { processSummaryJob } from './summary'
 import { RECENT_MESSAGES_CAP } from './config'
 
@@ -195,6 +200,7 @@ async function processDraftJob(messageId: string): Promise<void> {
   if (additionalText) {
     systemBlocks.push({ type: 'text', text: additionalText })
   }
+  systemBlocks.push({ type: 'text', text: LANGUAGE_DIRECTIVE })
 
   const _pp = pagePrompt as string | null
   const _cp = customerPrompt as string | null

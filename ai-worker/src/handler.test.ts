@@ -381,7 +381,7 @@ describe('handler — prompt building', () => {
 })
 
 describe('handler — SC-007 backward compat (all new columns NULL)', () => {
-  it('calls Anthropic with only BASE_SYSTEM_PROMPT when all new columns are NULL', async () => {
+  it('calls Anthropic with BASE_SYSTEM_PROMPT + LANGUAGE_DIRECTIVE (no additional) when all new columns are NULL', async () => {
     const readTx = buildReadTx({
       settingsResult: [
         {
@@ -403,9 +403,11 @@ describe('handler — SC-007 backward compat (all new columns NULL)', () => {
 
     expect(mockAnthropicCreate).toHaveBeenCalledOnce()
     const createCall = mockAnthropicCreate.mock.calls[0][0]
-    // Only one system block (base prompt) when all settings are null
-    expect(createCall.system).toHaveLength(1)
+    // 2 blocks: BASE_SYSTEM_PROMPT (cached) + LANGUAGE_DIRECTIVE (always last).
+    // No "additional" block because all settings are null.
+    expect(createCall.system).toHaveLength(2)
     expect(createCall.system[0].cache_control).toEqual({ type: 'ephemeral' })
+    expect(createCall.system[1].text).toMatch(/Output language rule/)
   })
 })
 
