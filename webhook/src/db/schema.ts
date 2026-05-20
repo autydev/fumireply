@@ -64,6 +64,11 @@ export const conversations = pgTable(
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
     unreadCount: integer('unread_count').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    summary: text('summary'),
+    lastSummarizedAt: timestamp('last_summarized_at', { withTimezone: true }),
+    tonePreset: varchar('tone_preset', { length: 20 }),
+    customPrompt: text('custom_prompt'),
+    note: text('note'),
   },
   (t) => [
     unique('conversations_page_id_customer_psid_key').on(t.pageId, t.customerPsid),

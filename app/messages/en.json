@@ -101,5 +101,6 @@
   "cp_toggle_hide": "Hide customer panel",
   "autosave_editing": "Editing…",
   "autosave_saving": "Saving…",
-  "autosave_saved": "Saved"
+  "autosave_saved": "Saved",
+  "cp_persona_updated_at": "Last updated: {at}"
 }

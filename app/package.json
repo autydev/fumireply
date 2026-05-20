@@ -39,7 +39,7 @@
     "zod": "^4.4.1"
   },
   "devDependencies": {
-    "@aws-sdk/client-sqs": "^3.1040.0",
+    "@aws-sdk/client-sqs": "^3.1050.0",
     "@eslint/js": "^10.0.1",
     "@inlang/paraglide-js": "^2.18.0",
     "@inlang/plugin-message-format": "^4.4.0",

@@ -7,6 +7,7 @@ import { withTenant } from './db/with-tenant'
 import { aiDrafts, connectedPages, conversations, messages } from './db/schema'
 import { getSsmParameter } from './services/ssm'
 import { BASE_SYSTEM_PROMPT, buildAdditionalSystemPrompt, buildUserPrompt } from './prompt'
+import { processSummaryJob } from './summary'
 import { RECENT_MESSAGES_CAP } from './config'
 
 const DRAFT_BODY_SCHEMA = z.object({
@@ -265,10 +266,6 @@ async function processDraftJob(messageId: string): Promise<void> {
   })
 }
 
-async function processSummaryJob(body: unknown): Promise<void> {
-  // Stub: will be implemented in U4.1. Logs and returns to avoid DLQ flooding.
-  console.info({ event: 'summary_skipped_not_yet_implemented', body })
-}
 
 async function processRecord(record: SQSRecord): Promise<void> {
   let parsed: unknown

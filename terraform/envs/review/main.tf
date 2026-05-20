@@ -92,6 +92,33 @@ module "queue" {
 }
 
 ###############################################################################
+# Summary Queue (SQS + DLQ) — 003-customer-context-and-settings
+###############################################################################
+
+resource "aws_sqs_queue" "ai_summary_dlq" {
+  name                      = "${var.name_prefix}-ai-summary-dlq"
+  message_retention_seconds = 1209600 # 14 days
+  receive_wait_time_seconds = 20
+
+  tags = local.common_tags
+}
+
+resource "aws_sqs_queue" "ai_summary" {
+  # 180s covers max Anthropic time (30s × 4 attempts) + backoff (1+3+9s) + margin.
+  name                       = "${var.name_prefix}-ai-summary-queue"
+  visibility_timeout_seconds = 180
+  message_retention_seconds  = 345600 # 4 days
+  receive_wait_time_seconds  = 20
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.ai_summary_dlq.arn
+    maxReceiveCount     = 3
+  })
+
+  tags = local.common_tags
+}
+
+###############################################################################
 # App Lambda + API Gateway HTTP API (shared with webhook)
 ###############################################################################
 
@@ -148,6 +175,10 @@ module "app_lambda" {
   # /api/data-deletion (Meta data deletion callback) 用
   deletion_log_hash_salt_ssm_key = "/fumireply/review/deletion-log/hash-salt"
   public_app_origin              = "https://review.fumireply.ecsuite.work"
+
+  # Summary pipeline (003-customer-context-and-settings)
+  summary_queue_url = aws_sqs_queue.ai_summary.url
+  summary_queue_arn = aws_sqs_queue.ai_summary.arn
 }
 
 ###############################################################################
@@ -166,6 +197,10 @@ module "webhook_lambda" {
   api_gateway_execution_arn = module.app_lambda.api_gateway_execution_arn
   lambda_package_s3_bucket  = aws_s3_bucket.lambda_artifacts.id
   lambda_package_s3_key     = aws_s3_object.placeholder.key
+
+  # Summary pipeline (003-customer-context-and-settings)
+  summary_queue_url = aws_sqs_queue.ai_summary.url
+  summary_queue_arn = aws_sqs_queue.ai_summary.arn
 }
 
 ###############################################################################
@@ -183,6 +218,10 @@ module "ai_worker_lambda" {
 
   database_url              = data.aws_ssm_parameter.supabase_db_url.value
   database_url_service_role = data.aws_ssm_parameter.supabase_db_url_service_role.value
+
+  # Summary pipeline (003-customer-context-and-settings)
+  summary_queue_arn = aws_sqs_queue.ai_summary.arn
+  summary_queue_url = aws_sqs_queue.ai_summary.url
 }
 
 ###############################################################################

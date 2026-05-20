@@ -409,8 +409,31 @@ describe('handler — SC-007 backward compat (all new columns NULL)', () => {
   })
 })
 
-describe('handler — summary jobType (stub)', () => {
-  it('handles jobType summary without throwing or calling Anthropic', async () => {
+describe('handler — summary jobType', () => {
+  it('handles summary job: resolves tenant and skips Anthropic when below threshold', async () => {
+    let selectCallCount = 0
+    mockWithTenant.mockImplementationOnce(async (_tenantId: string, fn: (tx: unknown) => unknown) =>
+      fn({
+        select: vi.fn(() => {
+          selectCallCount++
+          if (selectCallCount === 1) {
+            // conversation row — returns summary + lastSummarizedAt
+            return {
+              from: vi.fn(() => ({
+                where: vi.fn(() => Promise.resolve([{ summary: null, lastSummarizedAt: null }])),
+              })),
+            }
+          }
+          // totalChars aggregate — well below 2000 threshold
+          return {
+            from: vi.fn(() => ({
+              where: vi.fn(() => Promise.resolve([{ totalChars: '100' }])),
+            })),
+          }
+        }),
+      }),
+    )
+
     await handler(
       makeSqsEvent({
         jobType: 'summary',
@@ -421,7 +444,27 @@ describe('handler — summary jobType (stub)', () => {
       () => {},
     )
 
-    expect(mockAnthropicCreate).not.toHaveBeenCalled()
-    expect(mockDbAdminWhere).not.toHaveBeenCalled()
+    expect(mockDbAdminWhere).toHaveBeenCalledOnce()  // tenant resolved
+    expect(mockWithTenant).toHaveBeenCalledOnce()    // threshold check ran
+    expect(mockAnthropicCreate).not.toHaveBeenCalled() // correctly skipped
+  })
+
+  it('handles summary job when SUMMARY_PIPELINE_ENABLED=false without calling dbAdmin', async () => {
+    process.env.SUMMARY_PIPELINE_ENABLED = 'false'
+    try {
+      await handler(
+        makeSqsEvent({
+          jobType: 'summary',
+          conversationId: CONVERSATION_ID,
+        }),
+        {} as never,
+        () => {},
+      )
+
+      expect(mockAnthropicCreate).not.toHaveBeenCalled()
+      expect(mockDbAdminWhere).not.toHaveBeenCalled()
+    } finally {
+      delete process.env.SUMMARY_PIPELINE_ENABLED
+    }
   })
 })

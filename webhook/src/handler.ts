@@ -7,6 +7,7 @@ import { getDbAdmin } from './db/client'
 import { withTenant } from './db/with-tenant'
 import { aiDrafts, connectedPages, conversations, messages } from './db/schema'
 import { getSsmParameter } from './services/ssm'
+import { maybeEnqueueSummaryJob } from './services/summary-trigger'
 import { env } from './env'
 import { verifySignature } from './signature'
 
@@ -108,12 +109,18 @@ function determineMessageType(msg: z.infer<typeof messageSchema>): {
   return { messageType: 'unknown', body: '' }
 }
 
+interface TxResult {
+  conversationId: string
+  newMessageId: string | null
+  needsNameFetch: boolean
+}
+
 async function processMessagingEvent(
   event: MessagingEvent,
   tenantId: string,
   pageUuid: string,
   pageAccessTokenEncrypted: Buffer,
-): Promise<string | null> {
+): Promise<{ messageId: string; conversationId: string } | null> {
   const msg = event.message
   if (!msg) return null
 
@@ -133,10 +140,7 @@ async function processMessagingEvent(
   const psid = event.sender.id
   const { messageType, body } = determineMessageType(msg)
 
-  let convId: string | null = null
-  let needsNameFetch = false
-
-  const newMessageId = await withTenant(tenantId, async (tx) => {
+  const txResult = await withTenant(tenantId, async (tx): Promise<TxResult | null> => {
     const [conv] = await tx
       .insert(conversations)
       .values({
@@ -151,9 +155,6 @@ async function processMessagingEvent(
       .returning({ id: conversations.id, customerName: conversations.customerName })
 
     if (!conv) throw new Error('Failed to upsert conversation')
-
-    convId = conv.id
-    needsNameFetch = !conv.customerName
 
     const inserted = await tx
       .insert(messages)
@@ -170,7 +171,9 @@ async function processMessagingEvent(
       .returning({ id: messages.id })
 
     const newMsg = inserted[0]
-    if (!newMsg) return null
+    if (!newMsg) {
+      return { conversationId: conv.id, newMessageId: null, needsNameFetch: !conv.customerName }
+    }
 
     await tx
       .update(conversations)
@@ -181,7 +184,9 @@ async function processMessagingEvent(
       })
       .where(eq(conversations.id, conv.id))
 
-    if (messageType !== 'text') return null
+    if (messageType !== 'text') {
+      return { conversationId: conv.id, newMessageId: null, needsNameFetch: !conv.customerName }
+    }
 
     const draftInserted = await tx
       .insert(aiDrafts)
@@ -189,12 +194,18 @@ async function processMessagingEvent(
       .onConflictDoNothing()
       .returning({ id: aiDrafts.id })
 
-    return draftInserted[0] ? newMsg.id : null
+    return {
+      conversationId: conv.id,
+      newMessageId: draftInserted[0] ? newMsg.id : null,
+      needsNameFetch: !conv.customerName,
+    }
   })
+
+  if (!txResult) return null
 
   // Fetch and store the sender's name only for new conversations (customerName is null).
   // Done outside the transaction to avoid holding a DB connection during the API call.
-  if (needsNameFetch && convId) {
+  if (txResult.needsNameFetch) {
     try {
       const masterKey = await getMasterKey()
       const pageAccessToken = decryptToken(pageAccessTokenEncrypted, masterKey)
@@ -204,7 +215,7 @@ async function processMessagingEvent(
           await tx
             .update(conversations)
             .set({ customerName: name })
-            .where(eq(conversations.id, convId!))
+            .where(eq(conversations.id, txResult.conversationId))
         })
       }
     } catch (err) {
@@ -212,7 +223,8 @@ async function processMessagingEvent(
     }
   }
 
-  return newMessageId
+  if (!txResult.newMessageId) return null
+  return { messageId: txResult.newMessageId, conversationId: txResult.conversationId }
 }
 
 async function handleGet(
@@ -283,19 +295,23 @@ async function handlePost(
     }
 
     for (const msgEvent of entry.messaging) {
-      const newMessageId = await processMessagingEvent(msgEvent, page.tenantId, page.id, page.pageAccessTokenEncrypted)
+      const result = await processMessagingEvent(msgEvent, page.tenantId, page.id, page.pageAccessTokenEncrypted)
 
-      if (newMessageId) {
+      if (result) {
         try {
           await sqsClient.send(
             new SendMessageCommand({
               QueueUrl: env.SQS_QUEUE_URL,
-              MessageBody: JSON.stringify({ messageId: newMessageId }),
+              MessageBody: JSON.stringify({ messageId: result.messageId }),
             }),
           )
         } catch (err) {
-          console.error('sqs_enqueue_failed', { messageId: newMessageId, err })
+          console.error('sqs_enqueue_failed', { messageId: result.messageId, err })
         }
+
+        // Summary trigger is independent of draft SQS: fires even if draft enqueue failed,
+        // since it tracks conversation char count, not AI draft generation.
+        await maybeEnqueueSummaryJob(result.conversationId, page.tenantId)
       }
     }
   }
