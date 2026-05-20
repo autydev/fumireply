@@ -35,13 +35,13 @@ description: "Tasks for 003 — 会話コンテキストの永続化と設定の
 <!-- unit: U1.1 | deps: none | scope: backend | tasks: T001-T017 | files: ~10 | automation: auto -->
 **Unit U1.1 (Foundation PR)**: Phase 1 + Phase 2 を 1 PR にまとめる。DB マイグレーション + ai-worker プロンプト合成リファクタ + UI 共通部品 (AutoSaveBadge / i18n キー雛形 / 3 カラム CSS) + 回帰テスト (handler 全 NULL ガード)。これが全 Story の前提なので最初にマージされる。LOC 概算 ~500。
 
-- [ ] T001 Verify branch is `003-customer-context-and-settings` (created by /speckit.specify) and run `npm ci` in both `app/` and `ai-worker/` to ensure clean install (no new dependencies expected — both already have `@anthropic-ai/sdk` / `@aws-sdk/client-sqs` / `drizzle-orm` / `zod`)
+- [x] T001 Verify branch is `003-customer-context-and-settings` (created by /speckit.specify) and run `npm ci` in both `app/` and `ai-worker/` to ensure clean install (no new dependencies expected — both already have `@anthropic-ai/sdk` / `@aws-sdk/client-sqs` / `drizzle-orm` / `zod`)
 
-- [ ] T002 [P] Create `app/src/lib/settings/char-limits.ts` exporting `PAGE_PROMPT_MAX = 2000`, `CUSTOMER_PROMPT_MAX = 1000`, `NOTE_MAX = 1000`, and `SUMMARY_TRIGGER_THRESHOLD_CHARS = 2000` (env override via `process.env.SUMMARY_TRIGGER_THRESHOLD_CHARS`), plus Zod schemas `pagePromptSchema`, `customerPromptSchema`, `noteSchema` for reuse across server fns (per research.md R-003)
+- [x] T002 [P] Create `app/src/lib/settings/char-limits.ts` exporting `PAGE_PROMPT_MAX = 2000`, `CUSTOMER_PROMPT_MAX = 1000`, `NOTE_MAX = 1000`, and `SUMMARY_TRIGGER_THRESHOLD_CHARS = 2000` (env override via `process.env.SUMMARY_TRIGGER_THRESHOLD_CHARS`), plus Zod schemas `pagePromptSchema`, `customerPromptSchema`, `noteSchema` for reuse across server fns (per research.md R-003)
 
-- [ ] T003 [P] Mirror the same constants in `ai-worker/src/config.ts` (new file) — `SUMMARY_TRIGGER_THRESHOLD_CHARS`, `RECENT_MESSAGES_CAP = 50`, `SUMMARY_MAX_INPUT_MESSAGES = 200`. ai-worker is a separate Lambda package so it cannot import from `app/`; constants must be duplicated. Add a comment referencing `app/src/lib/settings/char-limits.ts` for drift awareness
+- [x] T003 [P] Mirror the same constants in `ai-worker/src/config.ts` (new file) — `SUMMARY_TRIGGER_THRESHOLD_CHARS`, `RECENT_MESSAGES_CAP = 50`, `SUMMARY_MAX_INPUT_MESSAGES = 200`. ai-worker is a separate Lambda package so it cannot import from `app/`; constants must be duplicated. Add a comment referencing `app/src/lib/settings/char-limits.ts` for drift awareness
 
-- [ ] T004 [P] Add new env vars to `app/.env.example` (and `ai-worker/.env.example` if present): `AI_SUMMARY_QUEUE_URL=`, `SUMMARY_TRIGGER_THRESHOLD_CHARS=2000`, `SUMMARY_PIPELINE_ENABLED=true`. Document each per `contracts/summary-job.md` §env
+- [x] T004 [P] Add new env vars to `app/.env.example` (and `ai-worker/.env.example` if present): `AI_SUMMARY_QUEUE_URL=`, `SUMMARY_TRIGGER_THRESHOLD_CHARS=2000`, `SUMMARY_PIPELINE_ENABLED=true`. Document each per `contracts/summary-job.md` §env
 
 ---
 
@@ -53,45 +53,45 @@ description: "Tasks for 003 — 会話コンテキストの永続化と設定の
 
 ### DB スキーマ
 
-- [ ] T005 Update Drizzle schema in `app/src/server/db/schema.ts` — add `customPrompt` (text, nullable) to `connectedPages`, add `summary, lastSummarizedAt, tonePreset, customPrompt, note` to `conversations`. Add `check()` constraints per data-model.md "Drizzle Schema 差分" section (3 CHECK constraints on conversations, 1 on connected_pages)
-- [ ] T006 [P] Mirror the same schema additions in `ai-worker/src/db/schema.ts` (keep app and ai-worker schemas in sync — both packages compile against this shape)
-- [ ] T007 Run `npm run db:generate` in `app/` to produce `app/src/server/db/migrations/0002_customer_context.sql`. Verify the generated SQL matches data-model.md "マイグレーション" section (6 ADD COLUMN + 4 ADD CONSTRAINT). Hand-edit if Drizzle omits the CHECK constraint syntax
-- [ ] T008 Apply migration locally via `npm run db:migrate` in `app/`. Verify via psql/Supabase Studio that all 6 columns exist and CHECK constraints reject invalid `tone_preset` and over-length `custom_prompt` (per quickstart.md §2 confirmation queries)
+- [x] T005 Update Drizzle schema in `app/src/server/db/schema.ts` — add `customPrompt` (text, nullable) to `connectedPages`, add `summary, lastSummarizedAt, tonePreset, customPrompt, note` to `conversations`. Add `check()` constraints per data-model.md "Drizzle Schema 差分" section (3 CHECK constraints on conversations, 1 on connected_pages)
+- [x] T006 [P] Mirror the same schema additions in `ai-worker/src/db/schema.ts` (keep app and ai-worker schemas in sync — both packages compile against this shape)
+- [x] T007 Run `npm run db:generate` in `app/` to produce `app/src/server/db/migrations/0002_customer_context.sql`. Verify the generated SQL matches data-model.md "マイグレーション" section (6 ADD COLUMN + 4 ADD CONSTRAINT). Hand-edit if Drizzle omits the CHECK constraint syntax
+- [x] T008 Apply migration locally via `npm run db:migrate` in `app/`. Verify via psql/Supabase Studio that all 6 columns exist and CHECK constraints reject invalid `tone_preset` and over-length `custom_prompt` (per quickstart.md §2 confirmation queries)
 
 ### AI Worker — プロンプト合成基盤 (US 共通)
 
-- [ ] T009 Refactor `ai-worker/src/prompt.ts` — extract `BASE_SYSTEM_PROMPT` (existing hard-coded prompt) as a named export, add new exported pure function `buildAdditionalSystemPrompt(parts: { pagePrompt: string | null; tonePreset: 'friendly'|'professional'|'concise'|null; customerPrompt: string | null; summary: string | null }): string` that composes sections in the order Page → Tone → Customer → Summary per `contracts/prompt-composition.md`. Also export `TONE_LABEL` constant. Per research.md R-008, the function signature MUST NOT accept `note`
-- [ ] T010 Modify `buildUserPrompt` in `ai-worker/src/prompt.ts` to take the same `HistoryMessage[]` shape but document that callers will pass up to `RECENT_MESSAGES_CAP = 50` items (no internal change to the function, but update JSDoc to reflect that cursor-based filtering now happens at the caller in handler.ts)
-- [ ] T011 [P] Modify `ai-worker/src/handler.ts` `processRecord` to:
+- [x] T009 Refactor `ai-worker/src/prompt.ts` — extract `BASE_SYSTEM_PROMPT` (existing hard-coded prompt) as a named export, add new exported pure function `buildAdditionalSystemPrompt(parts: { pagePrompt: string | null; tonePreset: 'friendly'|'professional'|'concise'|null; customerPrompt: string | null; summary: string | null }): string` that composes sections in the order Page → Tone → Customer → Summary per `contracts/prompt-composition.md`. Also export `TONE_LABEL` constant. Per research.md R-008, the function signature MUST NOT accept `note`
+- [x] T010 Modify `buildUserPrompt` in `ai-worker/src/prompt.ts` to take the same `HistoryMessage[]` shape but document that callers will pass up to `RECENT_MESSAGES_CAP = 50` items (no internal change to the function, but update JSDoc to reflect that cursor-based filtering now happens at the caller in handler.ts)
+- [x] T011 [P] Modify `ai-worker/src/handler.ts` `processRecord` to:
    1. Parse SQS body and dispatch on `jobType` (default `'draft'` for back-compat per contracts/summary-job.md §dispatch)
    2. Extract the existing draft-handling logic into a new function `processDraftJob(body)`
    3. Inside `processDraftJob`, after resolving tenant, SELECT new columns (`conversations.summary, last_summarized_at, tone_preset, custom_prompt` and `connected_pages.custom_prompt` via `conversations.page_id`) in the same `withTenant` transaction
    4. Replace the `LIMIT 5` history query with a cursor-aware query: `WHERE timestamp > COALESCE(last_summarized_at, '1970-01-01'::timestamptz) ORDER BY timestamp DESC LIMIT 50`
    5. Build `system` field as a 2-element array — `[{ text: BASE_SYSTEM_PROMPT, cache_control: ephemeral }, { text: buildAdditionalSystemPrompt(...) }]` and OMIT the second element if it returns empty string
    6. Add structured log event `draft_prompt_composed` per contracts/prompt-composition.md §ログ
-- [ ] T012 Add wrapper for `processSummaryJob(body)` stub in `ai-worker/src/handler.ts` — initially a no-op that logs `event: 'summary_skipped_not_yet_implemented'`. Story 3 fills it in. This makes `jobType: 'summary'` consumable from day 1 without DLQ flooding
+- [x] T012 Add wrapper for `processSummaryJob(body)` stub in `ai-worker/src/handler.ts` — initially a no-op that logs `event: 'summary_skipped_not_yet_implemented'`. Story 3 fills it in. This makes `jobType: 'summary'` consumable from day 1 without DLQ flooding
 
 ### AI Worker — Tests (foundational backward compat)
 
-- [ ] T013 [P] Add unit tests in `ai-worker/src/prompt.test.ts` (new file) for `buildAdditionalSystemPrompt`:
+- [x] T013 [P] Add unit tests in `ai-worker/src/prompt.test.ts` (new file) for `buildAdditionalSystemPrompt`:
    - All 4 args null → returns empty string
    - Each arg present individually → output contains the corresponding section label and value
    - All present → sections appear in order Page → Tone → Customer → Summary
    - `note` cannot be passed (TypeScript should reject; runtime test confirms that even if a "note"-like field were spread into parts, it doesn't appear in output)
    - tonePreset enum → TONE_LABEL value present
-- [ ] T014 Update existing tests in `ai-worker/src/handler.test.ts` — add cases for:
+- [x] T014 Update existing tests in `ai-worker/src/handler.test.ts` — add cases for:
    - All new columns NULL (back-compat, SC-007): Anthropic is called with only the base system prompt, and history of up to 50 (not 5) text messages
    - jobType `'summary'` (no-op stub from T012): handler returns without throwing
    - Existing draft tests (current cases) continue to pass (regression guard)
 
 ### UI — 共通部品 + i18n キー雛形
 
-- [ ] T015 [P] Implement shared `AutoSaveBadge` component in `app/src/routes/(app)/-components/AutoSaveBadge.tsx` — props `state: 'editing' | 'saving' | 'saved' | null`, renders i18n-aware text with subtle color. Reused by both Settings and CustomerPanel
-- [ ] T016 [P] Add i18n key skeleton entries to `app/messages/en.json` and `app/messages/ja.json` for Settings + CustomerPanel — list of keys (with placeholder values to be filled per-story):
+- [x] T015 [P] Implement shared `AutoSaveBadge` component in `app/src/routes/(app)/-components/AutoSaveBadge.tsx` — props `state: 'editing' | 'saving' | 'saved' | null`, renders i18n-aware text with subtle color. Reused by both Settings and CustomerPanel
+- [x] T016 [P] Add i18n key skeleton entries to `app/messages/en.json` and `app/messages/ja.json` for Settings + CustomerPanel — list of keys (with placeholder values to be filled per-story):
    - Settings: `settings_title, settings_subtitle, settings_section_pages, settings_no_pages_empty, settings_no_pages_cta, settings_page_prompt_label, settings_page_prompt_placeholder, settings_page_prompt_help, settings_chars_remaining`
    - CustomerPanel: `cp_section_persona, cp_persona_disclaimer, cp_persona_empty, cp_section_ai_settings, cp_tone_label, cp_tone_friendly, cp_tone_professional, cp_tone_concise, cp_custom_prompt_label, cp_custom_prompt_placeholder, cp_section_note, cp_note_label, cp_note_placeholder, cp_toggle_show, cp_toggle_hide`
    - Save state shared: `autosave_editing, autosave_saving, autosave_saved`
-- [ ] T017 [P] Add CSS for the future 3-column layout in `app/styles.css` (or wherever thread page styles live) — define `.customer-panel` width/position, a `--customer-panel-width: 320px` token, and a media query for `width < 1280px` that defaults to hidden + toggle button visible (per research.md R-009)
+- [x] T017 [P] Add CSS for the future 3-column layout in `app/styles.css` (or wherever thread page styles live) — define `.customer-panel` width/position, a `--customer-panel-width: 320px` token, and a media query for `width < 1280px` that defaults to hidden + toggle button visible (per research.md R-009)
 
 **Checkpoint**: DB に新規 6 列が入り、ai-worker は全列 NULL でも回帰なく動作し、ai-worker のプロンプト合成は 5 段化されている (実際の値はまだ NULL なのでベース挙動のまま)。UI 共通部品と i18n キー雛形が準備済。
 
