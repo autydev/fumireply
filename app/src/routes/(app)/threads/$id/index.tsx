@@ -4,6 +4,7 @@ import type { MessageWithDraft } from './-lib/get-conversation.fn'
 import { getConversationFn } from './-lib/get-conversation.fn'
 import { ThreadMessages } from './-components/ThreadMessages'
 import { ReplyForm } from './-components/ReplyForm'
+import { CustomerPanel, useCustomerPanelOpen } from './-components/CustomerPanel'
 import { Avatar } from '~/components/ui/avatar'
 import { InboxList } from '../../inbox/-components/InboxList'
 import { listConversationsFn } from '../../inbox/-lib/list-conversations.fn'
@@ -30,6 +31,7 @@ function ThreadPage() {
   const { id } = Route.useParams()
   const router = useRouter()
   const [filter, setFilter] = useState<FilterKey>('all')
+  const { isOpen: panelOpen, toggle: togglePanel } = useCustomerPanelOpen()
 
   useEffect(() => {
     const tick = () => {
@@ -164,6 +166,22 @@ function ThreadPage() {
           >
             <MoreHorizIcon size={16} />
           </button>
+          <button
+            aria-label={panelOpen ? m.cp_toggle_hide() : m.cp_toggle_show()}
+            className="customer-panel__toggle"
+            onClick={togglePanel}
+            style={{
+              padding: 6,
+              borderRadius: 7,
+              color: panelOpen ? 'var(--color-accent)' : 'var(--color-ink-3)',
+              cursor: 'pointer',
+              transition: 'background 120ms, color 120ms',
+              fontSize: 11,
+              fontWeight: 600,
+            }}
+          >
+            {panelOpen ? m.cp_toggle_hide() : m.cp_toggle_show()}
+          </button>
         </div>
 
         {/* Messages area */}
@@ -178,6 +196,9 @@ function ThreadPage() {
           latestInboundMessageId={latestInboundMessageId}
         />
       </div>
+
+      {/* Customer panel — right column */}
+      <CustomerPanel conversation={conversation} isOpen={panelOpen} />
     </div>
   )
 }
