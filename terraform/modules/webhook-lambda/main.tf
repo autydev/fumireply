@@ -109,11 +109,11 @@ resource "aws_lambda_function" "webhook" {
 
   environment {
     variables = {
-      SSM_PATH_PREFIX                = var.ssm_path_prefix
-      SQS_QUEUE_URL                  = var.sqs_queue_url
-      AI_SUMMARY_QUEUE_URL           = var.summary_queue_url
+      SSM_PATH_PREFIX                 = var.ssm_path_prefix
+      SQS_QUEUE_URL                   = var.sqs_queue_url
+      AI_SUMMARY_QUEUE_URL            = var.summary_queue_url
       SUMMARY_TRIGGER_THRESHOLD_CHARS = var.summary_trigger_threshold_chars
-      SUMMARY_PIPELINE_ENABLED       = var.summary_pipeline_enabled
+      SUMMARY_PIPELINE_ENABLED        = var.summary_pipeline_enabled
     }
   }
 
