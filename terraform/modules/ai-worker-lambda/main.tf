@@ -132,7 +132,7 @@ resource "aws_lambda_event_source_mapping" "sqs" {
 }
 
 resource "aws_lambda_event_source_mapping" "summary_sqs" {
-  count            = var.summary_queue_arn != "" ? 1 : 0
+  count            = var.summary_event_source_enabled ? 1 : 0
   event_source_arn = var.summary_queue_arn
   function_name    = aws_lambda_function.ai_worker.arn
   batch_size       = 1

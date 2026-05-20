@@ -220,8 +220,9 @@ module "ai_worker_lambda" {
   database_url_service_role = data.aws_ssm_parameter.supabase_db_url_service_role.value
 
   # Summary pipeline (003-customer-context-and-settings)
-  summary_queue_arn = aws_sqs_queue.ai_summary.arn
-  summary_queue_url = aws_sqs_queue.ai_summary.url
+  summary_queue_arn            = aws_sqs_queue.ai_summary.arn
+  summary_queue_url            = aws_sqs_queue.ai_summary.url
+  summary_event_source_enabled = true
 }
 
 ###############################################################################

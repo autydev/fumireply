@@ -47,6 +47,12 @@ variable "summary_queue_arn" {
   default     = ""
 }
 
+variable "summary_event_source_enabled" {
+  description = "Whether to create the SQS event source mapping for the summary queue. Must be statically known at plan time (cannot derive from summary_queue_arn because it's known-after-apply when the queue is freshly created)."
+  type        = bool
+  default     = false
+}
+
 variable "summary_queue_url" {
   description = "URL of the ai-summary SQS queue (injected as AI_SUMMARY_QUEUE_URL env var)."
   type        = string
