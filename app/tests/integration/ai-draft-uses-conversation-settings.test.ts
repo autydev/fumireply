@@ -172,6 +172,10 @@ afterEach(() => {
 })
 
 describe('AI Worker — conversation settings in system prompt', () => {
+  // System blocks layout (always): [BASE, (optional additional), LANGUAGE_DIRECTIVE].
+  // LANGUAGE_DIRECTIVE is the final block to override any language bleed from
+  // user-supplied content (page_prompt / tone / customer_prompt / summary).
+
   it('tone_preset=concise and custom_prompt are included in Anthropic system payload', async () => {
     setupWithTenantMock({
       summary: null,
@@ -184,14 +188,15 @@ describe('AI Worker — conversation settings in system prompt', () => {
     await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn())
 
     expect(mockAnthropicCreate).toHaveBeenCalledOnce()
-    // system should have 2 blocks: base + additional
-    expect(capturedSystemBlocks).toHaveLength(2)
+    // 3 blocks: base + additional + language directive
+    expect(capturedSystemBlocks).toHaveLength(3)
     const additionalBlock = capturedSystemBlocks[1] as { text: string }
     expect(additionalBlock.text).toContain('Concise')
     expect(additionalBlock.text).toContain('No emojis.')
+    expect((capturedSystemBlocks[2] as { text: string }).text).toMatch(/Output language rule/)
   })
 
-  it('all columns NULL → only base system prompt block (SC-007 back-compat)', async () => {
+  it('all columns NULL → base + language directive only (SC-007 back-compat)', async () => {
     setupWithTenantMock({
       summary: null,
       lastSummarizedAt: null,
@@ -203,8 +208,9 @@ describe('AI Worker — conversation settings in system prompt', () => {
     await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn())
 
     expect(mockAnthropicCreate).toHaveBeenCalledOnce()
-    // Only the base system prompt block — no additional block
-    expect(capturedSystemBlocks).toHaveLength(1)
+    // 2 blocks: base + language directive (no additional block when all settings null)
+    expect(capturedSystemBlocks).toHaveLength(2)
+    expect((capturedSystemBlocks[1] as { text: string }).text).toMatch(/Output language rule/)
   })
 
   it('page custom_prompt included in additional system block', async () => {
@@ -218,7 +224,8 @@ describe('AI Worker — conversation settings in system prompt', () => {
 
     await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn())
 
-    expect(capturedSystemBlocks).toHaveLength(2)
+    // 3 blocks: base + additional + language directive
+    expect(capturedSystemBlocks).toHaveLength(3)
     const additionalBlock = capturedSystemBlocks[1] as { text: string }
     expect(additionalBlock.text).toContain('No returns after 30 days.')
   })
@@ -236,7 +243,7 @@ describe('AI Worker — conversation settings in system prompt', () => {
 
     await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn())
 
-    // All-null → single base block, so note obviously not present
-    expect(capturedSystemBlocks).toHaveLength(1)
+    // All-null → base + language directive only (no additional block, so note obviously absent)
+    expect(capturedSystemBlocks).toHaveLength(2)
   })
 })
