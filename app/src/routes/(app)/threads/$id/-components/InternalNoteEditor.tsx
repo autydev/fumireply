@@ -96,9 +96,6 @@ export function InternalNoteEditor({ conversationId, note: initialNote, onUpdate
         <div style={{ fontSize: 11, color: 'var(--color-ink-4)', textAlign: 'right', marginTop: 2 }}>
           {m.settings_chars_remaining({ remaining })}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 4 }}>
-          {m.cp_note_placeholder()}
-        </div>
       </div>
     </div>
   )
