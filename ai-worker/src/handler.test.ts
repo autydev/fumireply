@@ -410,8 +410,30 @@ describe('handler — SC-007 backward compat (all new columns NULL)', () => {
 })
 
 describe('handler — summary jobType', () => {
-  it('handles summary job: resolves tenant and returns early below threshold', async () => {
-    // withTenant returns undefined (no mock impl) → threshold loop never runs → no Anthropic call
+  it('handles summary job: resolves tenant and skips Anthropic when below threshold', async () => {
+    let selectCallCount = 0
+    mockWithTenant.mockImplementationOnce(async (_tenantId: string, fn: (tx: unknown) => unknown) =>
+      fn({
+        select: vi.fn(() => {
+          selectCallCount++
+          if (selectCallCount === 1) {
+            // conversation row — returns summary + lastSummarizedAt
+            return {
+              from: vi.fn(() => ({
+                where: vi.fn(() => Promise.resolve([{ summary: null, lastSummarizedAt: null }])),
+              })),
+            }
+          }
+          // totalChars aggregate — well below 2000 threshold
+          return {
+            from: vi.fn(() => ({
+              where: vi.fn(() => Promise.resolve([{ totalChars: '100' }])),
+            })),
+          }
+        }),
+      }),
+    )
+
     await handler(
       makeSqsEvent({
         jobType: 'summary',
@@ -422,9 +444,9 @@ describe('handler — summary jobType', () => {
       () => {},
     )
 
-    expect(mockAnthropicCreate).not.toHaveBeenCalled()
-    // dbAdmin IS called to resolve tenantId
-    expect(mockDbAdminWhere).toHaveBeenCalledOnce()
+    expect(mockDbAdminWhere).toHaveBeenCalledOnce()  // tenant resolved
+    expect(mockWithTenant).toHaveBeenCalledOnce()    // threshold check ran
+    expect(mockAnthropicCreate).not.toHaveBeenCalled() // correctly skipped
   })
 
   it('handles summary job when SUMMARY_PIPELINE_ENABLED=false without calling dbAdmin', async () => {

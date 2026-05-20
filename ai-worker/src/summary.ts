@@ -67,7 +67,11 @@ export async function processSummaryJob(body: unknown): Promise<void> {
 
   const parsed = SUMMARY_JOB_SCHEMA.safeParse(body)
   if (!parsed.success) {
-    console.error({ event: 'summary_job_parse_error', error: parsed.error.message, body })
+    // Do not log `body` — it may contain PII from unexpected payloads.
+    const safeJobType = typeof (body as Record<string, unknown>)?.jobType === 'string'
+      ? (body as Record<string, unknown>).jobType
+      : undefined
+    console.error({ event: 'summary_job_parse_error', error: parsed.error.message, jobType: safeJobType })
     return
   }
 
@@ -109,11 +113,11 @@ export async function processSummaryJob(body: unknown): Promise<void> {
     )
 
     const [{ totalChars }] = await tx
-      .select({ totalChars: sql<number>`COALESCE(SUM(char_length(${messages.body})), 0)::int` })
+      .select({ totalChars: sql<string>`COALESCE(SUM(char_length(${messages.body})), 0)::bigint` })
       .from(messages)
       .where(msgWhere)
 
-    if ((totalChars ?? 0) < SUMMARY_TRIGGER_THRESHOLD_CHARS) {
+    if (parseInt(totalChars ?? '0', 10) < SUMMARY_TRIGGER_THRESHOLD_CHARS) {
       console.info({
         event: 'summary_skipped_below_threshold',
         tenantId,
