@@ -13,10 +13,10 @@ function SettingsPage() {
 
   return (
     <div
+      className="settings-page"
       style={{
         flex: 1,
         overflowY: 'auto',
-        padding: '32px 40px',
         maxWidth: 720,
       }}
     >

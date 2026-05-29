@@ -59,6 +59,7 @@ function ThreadPage() {
         selectedId={id}
         filter={filter}
         onFilterChange={setFilter}
+        className="inbox-list--in-thread"
       />
 
       {/* Thread view */}

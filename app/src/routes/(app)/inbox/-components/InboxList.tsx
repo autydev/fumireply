@@ -12,9 +12,10 @@ type Props = {
   selectedId?: string
   filter?: FilterKey
   onFilterChange?: (f: FilterKey) => void
+  className?: string
 }
 
-export function InboxList({ conversations, selectedId, filter = 'all', onFilterChange }: Props) {
+export function InboxList({ conversations, selectedId, filter = 'all', onFilterChange, className }: Props) {
   const filters: { key: FilterKey; label: string; count: number }[] = [
     { key: 'all', label: m.inbox_filter_all(), count: conversations.length },
     { key: 'unread', label: m.inbox_filter_unread(), count: conversations.filter((c) => c.unread_count > 0).length },
@@ -39,9 +40,8 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
 
   return (
     <div
+      className={className ? `inbox-list ${className}` : 'inbox-list'}
       style={{
-        width: 340,
-        flexShrink: 0,
         background: 'var(--color-bg-raised)',
         borderRight: '1px solid var(--color-line)',
         display: 'flex',

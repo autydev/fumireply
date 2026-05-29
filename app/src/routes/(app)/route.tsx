@@ -25,13 +25,31 @@ export const Route = createFileRoute('/(app)')({
 })
 
 function AppLayout() {
+  const location = useLocation()
+  // Thread detail and onboarding are focused full-screen flows on mobile;
+  // suppress the global top/bottom chrome so they get the full viewport.
+  const hideChrome =
+    location.pathname.startsWith('/threads') || location.pathname.startsWith('/onboarding')
+
   return (
-    <div style={{ display: 'flex', height: '100vh', background: 'var(--color-bg)', overflow: 'hidden' }}>
-      <Sidebar />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <TokenStatusBanner />
-        <Outlet />
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100dvh',
+        background: 'var(--color-bg)',
+        overflow: 'hidden',
+      }}
+    >
+      {!hideChrome && <MobileTopBar />}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+        <Sidebar />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+          <TokenStatusBanner />
+          <Outlet />
+        </div>
       </div>
+      {!hideChrome && <MobileBottomNav />}
     </div>
   )
 }
@@ -63,13 +81,10 @@ function Sidebar() {
 
   return (
     <div
+      className="app-sidebar"
       style={{
-        width: 220,
-        flexShrink: 0,
         background: 'var(--color-bg-sunken)',
         borderRight: '1px solid var(--color-line)',
-        display: 'flex',
-        flexDirection: 'column',
         padding: '14px 10px 10px',
       }}
     >
@@ -212,5 +227,119 @@ function Sidebar() {
         </button>
       </div>
     </div>
+  )
+}
+
+function MobileTopBar() {
+  const router = useRouter()
+
+  async function handleLogout() {
+    await logoutFn()
+    await router.navigate({ to: '/login', search: { returnTo: undefined, error: undefined } })
+  }
+
+  return (
+    <header
+      className="mobile-topbar"
+      style={{
+        alignItems: 'center',
+        gap: 10,
+        padding: '10px 14px',
+        background: 'var(--color-bg-sunken)',
+        borderBottom: '1px solid var(--color-line)',
+        flexShrink: 0,
+      }}
+    >
+      <div
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: 7,
+          background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-violet) 100%)',
+          display: 'grid',
+          placeItems: 'center',
+          color: 'white',
+          fontWeight: 800,
+          fontSize: 13,
+          letterSpacing: '-0.02em',
+          boxShadow: 'var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.25)',
+          flexShrink: 0,
+        }}
+      >
+        F
+      </div>
+      <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: '-0.01em' }}>Fumireply</span>
+
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <LanguageToggle />
+        <button
+          onClick={handleLogout}
+          aria-label={m.nav_logout()}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 8,
+            borderRadius: 8,
+            color: 'var(--color-ink-3)',
+            cursor: 'pointer',
+          }}
+        >
+          <LogOutIcon size={16} />
+        </button>
+      </div>
+    </header>
+  )
+}
+
+function MobileBottomNav() {
+  const location = useLocation()
+
+  return (
+    <nav
+      className="mobile-bottomnav"
+      style={{
+        flexShrink: 0,
+        background: 'var(--color-bg-sunken)',
+        borderTop: '1px solid var(--color-line)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      }}
+    >
+      {NAV_ITEMS.map((item) => {
+        const Icon = item.icon
+        const isDisabled = item.href === '#'
+        const isActive = !isDisabled && location.pathname.startsWith(item.href)
+        const sharedStyle = {
+          display: 'flex',
+          flexDirection: 'column' as const,
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 3,
+          flex: 1,
+          padding: '8px 0',
+          fontSize: 10.5,
+          fontWeight: isActive ? 600 : 500,
+          color: isActive ? 'var(--color-primary)' : 'var(--color-ink-3)',
+          textDecoration: 'none',
+          opacity: isDisabled ? 0.4 : 1,
+        }
+
+        if (isDisabled) {
+          return (
+            <span key={item.key} aria-disabled="true" style={sharedStyle}>
+              <Icon size={19} />
+              <span>{item.label()}</span>
+            </span>
+          )
+        }
+
+        return (
+          <Link key={item.key} to={item.href as NavHref} style={sharedStyle}>
+            <Icon size={19} />
+            <span>{item.label()}</span>
+          </Link>
+        )
+      })}
+    </nav>
   )
 }

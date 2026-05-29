@@ -27,12 +27,8 @@ function InboxPage() {
       />
       {/* Thread area placeholder: selecting a conversation navigates to /threads/$id */}
       <div
+        className="inbox-empty-pane"
         style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
           background: 'var(--color-bg)',
           gap: 10,
         }}
