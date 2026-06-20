@@ -1,11 +1,11 @@
 import { createServerFn } from '@tanstack/react-start'
-import { eq } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { authMiddleware } from '~/server/middleware/auth-middleware'
 import { aiDrafts } from '~/server/db/schema'
 import { withTenant } from '~/server/db/with-tenant'
 
-const inputSchema = z.object({ messageId: z.string().uuid() })
+const inputSchema = z.object({ conversationId: z.string().uuid() })
 
 export type DraftStatus = {
   status: 'pending' | 'ready' | 'failed'
@@ -20,11 +20,18 @@ export const getDraftStatusFn = createServerFn({ method: 'POST' })
       const rows = await tx
         .select({ status: aiDrafts.status, body: aiDrafts.body })
         .from(aiDrafts)
-        .where(eq(aiDrafts.messageId, data.messageId))
+        .where(
+          and(
+            eq(aiDrafts.conversationId, data.conversationId),
+            inArray(aiDrafts.status, ['pending', 'ready']),
+          ),
+        )
+        .orderBy(desc(aiDrafts.createdAt))
         .limit(1)
 
       if (rows.length === 0) {
-        return { status: 'pending' as const, body: null }
+        // No active draft: either dismissed/sent or never created — stop polling.
+        return { status: 'ready' as const, body: null }
       }
 
       const raw = rows[0].status

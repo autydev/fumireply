@@ -3,6 +3,7 @@ import type { SQSEvent } from 'aws-lambda'
 
 // Proper UUID v4 format required by Zod v4: version nibble=4, variant nibble=8/9/a/b
 const MESSAGE_ID = '11111111-1111-4111-9111-111111111111'
+const OTHER_MESSAGE_ID = '22222222-2222-4222-9222-222222222222'
 const TENANT_ID = 'aaaaaaaa-aaaa-4aaa-9aaa-aaaaaaaaaaaa'
 const CONVERSATION_ID = 'bbbbbbbb-bbbb-4bbb-9bbb-bbbbbbbbbbbb'
 const API_KEY = 'test-anthropic-api-key'
@@ -62,6 +63,16 @@ function makeSqsEvent(body: unknown, count = 1): SQSEvent {
   return { Records: Array.from({ length: count }, (_, i) => makeRecord(i + 1)) }
 }
 
+// Default conversation-scoped draft job (coalesce: trigger === latest inbound).
+function draftJob(overrides: Record<string, unknown> = {}) {
+  return {
+    jobType: 'draft',
+    conversationId: CONVERSATION_ID,
+    triggerMessageId: MESSAGE_ID,
+    ...overrides,
+  }
+}
+
 function makeAnthropicResponse(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'msg_test',
@@ -86,11 +97,15 @@ function makeApiError(status: number, message = 'API error'): Error & { status: 
   return err
 }
 
-// Build read transaction mock (first withTenant call: get message + settings + history)
+// Build read transaction mock for the conversation-scoped draft flow.
+// Query order inside processDraftJob's read tx:
+//   1. latest inbound text message (coalesce)
+//   2. conversation settings + page custom_prompt (leftJoin)
+//   3. last outbound timestamp (max aggregate)
+//   4. unanswered batch (inbound text after last outbound)
+//   5. context history (text after summary cursor)
 function buildReadTx({
-  messageResult = [
-    { body: 'Do you have Charizard?', messageType: 'text', conversationId: CONVERSATION_ID },
-  ],
+  latestInboundId = MESSAGE_ID,
   settingsResult = [
     {
       summary: null,
@@ -100,9 +115,11 @@ function buildReadTx({
       pageCustomPrompt: null,
     },
   ],
+  lastOutboundResult = [{ ts: null }],
+  unansweredResult = [{ body: 'Do you have Charizard?' }],
   historyResult = [{ direction: 'inbound', body: 'Do you have Charizard?', messageType: 'text' }],
 }: {
-  messageResult?: Array<{ body: string; messageType: string; conversationId: string }>
+  latestInboundId?: string | null
   settingsResult?: Array<{
     summary: string | null
     lastSummarizedAt: Date | null
@@ -110,6 +127,8 @@ function buildReadTx({
     customPrompt: string | null
     pageCustomPrompt: string | null
   }>
+  lastOutboundResult?: Array<{ ts: Date | null }>
+  unansweredResult?: Array<{ body: string }>
   historyResult?: Array<{ direction: string; body: string; messageType: string }>
 } = {}) {
   let selectCallCount = 0
@@ -117,17 +136,23 @@ function buildReadTx({
   return {
     select: vi.fn(() => {
       selectCallCount++
-      const currentCount = selectCallCount
+      const n = selectCallCount
 
-      if (currentCount === 1) {
-        // SELECT message
+      if (n === 1) {
+        // latest inbound text: from().where().orderBy().limit()
         return {
           from: vi.fn(() => ({
-            where: vi.fn(() => Promise.resolve(messageResult)),
+            where: vi.fn(() => ({
+              orderBy: vi.fn(() => ({
+                limit: vi.fn(() =>
+                  Promise.resolve(latestInboundId ? [{ id: latestInboundId }] : []),
+                ),
+              })),
+            })),
           })),
         }
-      } else if (currentCount === 2) {
-        // SELECT conversation settings (with leftJoin)
+      } else if (n === 2) {
+        // settings: from().leftJoin().where()
         return {
           from: vi.fn(() => ({
             leftJoin: vi.fn(() => ({
@@ -135,8 +160,26 @@ function buildReadTx({
             })),
           })),
         }
+      } else if (n === 3) {
+        // last outbound ts: from().where()
+        return {
+          from: vi.fn(() => ({
+            where: vi.fn(() => Promise.resolve(lastOutboundResult)),
+          })),
+        }
+      } else if (n === 4) {
+        // unanswered batch: from().where().orderBy().limit()
+        return {
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              orderBy: vi.fn(() => ({
+                limit: vi.fn(() => Promise.resolve(unansweredResult)),
+              })),
+            })),
+          })),
+        }
       } else {
-        // SELECT history (cursor-aware, up to 50)
+        // context history: from().where().orderBy().limit()
         return {
           from: vi.fn(() => ({
             where: vi.fn(() => ({
@@ -151,7 +194,7 @@ function buildReadTx({
   }
 }
 
-// Build write transaction mock (second withTenant call: update ai_drafts)
+// Build write transaction mock (update ai_drafts — generate result or dismiss)
 function buildWriteTx() {
   const updateWhere = vi.fn().mockResolvedValue({ rowCount: 1 })
   const mockTx = {
@@ -182,22 +225,22 @@ describe('handler — SQS parse', () => {
     expect(mockDbAdminWhere).not.toHaveBeenCalled()
   })
 
-  it('skips processing when messageId is missing from body', async () => {
+  it('skips processing when conversationId is missing from body', async () => {
     await handler(makeSqsEvent({ wrong: 'field' }), {} as never, () => {})
     expect(mockDbAdminWhere).not.toHaveBeenCalled()
   })
 })
 
-describe('handler — message not found', () => {
-  it('returns without calling withTenant when message is not in DB', async () => {
+describe('handler — conversation not found', () => {
+  it('returns without calling withTenant when conversation is not in DB', async () => {
     mockDbAdminWhere.mockResolvedValue([])
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
+    await handler(makeSqsEvent(draftJob()), {} as never, () => {})
     expect(mockWithTenant).not.toHaveBeenCalled()
   })
 })
 
-describe('handler — normal text message', () => {
-  it('calls Anthropic and updates ai_drafts with ready status', async () => {
+describe('handler — normal batch draft', () => {
+  it('calls Anthropic and updates the active draft with ready status', async () => {
     const readTx = buildReadTx()
     const { mockTx: writeTx, updateWhere } = buildWriteTx()
     mockWithTenant
@@ -205,7 +248,7 @@ describe('handler — normal text message', () => {
       .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
     mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
+    await handler(makeSqsEvent(draftJob()), {} as never, () => {})
 
     expect(mockWithTenant).toHaveBeenCalledTimes(2)
     expect(mockWithTenant).toHaveBeenNthCalledWith(1, TENANT_ID, expect.any(Function))
@@ -235,13 +278,13 @@ describe('handler — normal text message', () => {
     mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
     mockDbAdminWhere.mockResolvedValue([{ tenantId: TENANT_ID }])
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }, 2), {} as never, () => {})
+    await handler(makeSqsEvent(draftJob(), 2), {} as never, () => {})
 
     expect(mockAnthropicCreate).toHaveBeenCalledTimes(2)
     expect(mockWithTenant).toHaveBeenCalledTimes(4)
   })
 
-  it('does NOT call Meta Send API (FR-026 Human-in-the-Loop)', async () => {
+  it('does NOT call Meta Send API (Human-in-the-Loop)', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
     const readTx = buildReadTx()
     const { mockTx: writeTx } = buildWriteTx()
@@ -250,7 +293,7 @@ describe('handler — normal text message', () => {
       .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
     mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
+    await handler(makeSqsEvent(draftJob()), {} as never, () => {})
 
     const metaCalls = fetchSpy.mock.calls.filter((args) =>
       String(args[0]).includes('graph.facebook.com'),
@@ -260,24 +303,40 @@ describe('handler — normal text message', () => {
   })
 })
 
-describe('handler — non-text message (sticker)', () => {
-  it('skips Anthropic call for sticker message_type', async () => {
-    const readTx = buildReadTx({
-      messageResult: [{ body: '', messageType: 'sticker', conversationId: CONVERSATION_ID }],
-    })
+describe('handler — coalesce (debounce)', () => {
+  it('skips generation when a newer inbound message exists (superseded)', async () => {
+    // Latest inbound is OTHER_MESSAGE_ID, but this job was triggered by MESSAGE_ID.
+    const readTx = buildReadTx({ latestInboundId: OTHER_MESSAGE_ID })
     mockWithTenant.mockImplementationOnce(
       async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx),
     )
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
+    await handler(makeSqsEvent(draftJob()), {} as never, () => {})
 
     expect(mockAnthropicCreate).not.toHaveBeenCalled()
-    expect(mockWithTenant).toHaveBeenCalledTimes(1) // only read tx, no write tx
+    expect(mockWithTenant).toHaveBeenCalledTimes(1) // read only, no write
+  })
+})
+
+describe('handler — no unanswered messages', () => {
+  it('dismisses the active draft without calling Anthropic', async () => {
+    const readTx = buildReadTx({ unansweredResult: [] })
+    const { mockTx: writeTx, updateWhere } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
+
+    await handler(makeSqsEvent(draftJob()), {} as never, () => {})
+
+    expect(mockAnthropicCreate).not.toHaveBeenCalled()
+    expect(mockWithTenant).toHaveBeenCalledTimes(2) // read + dismiss
+    const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
+    expect(setCall.status).toBe('dismissed')
   })
 })
 
 describe('handler — Anthropic API errors', () => {
-  it('updates ai_drafts with auth_failed on 401', async () => {
+  it('updates the active draft with auth_failed on 401', async () => {
     const readTx = buildReadTx()
     const { mockTx: writeTx, updateWhere } = buildWriteTx()
     mockWithTenant
@@ -285,7 +344,7 @@ describe('handler — Anthropic API errors', () => {
       .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
     mockAnthropicCreate.mockRejectedValue(makeApiError(401, 'Unauthorized'))
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
+    await handler(makeSqsEvent(draftJob()), {} as never, () => {})
 
     expect(updateWhere).toHaveBeenCalledOnce()
     const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
@@ -296,7 +355,7 @@ describe('handler — Anthropic API errors', () => {
   it('retries on 429 and succeeds on second attempt', async () => {
     vi.useFakeTimers()
     const readTx = buildReadTx()
-    const { mockTx: writeTx, updateWhere } = buildWriteTx()
+    const { mockTx: writeTx } = buildWriteTx()
     mockWithTenant
       .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
       .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
@@ -304,7 +363,7 @@ describe('handler — Anthropic API errors', () => {
       .mockRejectedValueOnce(makeApiError(429, 'Rate limited'))
       .mockResolvedValue(makeAnthropicResponse())
 
-    const handlerPromise = handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
+    const handlerPromise = handler(makeSqsEvent(draftJob()), {} as never, () => {})
     await vi.runAllTimersAsync()
     await handlerPromise
 
@@ -314,7 +373,7 @@ describe('handler — Anthropic API errors', () => {
     vi.useRealTimers()
   })
 
-  it('updates ai_drafts with server_error after 3 consecutive 503 failures', async () => {
+  it('updates the active draft with server_error after 3 consecutive 503 failures', async () => {
     vi.useFakeTimers()
     const readTx = buildReadTx()
     const { mockTx: writeTx, updateWhere } = buildWriteTx()
@@ -323,7 +382,7 @@ describe('handler — Anthropic API errors', () => {
       .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
     mockAnthropicCreate.mockRejectedValue(makeApiError(503, 'Service Unavailable'))
 
-    const handlerPromise = handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
+    const handlerPromise = handler(makeSqsEvent(draftJob()), {} as never, () => {})
     await vi.runAllTimersAsync()
     await handlerPromise
 
@@ -336,7 +395,7 @@ describe('handler — Anthropic API errors', () => {
     vi.useRealTimers()
   })
 
-  it('updates ai_drafts with unexpected_response_type when content has no text blocks', async () => {
+  it('updates the active draft with unexpected_response_type when content has no text blocks', async () => {
     const readTx = buildReadTx()
     const { mockTx: writeTx, updateWhere } = buildWriteTx()
     mockWithTenant
@@ -346,7 +405,7 @@ describe('handler — Anthropic API errors', () => {
       makeAnthropicResponse({ content: [{ type: 'tool_use', id: 'x', name: 'y', input: {} }] }),
     )
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
+    await handler(makeSqsEvent(draftJob()), {} as never, () => {})
 
     expect(updateWhere).toHaveBeenCalledOnce()
     const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
@@ -356,32 +415,36 @@ describe('handler — Anthropic API errors', () => {
 })
 
 describe('handler — prompt building', () => {
-  it('builds prompt with conversation history (up to 50, chronological)', async () => {
+  it('includes conversation history and the unanswered batch directive', async () => {
     const history = [
       { direction: 'inbound', body: 'Hi', messageType: 'text' },
       { direction: 'outbound', body: 'Hello!', messageType: 'text' },
       { direction: 'inbound', body: 'Do you have Charizard?', messageType: 'text' },
     ]
-    const readTx = buildReadTx({ historyResult: history })
+    const readTx = buildReadTx({
+      historyResult: history,
+      unansweredResult: [{ body: 'Do you have Charizard?' }, { body: 'And Pikachu?' }],
+    })
     const { mockTx: writeTx } = buildWriteTx()
     mockWithTenant
       .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
       .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
     mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
+    await handler(makeSqsEvent(draftJob()), {} as never, () => {})
 
     const createCall = mockAnthropicCreate.mock.calls[0][0]
     const userContent = createCall.messages[0].content as string
     expect(userContent).toContain('[customer]: Hi')
     expect(userContent).toContain('[operator]: Hello!')
-    expect(userContent).toContain('[customer]: Do you have Charizard?')
-    expect(userContent).toContain('Generate a reply to the latest customer message.')
+    expect(userContent).toContain('Unanswered customer messages')
+    expect(userContent).toContain('- Do you have Charizard?')
+    expect(userContent).toContain('- And Pikachu?')
   })
 })
 
 describe('handler — SC-007 backward compat (all new columns NULL)', () => {
-  it('calls Anthropic with BASE_SYSTEM_PROMPT + LANGUAGE_DIRECTIVE (no additional) when all new columns are NULL', async () => {
+  it('calls Anthropic with BASE_SYSTEM_PROMPT + LANGUAGE_DIRECTIVE (no additional) when all settings are NULL', async () => {
     const readTx = buildReadTx({
       settingsResult: [
         {
@@ -399,15 +462,35 @@ describe('handler — SC-007 backward compat (all new columns NULL)', () => {
       .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
     mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
+    await handler(makeSqsEvent(draftJob()), {} as never, () => {})
 
     expect(mockAnthropicCreate).toHaveBeenCalledOnce()
     const createCall = mockAnthropicCreate.mock.calls[0][0]
     // 2 blocks: BASE_SYSTEM_PROMPT (cached) + LANGUAGE_DIRECTIVE (always last).
-    // No "additional" block because all settings are null.
     expect(createCall.system).toHaveLength(2)
     expect(createCall.system[0].cache_control).toEqual({ type: 'ephemeral' })
     expect(createCall.system[1].text).toMatch(/Output language rule/)
+  })
+})
+
+describe('handler — legacy { messageId } jobs', () => {
+  it('resolves the conversation and generates a draft', async () => {
+    // First dbAdmin call resolves conversationId from messageId; second resolves tenant.
+    mockDbAdminWhere
+      .mockResolvedValueOnce([{ conversationId: CONVERSATION_ID }])
+      .mockResolvedValueOnce([{ tenantId: TENANT_ID }])
+    const readTx = buildReadTx()
+    const { mockTx: writeTx } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
+    mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
+
+    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, () => {})
+
+    expect(mockAnthropicCreate).toHaveBeenCalledOnce()
+    const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
+    expect(setCall.status).toBe('ready')
   })
 })
 
@@ -446,8 +529,8 @@ describe('handler — summary jobType', () => {
       () => {},
     )
 
-    expect(mockDbAdminWhere).toHaveBeenCalledOnce()  // tenant resolved
-    expect(mockWithTenant).toHaveBeenCalledOnce()    // threshold check ran
+    expect(mockDbAdminWhere).toHaveBeenCalledOnce() // tenant resolved
+    expect(mockWithTenant).toHaveBeenCalledOnce() // threshold check ran
     expect(mockAnthropicCreate).not.toHaveBeenCalled() // correctly skipped
   })
 

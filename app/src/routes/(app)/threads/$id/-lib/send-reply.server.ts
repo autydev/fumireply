@@ -1,5 +1,5 @@
-import { and, desc, eq } from 'drizzle-orm'
-import { connectedPages, conversations, messages } from '~/server/db/schema'
+import { and, desc, eq, inArray } from 'drizzle-orm'
+import { aiDrafts, connectedPages, conversations, messages } from '~/server/db/schema'
 import type { TenantTx } from '~/server/db/with-tenant'
 import { decryptToken, getMasterKey } from '~/server/services/crypto'
 import { sendMessengerReply } from '~/server/services/messenger'
@@ -103,6 +103,17 @@ export async function handleSendReply(
       .update(conversations)
       .set({ lastMessageAt: new Date() })
       .where(eq(conversations.id, data.conversationId))
+
+    // Consume the active draft: sending a reply answers the pending batch.
+    await tx
+      .update(aiDrafts)
+      .set({ status: 'dismissed', updatedAt: new Date() })
+      .where(
+        and(
+          eq(aiDrafts.conversationId, data.conversationId),
+          inArray(aiDrafts.status, ['pending', 'ready']),
+        ),
+      )
 
     return {
       ok: true,

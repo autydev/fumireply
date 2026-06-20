@@ -1,6 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { notFound } from '@tanstack/react-router'
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { authMiddleware } from '~/server/middleware/auth-middleware'
 import { aiDrafts, conversations, messages } from '~/server/db/schema'
@@ -70,13 +70,6 @@ export const getConversationFn = createServerFn({ method: 'POST' })
         .set({ unreadCount: 0 })
         .where(eq(conversations.id, data.id))
 
-      // Fetch messages with LEFT JOIN on ai_drafts
-      type AiDraftRaw = {
-        status: string
-        body: string | null
-        model: string | null
-      } | null
-
       const msgRows = await tx
         .select({
           id: messages.id,
@@ -86,21 +79,23 @@ export const getConversationFn = createServerFn({ method: 'POST' })
           timestamp: messages.timestamp,
           sendStatus: messages.sendStatus,
           sendError: messages.sendError,
-          aiDraft: sql<AiDraftRaw>`
-            CASE WHEN ${aiDrafts.id} IS NOT NULL
-              THEN json_build_object(
-                'status', ${aiDrafts.status},
-                'body', ${aiDrafts.body},
-                'model', ${aiDrafts.model}
-              )
-              ELSE NULL
-            END
-          `,
         })
         .from(messages)
-        .leftJoin(aiDrafts, and(eq(aiDrafts.messageId, messages.id)))
         .where(eq(messages.conversationId, data.id))
         .orderBy(asc(messages.timestamp))
+
+      // Conversation-scoped active draft (at most one pending/ready row).
+      const activeDraftRows = await tx
+        .select({ status: aiDrafts.status, body: aiDrafts.body })
+        .from(aiDrafts)
+        .where(
+          and(
+            eq(aiDrafts.conversationId, data.id),
+            inArray(aiDrafts.status, ['pending', 'ready']),
+          ),
+        )
+        .orderBy(desc(aiDrafts.createdAt))
+        .limit(1)
 
       const now = Date.now()
       const lastInboundAt = conv.lastInboundAt
@@ -115,40 +110,26 @@ export const getConversationFn = createServerFn({ method: 'POST' })
         hoursRemaining = Math.max(0, msRemaining / (60 * 60 * 1000))
       }
 
-      const mappedMessages: MessageWithDraft[] = msgRows.map((row) => {
-        const draft = row.aiDraft
-        return {
-          id: row.id,
-          direction: row.direction as 'inbound' | 'outbound',
-          body: row.body,
-          message_type: (row.messageType as MessageWithDraft['message_type']) ?? 'other',
-          timestamp: row.timestamp.toISOString(),
-          send_status: (row.sendStatus as MessageWithDraft['send_status']) ?? null,
-          send_error: row.sendError ?? null,
-          ai_draft:
-            draft && row.direction === 'inbound'
-              ? {
-                  status: (draft.status === 'ready' || draft.status === 'failed'
-                    ? draft.status
-                    : 'pending') as 'pending' | 'ready' | 'failed',
-                  body: draft.body ?? null,
-                  model: draft.model ?? null,
-                }
-              : null,
-        }
-      })
+      const mappedMessages: MessageWithDraft[] = msgRows.map((row) => ({
+        id: row.id,
+        direction: row.direction as 'inbound' | 'outbound',
+        body: row.body,
+        message_type: (row.messageType as MessageWithDraft['message_type']) ?? 'other',
+        timestamp: row.timestamp.toISOString(),
+        send_status: (row.sendStatus as MessageWithDraft['send_status']) ?? null,
+        send_error: row.sendError ?? null,
+        ai_draft: null,
+      }))
 
-      // Find latest_draft: the ai_draft from the most recent inbound message
+      // latest_draft: the conversation's active (pending/ready) draft.
       let latestDraft: ConversationDetail['latest_draft'] = null
-      for (let i = mappedMessages.length - 1; i >= 0; i--) {
-        const msg = mappedMessages[i]
-        if (msg.direction === 'inbound' && msg.ai_draft) {
-          latestDraft = {
-            body: msg.ai_draft.body ?? '',
-            status: msg.ai_draft.status,
-          }
-          break
-        }
+      const activeDraft = activeDraftRows[0]
+      if (activeDraft) {
+        const status: 'pending' | 'ready' | 'failed' =
+          activeDraft.status === 'ready' || activeDraft.status === 'failed'
+            ? activeDraft.status
+            : 'pending'
+        latestDraft = { body: activeDraft.body ?? '', status }
       }
 
       return {

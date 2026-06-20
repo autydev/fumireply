@@ -9,11 +9,11 @@ const POLL_INTERVAL_MS = 3000
 const MAX_POLL_MS = 60_000
 
 export function DraftBanner({
-  messageId,
+  conversationId,
   initialStatus,
   onReady,
 }: {
-  messageId: string
+  conversationId: string
   initialStatus: 'pending' | 'ready' | 'failed'
   onReady: (body: string) => void
 }) {
@@ -47,7 +47,7 @@ export function DraftBanner({
       }
 
       try {
-        const result = await getDraftStatusFn({ data: { messageId } })
+        const result = await getDraftStatusFn({ data: { conversationId } })
         if (!isActiveRef.current) return
         if (result.status === 'ready') {
           stopPolling()
@@ -69,7 +69,7 @@ export function DraftBanner({
     return () => {
       stopPolling()
     }
-  }, [messageId, initialStatus, onReady])
+  }, [conversationId, initialStatus, onReady])
 
   if (!visible) return null
 
