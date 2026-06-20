@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { sendReplyFn } from '../-lib/send-reply.fn'
+import { dismissDraftFn } from '../-lib/dismiss-draft.fn'
 import { DraftBanner } from './DraftBanner'
 import type { ConversationDetail } from '../-lib/get-conversation.fn'
 import { SparkleIcon, SendIcon, XIcon, ThumbUpIcon, ThumbDownIcon, AlertTriIcon } from '~/components/ui/icons'
@@ -135,9 +136,9 @@ export function ReplyForm({
   return (
     <div style={{ padding: '0 20px 16px' }}>
       {/* Draft pending banner */}
-      {latestInboundMessageId && draftStatus === 'pending' && (
+      {draftStatus === 'pending' && (
         <DraftBanner
-          messageId={latestInboundMessageId}
+          conversationId={conversationId}
           initialStatus="pending"
           onReady={handleDraftReady}
         />
@@ -338,6 +339,10 @@ export function ReplyForm({
               onClick={() => {
                 setBody('')
                 setDraftStatus(null)
+                filledForInboundIdRef.current = latestInboundMessageId
+                void dismissDraftFn({ data: { conversationId } }).then(() =>
+                  router.invalidate(),
+                )
               }}
               style={{
                 display: 'flex',

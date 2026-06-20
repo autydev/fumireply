@@ -126,10 +126,10 @@ beforeEach(() => {
         returning: vi.fn()
           .mockResolvedValueOnce([{ id: NEW_MSG_UUID }]) // conversations upsert
           .mockResolvedValueOnce([{ id: NEW_MSG_UUID }]) // messages INSERT
-          .mockResolvedValueOnce([{ id: 'draft-id' }]), // ai_drafts INSERT
+          .mockResolvedValueOnce([{ id: 'draft-id' }]), // ai_drafts active-draft upsert
         update: vi.fn().mockReturnThis(),
         set: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue(undefined),
+        where: vi.fn().mockReturnThis(),
         execute: vi.fn().mockResolvedValue(undefined),
       }
       return fn(mockTx as unknown as Parameters<typeof fn>[0])
@@ -151,8 +151,14 @@ describe('webhook handler — integration', () => {
 
     const sqsCalls = sqsMock.commandCalls(SendMessageCommand)
     expect(sqsCalls).toHaveLength(1)
-    const sqsBody = JSON.parse(sqsCalls[0].args[0].input.MessageBody ?? '{}') as { messageId: string }
-    expect(sqsBody.messageId).toBe(NEW_MSG_UUID)
+    const sqsBody = JSON.parse(sqsCalls[0].args[0].input.MessageBody ?? '{}') as {
+      jobType: string
+      conversationId: string
+      triggerMessageId: string
+    }
+    expect(sqsBody.jobType).toBe('draft')
+    expect(sqsBody.conversationId).toBe(NEW_MSG_UUID)
+    expect(sqsBody.triggerMessageId).toBe(NEW_MSG_UUID)
   })
 
   it('POST with invalid signature: returns 401, no DB call', async () => {

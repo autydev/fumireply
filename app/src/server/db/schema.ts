@@ -9,6 +9,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core'
@@ -136,10 +137,15 @@ export const aiDrafts = pgTable(
     tenantId: uuid('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
-    messageId: uuid('message_id')
+    // Conversation-scoped: a conversation has at most one active (pending/ready)
+    // draft, enforced by the partial unique index below.
+    conversationId: uuid('conversation_id')
       .notNull()
-      .unique()
-      .references(() => messages.id, { onDelete: 'cascade' }),
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    // Anchor: the inbound message that triggered the current draft. Nullable and
+    // no longer unique — kept for reference, not identity.
+    messageId: uuid('message_id').references(() => messages.id, { onDelete: 'set null' }),
+    // 'pending' | 'ready' | 'failed' | 'dismissed' (sent/discarded) | 'superseded'
     status: varchar('status', { length: 20 }).notNull(),
     body: text('body'),
     model: varchar('model', { length: 64 }),
@@ -150,7 +156,12 @@ export const aiDrafts = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('ai_drafts_tenant_id_idx').on(t.tenantId)],
+  (t) => [
+    index('ai_drafts_tenant_id_idx').on(t.tenantId),
+    uniqueIndex('ai_drafts_active_per_conversation')
+      .on(t.conversationId)
+      .where(sql`status IN ('pending', 'ready')`),
+  ],
 )
 
 export const deletionLog = pgTable(

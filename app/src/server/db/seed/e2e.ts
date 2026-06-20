@@ -191,6 +191,7 @@ async function main() {
   console.log(`[5/5] ai_drafts (status=ready)`)
   await db.insert(aiDrafts).values({
     tenantId,
+    conversationId: conv.id,
     messageId: inboundMsg.id,
     status: 'ready',
     body: 'お問い合わせありがとうございます。在庫状況を確認のうえ、改めてご連絡いたします。',

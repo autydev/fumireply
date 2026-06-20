@@ -1,6 +1,6 @@
 import type { SQSEvent, SQSHandler, SQSRecord } from 'aws-lambda'
 import Anthropic from '@anthropic-ai/sdk'
-import { and, desc, eq, gt } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { dbAdmin } from './db/client'
 import { withTenant } from './db/with-tenant'
@@ -13,10 +13,16 @@ import {
   buildUserPrompt,
 } from './prompt'
 import { processSummaryJob } from './summary'
-import { RECENT_MESSAGES_CAP } from './config'
+import { RECENT_MESSAGES_CAP, UNANSWERED_CAP } from './config'
 
 const DRAFT_BODY_SCHEMA = z.object({
   jobType: z.literal('draft').optional().default('draft'),
+  conversationId: z.string().uuid(),
+  triggerMessageId: z.string().uuid().optional(),
+})
+
+// Legacy { messageId } jobs enqueued before the conversation-scoped migration.
+const LEGACY_DRAFT_BODY_SCHEMA = z.object({
   messageId: z.string().uuid(),
 })
 
@@ -83,48 +89,75 @@ async function callAnthropicWithRetry(
   throw lastError
 }
 
-async function processDraftJob(messageId: string): Promise<void> {
+// Marks the conversation's active (pending) draft as dismissed — used when there
+// is nothing to answer (the unanswered batch is empty).
+async function dismissActiveDraft(tenantId: string, conversationId: string): Promise<void> {
+  await withTenant(tenantId, async (tx) => {
+    await tx
+      .update(aiDrafts)
+      .set({ status: 'dismissed', updatedAt: new Date() })
+      .where(and(eq(aiDrafts.conversationId, conversationId), eq(aiDrafts.status, 'pending')))
+  })
+}
+
+async function processDraftJob(input: {
+  conversationId: string
+  triggerMessageId?: string
+}): Promise<void> {
+  const { conversationId, triggerMessageId } = input
+
   // 1. Resolve tenant_id with service role (bypasses RLS)
   const rows = await dbAdmin
-    .select({ tenantId: messages.tenantId })
-    .from(messages)
-    .where(eq(messages.id, messageId))
+    .select({ tenantId: conversations.tenantId })
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
 
   if (rows.length === 0) {
-    console.info({ event: 'message_not_found', messageId })
+    console.info({ event: 'conversation_not_found', conversationId })
     return
   }
 
   const { tenantId } = rows[0]
 
-  // 2. Read message + conversation settings + history in a single RLS transaction
+  // 2. Read coalesce state + settings + unanswered batch + context in one RLS tx
+  type Outcome = 'generate' | 'superseded' | 'no_unanswered'
+  // Cast keeps the union type so reassignments inside the tx callback below are
+  // not narrowed away by control-flow analysis.
+  let outcome: Outcome = 'no_unanswered' as Outcome
   let history: HistoryItem[] = []
-  let skipped = false
+  let unanswered: Array<{ body: string }> = []
   let pagePrompt: string | null = null
   let tonePreset: string | null = null
   let customerPrompt: string | null = null
   let summary: string | null = null
-  let conversationId: string | null = null
 
   await withTenant(tenantId, async (tx) => {
-    const [msg] = await tx
-      .select({
-        body: messages.body,
-        messageType: messages.messageType,
-        conversationId: messages.conversationId,
-      })
+    // Coalesce: only the job triggered by the latest inbound text message generates.
+    // Earlier jobs in a burst skip — the last one produces the final batch draft.
+    const [latestInbound] = await tx
+      .select({ id: messages.id })
       .from(messages)
-      .where(eq(messages.id, messageId))
+      .where(
+        and(
+          eq(messages.conversationId, conversationId),
+          eq(messages.direction, 'inbound'),
+          eq(messages.messageType, 'text'),
+        ),
+      )
+      .orderBy(desc(messages.timestamp), desc(messages.id))
+      .limit(1)
 
-    if (!msg || msg.messageType !== 'text') {
-      console.info({ event: 'skip_non_text', messageId, messageType: msg?.messageType })
-      skipped = true
+    if (!latestInbound) {
+      outcome = 'no_unanswered'
       return
     }
 
-    conversationId = msg.conversationId
+    if (triggerMessageId && latestInbound.id !== triggerMessageId) {
+      outcome = 'superseded'
+      return
+    }
 
-    // Fetch conversation settings + page custom_prompt in one join
+    // Conversation settings + page custom_prompt
     let convoSettings: {
       summary: string | null
       lastSummarizedAt: Date | null
@@ -144,14 +177,14 @@ async function processDraftJob(messageId: string): Promise<void> {
         })
         .from(conversations)
         .leftJoin(connectedPages, eq(conversations.pageId, connectedPages.id))
-        .where(eq(conversations.id, msg.conversationId))
+        .where(eq(conversations.id, conversationId))
 
       convoSettings = convo ?? null
     } catch (err) {
       console.error({
         event: 'draft_settings_fetch_failed',
         tenantId,
-        conversationId: msg.conversationId,
+        conversationId,
         error: String(err),
       })
       // Fail-open: continue with all null settings
@@ -162,8 +195,37 @@ async function processDraftJob(messageId: string): Promise<void> {
     customerPrompt = convoSettings?.customPrompt ?? null
     summary = convoSettings?.summary ?? null
 
-    const cursor = convoSettings?.lastSummarizedAt ?? new Date(0)
+    // Unanswered batch boundary = last outbound message timestamp.
+    const [lastOut] = await tx
+      .select({ ts: sql<Date | null>`max(${messages.timestamp})` })
+      .from(messages)
+      .where(
+        and(eq(messages.conversationId, conversationId), eq(messages.direction, 'outbound')),
+      )
+    const lastOutboundTs = lastOut?.ts ?? new Date(0)
 
+    const unansweredRows = await tx
+      .select({ body: messages.body })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.conversationId, conversationId),
+          eq(messages.direction, 'inbound'),
+          eq(messages.messageType, 'text'),
+          gt(messages.timestamp, lastOutboundTs),
+        ),
+      )
+      .orderBy(asc(messages.timestamp))
+      .limit(UNANSWERED_CAP)
+
+    if (unansweredRows.length === 0) {
+      outcome = 'no_unanswered'
+      return
+    }
+    unanswered = unansweredRows
+
+    // Context window (003): text history after the summary cursor.
+    const cursor = convoSettings?.lastSummarizedAt ?? new Date(0)
     const historyDesc = await tx
       .select({
         direction: messages.direction,
@@ -173,7 +235,7 @@ async function processDraftJob(messageId: string): Promise<void> {
       .from(messages)
       .where(
         and(
-          eq(messages.conversationId, msg.conversationId),
+          eq(messages.conversationId, conversationId),
           eq(messages.messageType, 'text'),
           gt(messages.timestamp, cursor),
         ),
@@ -182,11 +244,21 @@ async function processDraftJob(messageId: string): Promise<void> {
       .limit(RECENT_MESSAGES_CAP)
 
     history = historyDesc.reverse()
+    outcome = 'generate'
   })
 
-  if (skipped) return
+  if (outcome === 'superseded') {
+    console.info({ event: 'draft_superseded', conversationId, triggerMessageId })
+    return
+  }
 
-  // 3. Build system prompt blocks
+  if (outcome === 'no_unanswered') {
+    await dismissActiveDraft(tenantId, conversationId)
+    console.info({ event: 'draft_no_unanswered', conversationId })
+    return
+  }
+
+  // 3. Build system prompt blocks (unchanged from 003)
   const additionalText = buildAdditionalSystemPrompt({
     pagePrompt,
     tonePreset: tonePreset as 'friendly' | 'professional' | 'concise' | null,
@@ -206,18 +278,19 @@ async function processDraftJob(messageId: string): Promise<void> {
   const _cp = customerPrompt as string | null
   const _sm = summary as string | null
   console.info({
-    event: 'draft_prompt_composed',
+    event: 'draft_batch_composed',
     tenantId,
     conversationId,
     page_prompt_present: _pp != null && _pp.trim() !== '',
     tone_present: tonePreset !== null,
     customer_prompt_present: _cp != null && _cp.trim() !== '',
     summary_present: _sm != null && _sm.trim() !== '',
-    messages_count: history.length,
+    unanswered_count: unanswered.length,
+    history_count: history.length,
   })
 
   // 4. Call Anthropic OUTSIDE any DB transaction — no connection held during API latency
-  const userPrompt = buildUserPrompt(history)
+  const userPrompt = buildUserPrompt(history, unanswered)
   const apiKey = await getSsmParameter(ANTHROPIC_API_KEY_SSM)
   const anthropic = new Anthropic({ apiKey, timeout: ANTHROPIC_TIMEOUT_MS, maxRetries: 0 })
 
@@ -257,19 +330,21 @@ async function processDraftJob(messageId: string): Promise<void> {
     else if (status === 400) error = 'bad_request'
     else if (status === 429 || (status !== undefined && status >= 500)) error = 'server_error'
 
-    console.error({ event: 'anthropic_error', messageId, status, error })
+    console.error({ event: 'anthropic_error', conversationId, status, error })
     update = { status: 'failed', error }
   }
 
   const latencyMs = Date.now() - startMs
 
-  // 5. Write ai_drafts result in a separate transaction
+  // 5. Write result to the conversation's active (pending) draft
   await withTenant(tenantId, async (tx) => {
     await tx
       .update(aiDrafts)
       .set({ ...update, latencyMs, updatedAt: new Date() })
-      .where(eq(aiDrafts.messageId, messageId))
+      .where(and(eq(aiDrafts.conversationId, conversationId), eq(aiDrafts.status, 'pending')))
   })
+
+  console.info({ event: 'draft_persisted', conversationId, status: update.status, latencyMs })
 }
 
 
@@ -293,20 +368,36 @@ async function processRecord(record: SQSRecord): Promise<void> {
     return
   }
 
-  // Draft job (default path)
+  // Draft job (conversation-scoped)
   const draftResult = DRAFT_BODY_SCHEMA.safeParse(parsed)
-  if (!draftResult.success) {
-    // Try legacy format: { messageId }
-    const legacy = z.object({ messageId: z.string().uuid() }).safeParse(parsed)
-    if (!legacy.success) {
-      console.error({ event: 'sqs_parse_error', rawBody: record.body })
-      return
-    }
-    await processDraftJob(legacy.data.messageId)
+  if (draftResult.success) {
+    await processDraftJob({
+      conversationId: draftResult.data.conversationId,
+      triggerMessageId: draftResult.data.triggerMessageId,
+    })
     return
   }
 
-  await processDraftJob(draftResult.data.messageId)
+  // Legacy { messageId } jobs in-flight from before the conversation-scoped migration:
+  // resolve the conversation and treat the message as the trigger.
+  const legacy = LEGACY_DRAFT_BODY_SCHEMA.safeParse(parsed)
+  if (legacy.success) {
+    const [row] = await dbAdmin
+      .select({ conversationId: messages.conversationId })
+      .from(messages)
+      .where(eq(messages.id, legacy.data.messageId))
+    if (!row) {
+      console.info({ event: 'message_not_found', messageId: legacy.data.messageId })
+      return
+    }
+    await processDraftJob({
+      conversationId: row.conversationId,
+      triggerMessageId: legacy.data.messageId,
+    })
+    return
+  }
+
+  console.error({ event: 'sqs_parse_error', rawBody: record.body })
 }
 
 export const handler: SQSHandler = async (event: SQSEvent) => {

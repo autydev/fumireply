@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import {
   boolean,
   customType,
@@ -7,6 +8,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core'
@@ -114,10 +116,11 @@ export const aiDrafts = pgTable(
     tenantId: uuid('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
-    messageId: uuid('message_id')
+    conversationId: uuid('conversation_id')
       .notNull()
-      .unique()
-      .references(() => messages.id, { onDelete: 'cascade' }),
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    messageId: uuid('message_id').references(() => messages.id, { onDelete: 'set null' }),
+    // 'pending' | 'ready' | 'failed' | 'dismissed' | 'superseded'
     status: varchar('status', { length: 20 }).notNull(),
     body: text('body'),
     model: varchar('model', { length: 64 }),
@@ -128,5 +131,10 @@ export const aiDrafts = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('ai_drafts_tenant_id_idx').on(t.tenantId)],
+  (t) => [
+    index('ai_drafts_tenant_id_idx').on(t.tenantId),
+    uniqueIndex('ai_drafts_active_per_conversation')
+      .on(t.conversationId)
+      .where(sql`status IN ('pending', 'ready')`),
+  ],
 )

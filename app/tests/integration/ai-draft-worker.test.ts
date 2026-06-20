@@ -85,58 +85,75 @@ function makeAnthropicResponse(text = 'Draft reply from AI.') {
 type DraftUpdate = { status: string; body?: string; error?: string }
 let capturedUpdate: DraftUpdate | null = null
 
-// Build a mock tx that supports both query chain styles:
-//   tx.select().from().where()                          → awaitable (resolves rows)
-//   tx.select().from().where().orderBy().limit()        → awaitable (resolves rows)
-//   tx.update().set().where()                           → awaitable (resolves void)
-function buildTxForWorker(
-  messageRow: Record<string, unknown> | null,
-  historyRows: Record<string, unknown>[],
-  onUpdate?: (v: DraftUpdate) => void,
-) {
-  // We need to handle 3 sequential tx calls inside withTenant call #1:
-  //   1. select message → [messageRow]
-  //   2. select history → historyRows (chained with orderBy + limit)
-  // And inside withTenant call #2:
-  //   3. update ai_drafts
-
-  let selectCallCount = 0
-
-  const buildChain = () => {
-    const chain = {
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn(),
-      orderBy: vi.fn().mockReturnThis(),
-      limit: vi.fn(),
-      set: vi.fn().mockReturnThis(),
-    }
-
-    // first select call (message by ID): where() resolves [messageRow]
-    // second select call (history): where().orderBy().limit() resolves historyRows
-    chain.where.mockImplementation(() => {
-      selectCallCount++
-      if (selectCallCount === 1) {
-        // where() for message lookup — resolved directly
-        const p = Promise.resolve(messageRow ? [messageRow] : [])
-        Object.assign(p, { orderBy: vi.fn().mockReturnThis(), limit: vi.fn().mockResolvedValue([]) })
-        return p
-      }
-      // where() for history query — returns chainable object
-      chain.limit.mockResolvedValue(historyRows)
-      return chain
-    })
-
-    return chain
-  }
-
+// Conversation-scoped draft job (coalesce: trigger === latest inbound)
+function draftJob(overrides: Record<string, unknown> = {}) {
   return {
-    select: vi.fn(() => buildChain()),
-    update: vi.fn().mockReturnThis(),
-    set: vi.fn((values: DraftUpdate) => {
-      if (onUpdate) onUpdate(values)
-      return { where: vi.fn().mockResolvedValue(undefined) }
+    jobType: 'draft',
+    conversationId: CONVERSATION_ID,
+    triggerMessageId: MESSAGE_ID,
+    ...overrides,
+  }
+}
+
+// Read tx mock for the conversation-scoped flow. Query order:
+//   1. latest inbound text (coalesce)  — from().where().orderBy().limit()
+//   2. settings (leftJoin)             — from().leftJoin().where()
+//   3. last outbound ts                — from().where()
+//   4. unanswered batch                — from().where().orderBy().limit()
+//   5. context history                 — from().where().orderBy().limit()
+function buildReadTx({
+  latestInboundId = MESSAGE_ID,
+  unansweredRows = [{ body: 'Customer question here.' }],
+  historyRows = [{ direction: 'inbound', body: 'Customer question here.', messageType: 'text' }],
+}: {
+  latestInboundId?: string | null
+  unansweredRows?: Array<{ body: string }>
+  historyRows?: Array<{ direction: string; body: string; messageType: string }>
+} = {}) {
+  let n = 0
+  const limitChain = (rows: unknown) => ({
+    from: vi.fn(() => ({
+      where: vi.fn(() => ({ orderBy: vi.fn(() => ({ limit: vi.fn(() => Promise.resolve(rows)) })) })),
+    })),
+  })
+  return {
+    select: vi.fn(() => {
+      n++
+      if (n === 1) return limitChain(latestInboundId ? [{ id: latestInboundId }] : [])
+      if (n === 2)
+        return {
+          from: vi.fn(() => ({
+            leftJoin: vi.fn(() => ({
+              where: vi.fn(() =>
+                Promise.resolve([
+                  {
+                    summary: null,
+                    lastSummarizedAt: null,
+                    tonePreset: null,
+                    customPrompt: null,
+                    pageCustomPrompt: null,
+                  },
+                ]),
+              ),
+            })),
+          })),
+        }
+      if (n === 3)
+        return { from: vi.fn(() => ({ where: vi.fn(() => Promise.resolve([{ ts: null }])) })) }
+      if (n === 4) return limitChain(unansweredRows)
+      return limitChain(historyRows)
     }),
-    where: vi.fn().mockResolvedValue(undefined),
+  }
+}
+
+function buildWriteTx(onUpdate: (v: DraftUpdate) => void) {
+  return {
+    update: vi.fn(() => ({
+      set: vi.fn((values: DraftUpdate) => {
+        onUpdate(values)
+        return { where: vi.fn().mockResolvedValue(undefined) }
+      }),
+    })),
   }
 }
 
@@ -149,26 +166,8 @@ beforeEach(() => {
   mockWithTenant.mockImplementation(
     async (_tenantId: string, fn: (tx: unknown) => Promise<unknown>) => {
       withTenantCallCount++
-
-      if (withTenantCallCount === 1) {
-        // First call: read message + history
-        const tx = buildTxForWorker(
-          {
-            id: MESSAGE_ID,
-            body: 'Customer question here.',
-            messageType: 'text',
-            conversationId: CONVERSATION_ID,
-          },
-          [{ direction: 'inbound', body: 'Customer question here.', messageType: 'text' }],
-        )
-        return fn(tx)
-      }
-
-      // Second call: update ai_drafts
-      const tx = buildTxForWorker(null, [], (v) => {
-        capturedUpdate = v
-      })
-      return fn(tx)
+      if (withTenantCallCount === 1) return fn(buildReadTx())
+      return fn(buildWriteTx((v) => (capturedUpdate = v)))
     },
   )
 })
@@ -181,7 +180,7 @@ describe('AI Worker handler — integration', () => {
   it('success: SQS event → Anthropic called → ai_drafts updated to ready', async () => {
     mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse('Here is a suggested reply.'))
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn())
+    await handler(makeSqsEvent(draftJob()), {} as never, vi.fn())
 
     expect(mockAnthropicCreate).toHaveBeenCalledOnce()
     expect(capturedUpdate).not.toBeNull()
@@ -189,19 +188,17 @@ describe('AI Worker handler — integration', () => {
     expect(capturedUpdate?.body).toBe('Here is a suggested reply.')
   })
 
-  it('messageId not found in DB: handler skips without error (ACK to SQS)', async () => {
+  it('conversation not found in DB: handler skips without error (ACK to SQS)', async () => {
     mockDbAdminWhere.mockResolvedValue([]) // tenant resolution returns empty
 
-    await expect(
-      handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn()),
-    ).resolves.not.toThrow()
+    await expect(handler(makeSqsEvent(draftJob()), {} as never, vi.fn())).resolves.not.toThrow()
 
     expect(mockAnthropicCreate).not.toHaveBeenCalled()
   })
 
   it('invalid UUID in SQS body: handler skips without error', async () => {
     await expect(
-      handler(makeSqsEvent({ messageId: 'not-a-uuid' }), {} as never, vi.fn()),
+      handler(makeSqsEvent(draftJob({ conversationId: 'not-a-uuid' })), {} as never, vi.fn()),
     ).resolves.not.toThrow()
 
     expect(mockAnthropicCreate).not.toHaveBeenCalled()
@@ -211,7 +208,7 @@ describe('AI Worker handler — integration', () => {
     const authError = Object.assign(new Error('Authentication failure'), { status: 401 })
     mockAnthropicCreate.mockRejectedValue(authError)
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn())
+    await handler(makeSqsEvent(draftJob()), {} as never, vi.fn())
 
     expect(capturedUpdate?.status).toBe('failed')
     expect(capturedUpdate?.error).toBe('auth_failed')
@@ -223,7 +220,7 @@ describe('AI Worker handler — integration', () => {
       const serverError = Object.assign(new Error('Internal server error'), { status: 500 })
       mockAnthropicCreate.mockRejectedValue(serverError)
 
-      const handlerPromise = handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn())
+      const handlerPromise = handler(makeSqsEvent(draftJob()), {} as never, vi.fn())
       // Advance all retry delays (1s + 3s + 9s) without waiting real time
       await vi.runAllTimersAsync()
       await handlerPromise

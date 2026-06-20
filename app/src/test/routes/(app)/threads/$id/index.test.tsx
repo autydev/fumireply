@@ -13,6 +13,9 @@ vi.mock('~/routes/(app)/threads/$id/-lib/send-reply.fn', () => ({
 vi.mock('~/routes/(app)/threads/$id/-lib/get-draft-status.fn', () => ({
   getDraftStatusFn: vi.fn(),
 }))
+vi.mock('~/routes/(app)/threads/$id/-lib/dismiss-draft.fn', () => ({
+  dismissDraftFn: vi.fn(),
+}))
 vi.mock('~/routes/(app)/inbox/-lib/list-conversations.fn', () => ({
   listConversationsFn: vi.fn(),
 }))
@@ -238,7 +241,7 @@ describe('Thread page', () => {
       path: '/threads/$id',
       component: () => (
         <DraftBanner
-          messageId="msg-inbound-1"
+          conversationId={CONV_ID}
           initialStatus="pending"
           onReady={vi.fn()}
         />
@@ -260,7 +263,7 @@ describe('Thread page', () => {
       path: '/threads/$id',
       component: () => (
         <DraftBanner
-          messageId="msg-inbound-1"
+          conversationId={CONV_ID}
           initialStatus="failed"
           onReady={vi.fn()}
         />

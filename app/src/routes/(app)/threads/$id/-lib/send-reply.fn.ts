@@ -1,8 +1,8 @@
 import { createServerFn } from '@tanstack/react-start'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { authMiddleware } from '~/server/middleware/auth-middleware'
-import { connectedPages, conversations, messages } from '~/server/db/schema'
+import { aiDrafts, connectedPages, conversations, messages } from '~/server/db/schema'
 import { withTenant } from '~/server/db/with-tenant'
 import { decryptToken, getMasterKey } from '~/server/services/crypto'
 import { sendMessengerReply } from '~/server/services/messenger'
@@ -89,6 +89,16 @@ export const sendReplyFn = createServerFn({ method: 'POST' })
       if (sendResult.ok) {
         await tx.update(messages).set({ sendStatus: 'sent', metaMessageId: sendResult.messageId }).where(eq(messages.id, prep.insertedId))
         await tx.update(conversations).set({ lastMessageAt: new Date() }).where(eq(conversations.id, data.conversationId))
+        // Consume the active draft: sending a reply answers the pending batch.
+        await tx
+          .update(aiDrafts)
+          .set({ status: 'dismissed', updatedAt: new Date() })
+          .where(
+            and(
+              eq(aiDrafts.conversationId, data.conversationId),
+              inArray(aiDrafts.status, ['pending', 'ready']),
+            ),
+          )
         return {
           ok: true as const,
           message: { id: prep.insertedId, body: prep.insertedBody, timestamp: prep.insertedTimestamp.toISOString(), send_status: 'sent' as const },

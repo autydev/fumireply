@@ -1,7 +1,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda'
 import { createDecipheriv } from 'node:crypto'
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDbAdmin } from './db/client'
 import { withTenant } from './db/with-tenant'
@@ -188,15 +188,30 @@ async function processMessagingEvent(
       return { conversationId: conv.id, newMessageId: null, needsNameFetch: !conv.customerName }
     }
 
-    const draftInserted = await tx
-      .insert(aiDrafts)
-      .values({ tenantId, messageId: newMsg.id, status: 'pending' })
-      .onConflictDoNothing()
+    // Conversation-scoped draft: reuse the active (pending/ready) draft if one
+    // exists, otherwise create a fresh pending one. The actual generation is
+    // debounced + coalesced downstream, so this only marks "a draft is due".
+    const updated = await tx
+      .update(aiDrafts)
+      .set({ status: 'pending', messageId: newMsg.id, updatedAt: new Date() })
+      .where(
+        and(
+          eq(aiDrafts.conversationId, conv.id),
+          inArray(aiDrafts.status, ['pending', 'ready']),
+        ),
+      )
       .returning({ id: aiDrafts.id })
+
+    if (updated.length === 0) {
+      await tx
+        .insert(aiDrafts)
+        .values({ tenantId, conversationId: conv.id, messageId: newMsg.id, status: 'pending' })
+        .onConflictDoNothing()
+    }
 
     return {
       conversationId: conv.id,
-      newMessageId: draftInserted[0] ? newMsg.id : null,
+      newMessageId: newMsg.id,
       needsNameFetch: !conv.customerName,
     }
   })
@@ -302,11 +317,21 @@ async function handlePost(
           await sqsClient.send(
             new SendMessageCommand({
               QueueUrl: env.SQS_QUEUE_URL,
-              MessageBody: JSON.stringify({ messageId: result.messageId }),
+              DelaySeconds: env.DRAFT_DEBOUNCE_SECONDS,
+              MessageBody: JSON.stringify({
+                jobType: 'draft',
+                conversationId: result.conversationId,
+                triggerMessageId: result.messageId,
+              }),
             }),
           )
+          console.info('draft_enqueued', {
+            conversationId: result.conversationId,
+            triggerMessageId: result.messageId,
+            delaySeconds: env.DRAFT_DEBOUNCE_SECONDS,
+          })
         } catch (err) {
-          console.error('sqs_enqueue_failed', { messageId: result.messageId, err })
+          console.error('sqs_enqueue_failed', { conversationId: result.conversationId, err })
         }
 
         // Summary trigger is independent of draft SQS: fires even if draft enqueue failed,

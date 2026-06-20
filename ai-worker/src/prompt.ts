@@ -64,24 +64,46 @@ export interface HistoryMessage {
 }
 
 /**
- * Builds the user prompt from conversation history.
- * Callers pass up to RECENT_MESSAGES_CAP (50) text-only messages,
- * filtered to those after COALESCE(last_summarized_at, '1970-01-01').
+ * Builds the user prompt from conversation history plus the batch of unanswered
+ * customer messages (those since the operator's last reply).
+ *
+ * `history` is the context window (up to RECENT_MESSAGES_CAP text messages after
+ * COALESCE(last_summarized_at, '1970-01-01')). `unanswered` is the subset the
+ * draft must address — the model is told to answer ALL of them in one reply, so
+ * a burst of short consecutive messages is handled as a single batch rather than
+ * only the last one.
  */
-export function buildUserPrompt(history: HistoryMessage[]): string {
+export function buildUserPrompt(
+  history: HistoryMessage[],
+  unanswered?: Array<{ body: string }>,
+): string {
   const textMessages = history.filter((m) => m.messageType === 'text')
+  const pending = (unanswered ?? []).filter((m) => m.body && m.body.trim() !== '')
 
-  if (textMessages.length === 0) {
-    return 'Generate a reply to the latest customer message.'
+  const lines: string[] = []
+
+  if (textMessages.length > 0) {
+    lines.push('Recent conversation:')
+    for (const msg of textMessages) {
+      const role = msg.direction === 'inbound' ? 'customer' : 'operator'
+      lines.push(`[${role}]: ${msg.body}`)
+    }
+    lines.push('')
   }
 
-  const lines: string[] = ['Recent conversation:']
-  for (const msg of textMessages) {
-    const role = msg.direction === 'inbound' ? 'customer' : 'operator'
-    lines.push(`[${role}]: ${msg.body}`)
+  if (pending.length > 0) {
+    lines.push('## Unanswered customer messages (reply to ALL of these in ONE message)')
+    lines.push(
+      'The customer sent the following messages since your last reply. Write a single reply that addresses every point below — do not answer only the last message.',
+    )
+    for (const msg of pending) {
+      lines.push(`- ${msg.body}`)
+    }
+    lines.push('')
+    lines.push('Generate a single reply that addresses all the unanswered messages above.')
+  } else {
+    lines.push('Generate a reply to the latest customer message.')
   }
-  lines.push('')
-  lines.push('Generate a reply to the latest customer message.')
 
   return lines.join('\n')
 }

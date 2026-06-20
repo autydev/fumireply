@@ -74,82 +74,65 @@ function makeAnthropicResponse(text = 'Draft reply.') {
   }
 }
 
-// Build a mock tx matching the updated handler's query pattern (post T011):
-//   Query 1: select message body/type/conversationId → [msgRow]
-//   Query 2: select conversation settings via leftJoin → [convoSettings]
-//   Query 3: select history with orderBy/limit → historyRows
-//   Update: update ai_drafts
-function buildTxWithConvSettings(
-  convoSettings: {
-    summary: string | null
-    lastSummarizedAt: Date | null
-    tonePreset: string | null
-    customPrompt: string | null
-    pageCustomPrompt: string | null
-  },
-) {
-  let selectCallCount = 0
+// Conversation-scoped draft job (coalesce: trigger === latest inbound)
+function draftJob() {
+  return { jobType: 'draft', conversationId: CONVERSATION_ID, triggerMessageId: MESSAGE_ID }
+}
 
-  const buildChain = () => {
-    const chain: Record<string, unknown> = {}
+type ConvoSettings = {
+  summary: string | null
+  lastSummarizedAt: Date | null
+  tonePreset: string | null
+  customPrompt: string | null
+  pageCustomPrompt: string | null
+}
 
-    const leftJoin = vi.fn().mockImplementation(() => ({
-      where: vi.fn().mockResolvedValue([convoSettings]),
-    }))
-
-    const where = vi.fn().mockImplementation(() => {
-      selectCallCount++
-      if (selectCallCount === 1) {
-        // Message lookup — resolves directly
-        return Promise.resolve([{
-          body: 'Hello, do you have this in stock?',
-          messageType: 'text',
-          conversationId: CONVERSATION_ID,
-        }])
-      }
-      // selectCallCount === 2: History query
-      // (conversation settings query goes through leftJoin.where, not this where)
-      const chainable = {
-        orderBy: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue([
-          { direction: 'inbound', body: 'Hello, do you have this in stock?', messageType: 'text' },
-        ]),
-      }
-      return chainable
-    })
-
-    chain.from = vi.fn().mockReturnValue({ where, leftJoin })
-    chain.where = where
-    chain.orderBy = vi.fn().mockReturnThis()
-    chain.limit = vi.fn().mockResolvedValue([])
-
-    return chain
-  }
-
+// Read tx mock for the conversation-scoped flow. Query order:
+//   1. latest inbound text (coalesce)  — from().where().orderBy().limit()
+//   2. settings (leftJoin)             — from().leftJoin().where()
+//   3. last outbound ts                — from().where()
+//   4. unanswered batch                — from().where().orderBy().limit()
+//   5. context history                 — from().where().orderBy().limit()
+function buildReadTx(convoSettings: ConvoSettings) {
+  let n = 0
+  const limitChain = (rows: unknown) => ({
+    from: vi.fn(() => ({
+      where: vi.fn(() => ({ orderBy: vi.fn(() => ({ limit: vi.fn(() => Promise.resolve(rows)) })) })),
+    })),
+  })
   return {
-    select: vi.fn(() => buildChain()),
-    update: vi.fn().mockReturnThis(),
-    set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
-    where: vi.fn().mockResolvedValue(undefined),
+    select: vi.fn(() => {
+      n++
+      if (n === 1) return limitChain([{ id: MESSAGE_ID }])
+      if (n === 2)
+        return {
+          from: vi.fn(() => ({
+            leftJoin: vi.fn(() => ({ where: vi.fn(() => Promise.resolve([convoSettings])) })),
+          })),
+        }
+      if (n === 3)
+        return { from: vi.fn(() => ({ where: vi.fn(() => Promise.resolve([{ ts: null }])) })) }
+      if (n === 4) return limitChain([{ body: 'Hello, do you have this in stock?' }])
+      return limitChain([
+        { direction: 'inbound', body: 'Hello, do you have this in stock?', messageType: 'text' },
+      ])
+    }),
   }
 }
 
 let capturedSystemBlocks: unknown[] = []
 
-function setupWithTenantMock(
-  convoSettings: Parameters<typeof buildTxWithConvSettings>[0],
-) {
+function setupWithTenantMock(convoSettings: ConvoSettings) {
   let callCount = 0
   mockWithTenant.mockImplementation(
     async (_tenantId: string, fn: (tx: unknown) => Promise<unknown>) => {
       callCount++
       if (callCount === 1) {
-        return fn(buildTxWithConvSettings(convoSettings))
+        return fn(buildReadTx(convoSettings))
       }
       // Second call: update ai_drafts
       return fn({
-        update: vi.fn().mockReturnThis(),
-        set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
+        update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
       })
     },
   )
@@ -185,7 +168,7 @@ describe('AI Worker — conversation settings in system prompt', () => {
       pageCustomPrompt: null,
     })
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn())
+    await handler(makeSqsEvent(draftJob()), {} as never, vi.fn())
 
     expect(mockAnthropicCreate).toHaveBeenCalledOnce()
     // 3 blocks: base + additional + language directive
@@ -205,7 +188,7 @@ describe('AI Worker — conversation settings in system prompt', () => {
       pageCustomPrompt: null,
     })
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn())
+    await handler(makeSqsEvent(draftJob()), {} as never, vi.fn())
 
     expect(mockAnthropicCreate).toHaveBeenCalledOnce()
     // 2 blocks: base + language directive (no additional block when all settings null)
@@ -222,7 +205,7 @@ describe('AI Worker — conversation settings in system prompt', () => {
       pageCustomPrompt: 'No returns after 30 days.',
     })
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn())
+    await handler(makeSqsEvent(draftJob()), {} as never, vi.fn())
 
     // 3 blocks: base + additional + language directive
     expect(capturedSystemBlocks).toHaveLength(3)
@@ -241,7 +224,7 @@ describe('AI Worker — conversation settings in system prompt', () => {
       pageCustomPrompt: null,
     })
 
-    await handler(makeSqsEvent({ messageId: MESSAGE_ID }), {} as never, vi.fn())
+    await handler(makeSqsEvent(draftJob()), {} as never, vi.fn())
 
     // All-null → base + language directive only (no additional block, so note obviously absent)
     expect(capturedSystemBlocks).toHaveLength(2)
