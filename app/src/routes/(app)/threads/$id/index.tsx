@@ -199,7 +199,7 @@ function ThreadPage() {
       </div>
 
       {/* Customer panel — right column */}
-      <CustomerPanel conversation={conversation} isOpen={panelOpen} />
+      <CustomerPanel conversation={conversation} isOpen={panelOpen} onClose={togglePanel} />
     </div>
   )
 }
