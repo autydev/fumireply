@@ -1,6 +1,6 @@
 import type { SQSEvent, SQSHandler, SQSRecord } from 'aws-lambda'
 import Anthropic from '@anthropic-ai/sdk'
-import { and, asc, desc, eq, gt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { dbAdmin } from './db/client'
 import { withTenant } from './db/with-tenant'
@@ -96,7 +96,12 @@ async function dismissActiveDraft(tenantId: string, conversationId: string): Pro
     await tx
       .update(aiDrafts)
       .set({ status: 'dismissed', updatedAt: new Date() })
-      .where(and(eq(aiDrafts.conversationId, conversationId), eq(aiDrafts.status, 'pending')))
+      .where(
+        and(
+          eq(aiDrafts.conversationId, conversationId),
+          inArray(aiDrafts.status, ['pending', 'ready']),
+        ),
+      )
   })
 }
 
@@ -336,12 +341,19 @@ async function processDraftJob(input: {
 
   const latencyMs = Date.now() - startMs
 
-  // 5. Write result to the conversation's active (pending) draft
+  // 5. Write result to the conversation's active draft. Target both 'pending' and
+  // 'ready' so a regeneration (a later coalesced job) is not lost when an earlier
+  // job already flipped the row to 'ready' during this job's generation window.
   await withTenant(tenantId, async (tx) => {
     await tx
       .update(aiDrafts)
       .set({ ...update, latencyMs, updatedAt: new Date() })
-      .where(and(eq(aiDrafts.conversationId, conversationId), eq(aiDrafts.status, 'pending')))
+      .where(
+        and(
+          eq(aiDrafts.conversationId, conversationId),
+          inArray(aiDrafts.status, ['pending', 'ready']),
+        ),
+      )
   })
 
   console.info({ event: 'draft_persisted', conversationId, status: update.status, latencyMs })
