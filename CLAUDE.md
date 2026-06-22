@@ -1,15 +1,17 @@
 <!-- SPECKIT START -->
-Active feature plan: [specs/003-customer-context-and-settings/plan.md](specs/003-customer-context-and-settings/plan.md)
+Active feature plan: [specs/005-draft-regenerate-oneoff/plan.md](specs/005-draft-regenerate-oneoff/plan.md)
 
 Related artifacts (same directory):
-- spec.md — feature specification (会話コンテキスト永続化 + ページ/顧客の設定階層 + Settings ページ + CustomerPanel)
-- research.md — technology decisions (ai-worker 拡張で summary を相乗り、文字数ベースの要約閾値、5 段プロンプト合成)
-- data-model.md — connected_pages に custom_prompt 1 列、conversations に 5 列 (summary, last_summarized_at, tone_preset, custom_prompt, note)
-- contracts/ — Settings server fns, conversation server fns, summary job SQS contract, prompt composition order
-- quickstart.md — diff setup vs 002 (DB マイグレーション 1 本、SQS キュー 1 本追加、env 変数 3 つ)
+- spec.md — feature specification (AI 下書きの条件付き再生成。ワンオフ指示は永続化せず最新で上書き、失敗時は旧本文保持、90s タイムアウト)
+- research.md — design decisions (app→SQS publish 経路の追加、coalesce bypass、失敗時 ready 維持、プロンプト合成順序、stale-pending guard)
+- data-model.md — DB スキーマ変更ゼロ。ai_drafts の既存列 (`error`) 用途拡張と状態遷移の追記のみ
+- contracts/regenerate-pipeline.md — SQS payload 拡張 (`triggerType:'regenerate'` / `instruction`)、prompt 合成位置、server fn (`regenerate-draft.fn.ts`) 契約、UI 契約
+- quickstart.md — env 追加 (SQS_QUEUE_URL, AWS_REGION)、IAM (`sqs:SendMessage`) 付与、新規 npm 1 つ (`@aws-sdk/client-sqs`)
 
 Predecessors:
-- [specs/002-app-review-submission/plan.md](specs/002-app-review-submission/plan.md) — Connect Page UI + Paraglide JS i18n、assumed deployed and stable.
+- [specs/004-batch-draft-unanswered/plan.md](specs/004-batch-draft-unanswered/plan.md) — 会話スコープのアクティブ下書き 1 件モデル + デバウンス + 未返信バッチ。005 はこの基盤に乗る。
+- [specs/003-customer-context-and-settings/plan.md](specs/003-customer-context-and-settings/plan.md) — 永続 custom_prompt / DraftSettingsEditor / 5 段プロンプト合成。005 はワンオフ指示層を追加。
+- [specs/002-app-review-submission/plan.md](specs/002-app-review-submission/plan.md) — Connect Page UI + Paraglide JS i18n。
 - [specs/001-mvp-app-review/plan.md](specs/001-mvp-app-review/plan.md) — MVP for the underlying Messenger inbox + AI draft pipeline.
 
 Read the current plan for technology stack, project structure, and workflow conventions before starting implementation work.
