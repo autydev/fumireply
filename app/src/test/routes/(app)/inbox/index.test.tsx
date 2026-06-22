@@ -75,6 +75,22 @@ describe('InboxList', () => {
     })
   })
 
+  it('each conversation row is a link that navigates to its thread', async () => {
+    const { InboxList } = await import('~/routes/(app)/inbox/-components/InboxList')
+
+    renderRoute({
+      path: '/inbox',
+      component: () => <InboxList conversations={[makeConv({ id: 'conv-xyz', customer_name: 'Alice' })]} />,
+      initialEntries: ['/inbox'],
+    })
+
+    await waitFor(() => {
+      const link = screen.getByRole('link')
+      // Real anchor + resolved href → tappable on mobile and client-side navigable.
+      expect(link).toHaveAttribute('href', '/threads/conv-xyz')
+    })
+  })
+
   it('falls back to customer_psid when customer_name is null', async () => {
     const { InboxList } = await import('~/routes/(app)/inbox/-components/InboxList')
 
