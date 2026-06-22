@@ -18,46 +18,24 @@ interface CustomerPanelProps {
   onClose: () => void
 }
 
-const STORAGE_KEY = 'customer-panel-open'
-// Below this width the panel renders as a full-height overlay (see styles.css),
-// so it must default to closed — otherwise it covers the whole thread on mobile.
+// At/above this width the panel is a docked column; below it is an on-demand
+// overlay (see the .customer-panel rules in styles.css). The two breakpoints
+// must stay in sync (CSS overlay = max-width 1279px → desktop = min-width 1280px).
 const DESKTOP_QUERY = '(min-width: 1280px)'
 
-function readStoredOpen(): boolean {
-  try {
-    return localStorage.getItem(STORAGE_KEY) !== 'false'
-  } catch {
-    return true
-  }
-}
-
-function writeStoredOpen(value: boolean): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, value ? 'true' : 'false')
-  } catch {
-    // ignore storage errors
-  }
-}
-
 export function useCustomerPanelOpen() {
-  // Start closed so the SSR/first paint never covers the thread on mobile.
+  // SSR-safe: start closed so the first paint never covers the thread on mobile.
+  // After mount, default open on desktop (docked) and closed on narrow screens
+  // (overlay). State is per-session and NOT persisted — so closing the mobile
+  // overlay can never leave the desktop panel hidden, and vice versa.
   const [isOpen, setIsOpen] = useState(false)
 
   useEffect(() => {
-    // Only restore the docked-open preference on desktop; on narrow screens the
-    // panel is an on-demand overlay and stays closed until the user opens it.
-    const isDesktop =
-      typeof window !== 'undefined' && window.matchMedia(DESKTOP_QUERY).matches
-    setIsOpen(isDesktop ? readStoredOpen() : false)
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    setIsOpen(window.matchMedia(DESKTOP_QUERY).matches)
   }, [])
 
-  const toggle = useCallback(() => {
-    setIsOpen((prev) => {
-      const next = !prev
-      writeStoredOpen(next)
-      return next
-    })
-  }, [])
+  const toggle = useCallback(() => setIsOpen((prev) => !prev), [])
 
   return { isOpen, toggle }
 }
