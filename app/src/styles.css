@@ -377,6 +377,14 @@ input, textarea {
   .customer-panel__close {
     display: flex;
   }
+
+  /* Below the desktop 3-column width the thread page is a single pane: hide the
+     in-thread inbox column so the conversation fills the screen (it would
+     otherwise crowd out the thread and reappear when the panel overlay closes).
+     The inbox is reached via the header back button. */
+  .inbox-list--in-thread {
+    display: none;
+  }
 }
 
 /* ─── Responsive app shell (mobile ≤768px) ──────────────────────────────── */
@@ -421,9 +429,7 @@ input, textarea {
     width: 100%;
     flex-shrink: 1;
   }
-  .inbox-list--in-thread {
-    display: none;
-  }
+  /* .inbox-list--in-thread is hidden from the ≤1279px block above. */
   .inbox-empty-pane {
     display: none;
   }
