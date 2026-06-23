@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildAdditionalSystemPrompt, buildSummaryPrompt, TONE_LABEL } from './prompt'
+import {
+  buildAdditionalSystemPrompt,
+  buildOperatorInstructionBlock,
+  buildSummaryPrompt,
+  TONE_LABEL,
+} from './prompt'
 
 describe('buildAdditionalSystemPrompt', () => {
   it('returns empty string when all args are null', () => {
@@ -87,6 +92,46 @@ describe('buildAdditionalSystemPrompt', () => {
 
     const result = buildAdditionalSystemPrompt(partsWithNote)
     expect(result).not.toContain('Internal note that must not appear')
+  })
+})
+
+describe('buildOperatorInstructionBlock (005)', () => {
+  it('returns null when instruction is undefined', () => {
+    expect(buildOperatorInstructionBlock(undefined)).toBeNull()
+  })
+
+  it('returns null when instruction is empty', () => {
+    expect(buildOperatorInstructionBlock('')).toBeNull()
+  })
+
+  it('returns null when instruction is whitespace-only', () => {
+    expect(buildOperatorInstructionBlock('   \n\t  ')).toBeNull()
+  })
+
+  it('returns a block containing the header and trimmed body', () => {
+    const block = buildOperatorInstructionBlock('  do X please  ')
+    expect(block).toContain('## Operator instruction for this draft')
+    expect(block).toContain('do X please')
+    expect(block).not.toMatch(/^  do X please/m)
+  })
+
+  it('marks the instruction as HIGHEST priority over additional prompts', () => {
+    const block = buildOperatorInstructionBlock('use ¥800')
+    expect(block).toContain('HIGHEST priority')
+  })
+
+  it('tells the model not to leak the instruction to the customer', () => {
+    const block = buildOperatorInstructionBlock('use ¥800')
+    expect(block?.toLowerCase()).toContain('customer has not seen')
+  })
+
+  it('does not truncate at 1000 chars (validation belongs to the caller)', () => {
+    const exactly1000 = 'a'.repeat(1000)
+    const block = buildOperatorInstructionBlock(exactly1000)
+    expect(block).toContain(exactly1000)
+    const over1000 = 'a'.repeat(1500)
+    const block2 = buildOperatorInstructionBlock(over1000)
+    expect(block2).toContain(over1000)
   })
 })
 

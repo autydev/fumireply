@@ -102,5 +102,12 @@
   "autosave_editing": "編集中…",
   "autosave_saving": "保存中…",
   "autosave_saved": "保存済み",
-  "cp_persona_updated_at": "最終更新: {at}"
+  "cp_persona_updated_at": "最終更新: {at}",
+  "reply_draft_regenerate_button": "再生成",
+  "reply_draft_regenerate_instruction_placeholder": "この回だけの追加指示（例：OP-09 は ¥800、これで案内）",
+  "reply_draft_regenerate_submit": "実行",
+  "reply_draft_regenerate_chars_remaining": "残り {count} 文字",
+  "reply_draft_regenerate_timeout": "再生成がタイムアウトしました。もう一度お試しください。",
+  "reply_draft_regenerate_failed": "再生成に失敗しました: {message}",
+  "reply_draft_regenerate_enqueue_failed": "再生成リクエストの送信に失敗しました"
 }

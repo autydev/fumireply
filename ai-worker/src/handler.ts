@@ -10,15 +10,20 @@ import {
   BASE_SYSTEM_PROMPT,
   LANGUAGE_DIRECTIVE,
   buildAdditionalSystemPrompt,
+  buildOperatorInstructionBlock,
   buildUserPrompt,
 } from './prompt'
 import { processSummaryJob } from './summary'
-import { RECENT_MESSAGES_CAP, UNANSWERED_CAP } from './config'
+import { enqueueAutoBatchFollowup } from './services/sqs'
+import { DRAFT_DEBOUNCE_SECONDS, RECENT_MESSAGES_CAP, UNANSWERED_CAP } from './config'
 
 const DRAFT_BODY_SCHEMA = z.object({
   jobType: z.literal('draft').optional().default('draft'),
   conversationId: z.string().uuid(),
   triggerMessageId: z.string().uuid().optional(),
+  // 005: one-off regenerate jobs (from app's regenerate-draft.fn.ts)
+  triggerType: z.enum(['regenerate']).optional(),
+  instruction: z.string().max(1000).optional(),
 })
 
 // Legacy { messageId } jobs enqueued before the conversation-scoped migration.
@@ -55,8 +60,13 @@ type AiDraftUpdate =
       model: string
       promptTokens: number
       completionTokens: number
+      // 005: clear any previous regenerate-error marker on a fresh successful write
+      error: null
     }
   | { status: 'failed'; error: string }
+  // 005: regenerate-only failure path — keep status='ready' so the previous body
+  // remains visible to the operator; surface the failure via the error column.
+  | { status: 'ready'; error: string }
 
 async function callAnthropicWithRetry(
   client: Anthropic,
@@ -108,8 +118,11 @@ async function dismissActiveDraft(tenantId: string, conversationId: string): Pro
 async function processDraftJob(input: {
   conversationId: string
   triggerMessageId?: string
+  triggerType?: 'regenerate'
+  instruction?: string
 }): Promise<void> {
-  const { conversationId, triggerMessageId } = input
+  const { conversationId, triggerMessageId, triggerType, instruction } = input
+  const isRegenerate = triggerType === 'regenerate'
 
   // 1. Resolve tenant_id with service role (bypasses RLS)
   const rows = await dbAdmin
@@ -124,6 +137,16 @@ async function processDraftJob(input: {
 
   const { tenantId } = rows[0]
 
+  // 005: log the regenerate entry once we've resolved the tenant. instruction
+  // body itself is NOT logged — only its length — to avoid leaking operator text.
+  if (isRegenerate) {
+    console.info({
+      event: 'draft_regenerate_started',
+      conversationId,
+      instruction_length: instruction?.length ?? 0,
+    })
+  }
+
   // 2. Read coalesce state + settings + unanswered batch + context in one RLS tx
   type Outcome = 'generate' | 'superseded' | 'no_unanswered'
   // Cast keeps the union type so reassignments inside the tx callback below are
@@ -135,6 +158,9 @@ async function processDraftJob(input: {
   let tonePreset: string | null = null
   let customerPrompt: string | null = null
   let summary: string | null = null
+  // 005: capture latest inbound id seen at job start. After a successful regen
+  // we re-check this to decide whether to self-enqueue an auto-batch follow-up.
+  let latestInboundIdAtStart: string | null = null
 
   await withTenant(tenantId, async (tx) => {
     // Coalesce: only the job triggered by the latest inbound text message generates.
@@ -153,11 +179,20 @@ async function processDraftJob(input: {
       .limit(1)
 
     if (!latestInbound) {
-      outcome = 'no_unanswered'
-      return
+      // 005: regenerate from history-only is allowed even with no inbound at all
+      // (e.g., operator regenerating a draft on a freshly-created conversation).
+      // Auto-batch keeps current dismiss-on-empty behavior.
+      if (!isRegenerate) {
+        outcome = 'no_unanswered'
+        return
+      }
+    } else {
+      latestInboundIdAtStart = latestInbound.id
     }
 
-    if (triggerMessageId && latestInbound.id !== triggerMessageId) {
+    // 005: regenerate jobs bypass coalesce — the operator's explicit intent must
+    // always run, even if a newer inbound arrived after the regenerate was queued.
+    if (!isRegenerate && triggerMessageId && latestInbound && latestInbound.id !== triggerMessageId) {
       outcome = 'superseded'
       return
     }
@@ -223,7 +258,9 @@ async function processDraftJob(input: {
       .orderBy(asc(messages.timestamp))
       .limit(UNANSWERED_CAP)
 
-    if (unansweredRows.length === 0) {
+    // 005: on regenerate, don't dismiss on empty — operator may want to redraft
+    // from history alone. Auto-batch path keeps current dismiss behavior.
+    if (unansweredRows.length === 0 && !isRegenerate) {
       outcome = 'no_unanswered'
       return
     }
@@ -277,6 +314,13 @@ async function processDraftJob(input: {
   if (additionalText) {
     systemBlocks.push({ type: 'text', text: additionalText })
   }
+  // 005: operator instruction sits BETWEEN additional and LANGUAGE_DIRECTIVE so
+  // it overrides shop policy / tone / customer / summary without disturbing the
+  // language-selection rule (which is the final block).
+  const operatorBlock = buildOperatorInstructionBlock(instruction)
+  if (operatorBlock) {
+    systemBlocks.push({ type: 'text', text: operatorBlock })
+  }
   systemBlocks.push({ type: 'text', text: LANGUAGE_DIRECTIVE })
 
   const _pp = pagePrompt as string | null
@@ -311,7 +355,10 @@ async function processDraftJob(input: {
       .join('')
 
     if (!draftBody) {
-      update = { status: 'failed', error: 'unexpected_response_type' }
+      // 005: regen failure keeps the existing body visible (status='ready').
+      update = isRegenerate
+        ? { status: 'ready', error: 'unexpected_response_type' }
+        : { status: 'failed', error: 'unexpected_response_type' }
     } else {
       const usage = response.usage as Anthropic.Usage & {
         cache_creation_input_tokens?: number
@@ -326,6 +373,8 @@ async function processDraftJob(input: {
           (usage.cache_creation_input_tokens ?? 0) +
           (usage.cache_read_input_tokens ?? 0),
         completionTokens: usage.output_tokens,
+        // 005: clear any prior regenerate-error marker on a fresh successful write.
+        error: null,
       }
     }
   } catch (err) {
@@ -336,7 +385,7 @@ async function processDraftJob(input: {
     else if (status === 429 || (status !== undefined && status >= 500)) error = 'server_error'
 
     console.error({ event: 'anthropic_error', conversationId, status, error })
-    update = { status: 'failed', error }
+    update = isRegenerate ? { status: 'ready', error } : { status: 'failed', error }
   }
 
   const latencyMs = Date.now() - startMs
@@ -344,6 +393,8 @@ async function processDraftJob(input: {
   // 5. Write result to the conversation's active draft. Target both 'pending' and
   // 'ready' so a regeneration (a later coalesced job) is not lost when an earlier
   // job already flipped the row to 'ready' during this job's generation window.
+  // 005: regen failure path writes status='ready' + error column WITHOUT touching
+  // body/model/tokens so the previous draft remains visible.
   await withTenant(tenantId, async (tx) => {
     await tx
       .update(aiDrafts)
@@ -356,7 +407,65 @@ async function processDraftJob(input: {
       )
   })
 
-  console.info({ event: 'draft_persisted', conversationId, status: update.status, latencyMs })
+  // 005: dedicated log for the regen failure (status stays ready, but the user
+  // sees an error toast). Easier than scanning draft_persisted lines.
+  if (isRegenerate && 'error' in update && update.status === 'ready' && update.error) {
+    console.info({
+      event: 'draft_regenerate_failed',
+      conversationId,
+      error: update.error,
+      latencyMs,
+    })
+  }
+
+  console.info({
+    event: 'draft_persisted',
+    conversationId,
+    status: update.status,
+    latencyMs,
+    ...(isRegenerate ? { triggerType: 'regenerate' as const } : {}),
+  })
+
+  // 005: after a successful regenerate, if a newer inbound arrived during this
+  // job, self-enqueue a normal auto-batch so the final draft still reflects the
+  // latest customer message. Skip if regen failed (operator will retry) or no
+  // newer inbound exists.
+  if (isRegenerate && update.status === 'ready' && 'body' in update) {
+    try {
+      const [latestNow] = await dbAdmin
+        .select({ id: messages.id })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.conversationId, conversationId),
+            eq(messages.direction, 'inbound'),
+            eq(messages.messageType, 'text'),
+          ),
+        )
+        .orderBy(desc(messages.timestamp), desc(messages.id))
+        .limit(1)
+
+      if (latestNow && latestNow.id !== latestInboundIdAtStart) {
+        await enqueueAutoBatchFollowup({
+          conversationId,
+          triggerMessageId: latestNow.id,
+          delaySeconds: DRAFT_DEBOUNCE_SECONDS,
+        })
+        console.info({
+          event: 'draft_regenerate_followup_enqueued',
+          conversationId,
+          triggerMessageId: latestNow.id,
+        })
+      }
+    } catch (err) {
+      // Follow-up enqueue failure must not affect the regenerate result.
+      console.error({
+        event: 'draft_regenerate_followup_failed',
+        conversationId,
+        error: String(err),
+      })
+    }
+  }
 }
 
 
@@ -386,6 +495,8 @@ async function processRecord(record: SQSRecord): Promise<void> {
     await processDraftJob({
       conversationId: draftResult.data.conversationId,
       triggerMessageId: draftResult.data.triggerMessageId,
+      triggerType: draftResult.data.triggerType,
+      instruction: draftResult.data.instruction,
     })
     return
   }

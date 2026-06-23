@@ -188,6 +188,42 @@ async function processMessagingEvent(
       return { conversationId: conv.id, newMessageId: null, needsNameFetch: !conv.customerName }
     }
 
+    // 005: stale-pending guard — if an active draft is already pending and was
+    // updated recently (< STALE_PENDING_GUARD_SECONDS), a regenerate or another
+    // recent auto-batch is in flight; skip SQS publish so we don't fight the
+    // running job. The worker emits a follow-up auto-batch on regenerate success
+    // when a newer inbound arrived. Only the anchor (message_id) is refreshed so
+    // the worker (or follow-up) sees the latest inbound.
+    const STALE_PENDING_GUARD_MS = 120_000
+    const [existingDraft] = await tx
+      .select({ status: aiDrafts.status, updatedAt: aiDrafts.updatedAt })
+      .from(aiDrafts)
+      .where(
+        and(
+          eq(aiDrafts.conversationId, conv.id),
+          inArray(aiDrafts.status, ['pending', 'ready']),
+        ),
+      )
+      .limit(1)
+
+    const isFreshPending =
+      existingDraft?.status === 'pending' &&
+      Date.now() - new Date(existingDraft.updatedAt).getTime() < STALE_PENDING_GUARD_MS
+
+    if (isFreshPending) {
+      await tx
+        .update(aiDrafts)
+        .set({ messageId: newMsg.id, updatedAt: new Date() })
+        .where(
+          and(
+            eq(aiDrafts.conversationId, conv.id),
+            eq(aiDrafts.status, 'pending'),
+          ),
+        )
+      console.info('draft_enqueue_skipped_fresh_pending', { conversationId: conv.id })
+      return { conversationId: conv.id, newMessageId: null, needsNameFetch: !conv.customerName }
+    }
+
     // Conversation-scoped draft: reuse the active (pending/ready) draft if one
     // exists, otherwise create a fresh pending one. The actual generation is
     // debounced + coalesced downstream, so this only marks "a draft is due".

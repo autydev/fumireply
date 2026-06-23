@@ -82,6 +82,21 @@ app Lambda の実行ロールに以下を追加 (IaC で管理):
 
 - 再生成中に同じ会話宛の Messenger inbound webhook を手動で叩く (curl) → サーバログに `draft_enqueue_skipped_fresh_pending` が出る。再生成完了後に未取り込み新着が反映された 2 つ目の下書き (instruction なし) が生成される。
 
+### 観測すべき構造化ログイベント (005)
+
+| event | プロセス | 意味 / 期待タイミング |
+|---|---|---|
+| `draft_regenerate_requested` | app | server fn が active draft を pending に戻して SQS publish に成功 (instruction_length のみ記録、本文は出さない) |
+| `draft_regenerate_started` | ai-worker | ジョブ受信時の coalesce bypass マーカー (instruction_length 含む) |
+| `draft_regenerate_failed` | ai-worker | Anthropic 失敗時 (status=ready 維持・error 列セット) |
+| `draft_persisted` (triggerType: regenerate) | ai-worker | 再生成書込完了 (success / failure 共通) |
+| `draft_regenerate_followup_enqueued` | ai-worker | 再生成中に届いた新着 inbound を auto-batch として self-enqueue |
+| `draft_regenerate_followup_failed` | ai-worker | self-enqueue の SQS 送信に失敗 (regenerate 結果には影響なし) |
+| `draft_regenerate_enqueue_failed` | app | server fn から SQS publish が失敗 (UI 側で `enqueue_failed` エラーになる) |
+| `draft_enqueue_skipped_fresh_pending` | webhook | stale-pending guard が発火し新着 inbound を auto-batch enqueue しなかった |
+
+PII / 機密情報を含まないこと: 構造化ログには `instruction_length: number` のみ。本文 / トークン / メッセージ ID 以外の文字列は出さない方針。
+
 ---
 
 ## 6. テスト実行

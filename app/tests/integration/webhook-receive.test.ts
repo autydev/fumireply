@@ -118,7 +118,17 @@ beforeEach(() => {
 
   mockWithTenant.mockImplementation(
     async (_tenantId: string, fn: (tx: Record<string, unknown>) => Promise<unknown>) => {
+      // 005: the stale-pending guard reads `tx.select(...).from(...).where(...).limit(1)`
+      // and returns either [] (no existing active draft) or [{status,updatedAt}].
+      // For this integration test we return [] so the guard does NOT fire and
+      // the original auto-batch publish path is exercised.
+      const selectChain = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      }
       const mockTx = {
+        select: vi.fn(() => selectChain),
         insert: vi.fn().mockReturnThis(),
         values: vi.fn().mockReturnThis(),
         onConflictDoUpdate: vi.fn().mockReturnThis(),
