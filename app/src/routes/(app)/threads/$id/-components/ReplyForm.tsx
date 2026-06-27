@@ -4,7 +4,9 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { sendReplyFn } from '../-lib/send-reply.fn'
 import { dismissDraftFn } from '../-lib/dismiss-draft.fn'
+import { regenerateDraftFn } from '../-lib/regenerate-draft.fn'
 import { DraftBanner } from './DraftBanner'
+import { RegeneratePanel } from './RegeneratePanel'
 import type { ConversationDetail } from '../-lib/get-conversation.fn'
 import { SparkleIcon, SendIcon, XIcon, ThumbUpIcon, ThumbDownIcon, AlertTriIcon } from '~/components/ui/icons'
 import { m } from '~/paraglide/messages'
@@ -33,6 +35,13 @@ export function ReplyForm({
   const [error, setError] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<AutoSaveState>('saved')
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
+  // 005: one-off regenerate state.
+  const [instruction, setInstruction] = useState('')
+  const [isRegenerating, setIsRegenerating] = useState(false)
+  // Snapshot of the body at the moment regenerate was triggered. Used to detect
+  // success vs. failure by comparing the eventual `ready` body — though the
+  // primary failure signal is the `error` column returned by getDraftStatusFn.
+  const regenStartBodyRef = useRef<string>('')
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveInnerTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const bodyRef = useRef(body)
@@ -74,7 +83,60 @@ export function ReplyForm({
   const handleDraftReady = useCallback((draftBody: string) => {
     setBody(draftBody)
     setDraftStatus('ready')
+    // 005: regenerate success → clear instruction, re-enable button.
+    setInstruction('')
+    setIsRegenerating(false)
+    regenStartBodyRef.current = ''
   }, [])
+
+  // 005: handle regenerate failure / timeout from DraftBanner.
+  const handleRegenerateError = useCallback(
+    (reason: 'timeout' | 'regenerate_failed', message?: string) => {
+      setIsRegenerating(false)
+      if (reason === 'timeout') {
+        setError(m.reply_draft_regenerate_timeout())
+      } else {
+        setError(m.reply_draft_regenerate_failed({ message: message ?? '' }))
+      }
+      // Restore the previous body if the textarea was empty — the worker writes
+      // status='ready' on regen failure with body unchanged, so the next loader
+      // refresh will repopulate it. Keep instruction populated so the operator
+      // can retry without retyping.
+      setDraftStatus('ready')
+    },
+    [],
+  )
+
+  const handleRegenerateClick = useCallback(async () => {
+    if (isRegenerating) return
+    regenStartBodyRef.current = bodyRef.current
+    setIsRegenerating(true)
+    setError(null)
+    try {
+      const result = await regenerateDraftFn({
+        data: {
+          conversationId,
+          instruction: instruction.trim() ? instruction.trim() : undefined,
+        },
+      })
+      if (result.ok) {
+        // Server flipped row to pending → poll via DraftBanner.
+        setDraftStatus('pending')
+      } else {
+        setIsRegenerating(false)
+        if (result.error === 'enqueue_failed') {
+          setError(m.reply_draft_regenerate_enqueue_failed())
+        } else {
+          // no_active_draft — should not normally happen because the button is
+          // only visible when draft is ready. Fail soft.
+          setError(m.reply_error_generic())
+        }
+      }
+    } catch {
+      setIsRegenerating(false)
+      setError(m.reply_draft_regenerate_enqueue_failed())
+    }
+  }, [conversationId, instruction, isRegenerating])
 
   const handleBodyChange = (val: string) => {
     setBody(val)
@@ -140,7 +202,11 @@ export function ReplyForm({
         <DraftBanner
           conversationId={conversationId}
           initialStatus="pending"
+          // 005: longer timeout when operator triggered the regenerate; default
+          // 60s for auto-batch (#004 preserved UX).
+          mode={isRegenerating ? 'regenerate' : 'auto'}
           onReady={handleDraftReady}
+          onError={handleRegenerateError}
         />
       )}
 
@@ -323,6 +389,17 @@ export function ReplyForm({
             {error}
           </div>
         )}
+
+        {/* 005: one-off regenerate panel (only when draft is ready) */}
+        <div style={{ padding: '0 14px 6px' }}>
+          <RegeneratePanel
+            isVisible={hasDraft}
+            isRegenerating={isRegenerating}
+            instruction={instruction}
+            onInstructionChange={setInstruction}
+            onRegenerateClick={() => void handleRegenerateClick()}
+          />
+        </div>
 
         {/* Footer actions */}
         <div

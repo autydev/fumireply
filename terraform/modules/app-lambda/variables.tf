@@ -106,6 +106,20 @@ variable "summary_queue_arn" {
   default     = ""
 }
 
+# 005-draft-regenerate-oneoff: app から ai_draft キューに publish する経路を追加。
+# webhook と同じキューを共有し、運営者起点の再生成ジョブを enqueue する。
+variable "draft_queue_url" {
+  description = "URL of the ai-draft SQS queue (injected as SQS_QUEUE_URL). Required for the regenerate-draft server fn (005). Leave empty to disable."
+  type        = string
+  default     = ""
+}
+
+variable "draft_queue_arn" {
+  description = "ARN of the ai-draft SQS queue (for IAM SendMessage grant). Leave empty to skip."
+  type        = string
+  default     = ""
+}
+
 variable "summary_trigger_threshold_chars" {
   description = "Character threshold to trigger summary job (default 2000)."
   type        = string

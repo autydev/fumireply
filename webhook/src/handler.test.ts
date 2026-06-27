@@ -234,7 +234,12 @@ describe('POST /api/webhook — text message', () => {
     expect(mockWithTenant).toHaveBeenCalledWith(TENANT_ID, expect.any(Function))
     expect(sqsMock.calls()).toHaveLength(1)
     const sqsInput = sqsMock.calls()[0].args[0].input as { MessageBody: string }
-    expect(JSON.parse(sqsInput.MessageBody)).toEqual({ messageId: NEW_MSG_UUID })
+    // 004 changed SQS payload to conversation-scoped jobs.
+    expect(JSON.parse(sqsInput.MessageBody)).toEqual({
+      jobType: 'draft',
+      conversationId: CONV_UUID,
+      triggerMessageId: NEW_MSG_UUID,
+    })
     expect(mockMaybeEnqueueSummaryJob).toHaveBeenCalledWith(CONV_UUID, TENANT_ID)
   })
 

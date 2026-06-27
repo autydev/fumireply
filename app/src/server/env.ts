@@ -10,8 +10,13 @@ const envSchema = z.object({
   META_APP_SECRET_SSM_KEY: z.string().min(1),
   WEBHOOK_VERIFY_TOKEN_SSM_KEY: z.string().min(1),
   ANTHROPIC_API_KEY_SSM_KEY: z.string().min(1),
-  AWS_REGION: z.string().min(1),
+  AWS_REGION: z.string().min(1).default('ap-northeast-1'),
   MASTER_KEY_SSM_PATH: z.string().min(1).default('/fumireply/master-encryption-key'),
+  // 005: draft SQS queue URL — required for regenerate-draft.fn but optional at
+  // the env layer so other code paths (connect-page, settings) don't fail when
+  // SQS_QUEUE_URL isn't set in their test fixtures. The SQS service itself
+  // throws a clear error if invoked without it.
+  SQS_QUEUE_URL: z.string().default(''),
 })
 
 export type Env = z.infer<typeof envSchema>

@@ -179,6 +179,11 @@ module "app_lambda" {
   # Summary pipeline (003-customer-context-and-settings)
   summary_queue_url = aws_sqs_queue.ai_summary.url
   summary_queue_arn = aws_sqs_queue.ai_summary.arn
+
+  # Draft regenerate pipeline (005-draft-regenerate-oneoff)
+  # webhook と同じ ai_draft キュー (module.queue) を共有して publish する。
+  draft_queue_url = module.queue.queue_url
+  draft_queue_arn = module.queue.queue_arn
 }
 
 ###############################################################################

@@ -108,6 +108,26 @@ export function buildUserPrompt(
   return lines.join('\n')
 }
 
+/**
+ * Builds the highest-priority operator instruction block for one-off
+ * regeneration (feature 005). Returns null when there is no instruction so the
+ * caller can omit the block entirely.
+ *
+ * Placed between buildAdditionalSystemPrompt and LANGUAGE_DIRECTIVE so it
+ * overrides shop policy / tone / customer instructions / summary but does not
+ * disturb the language-selection rule.
+ */
+export function buildOperatorInstructionBlock(instruction?: string): string | null {
+  const trimmed = (instruction ?? '').trim()
+  if (!trimmed) return null
+  return [
+    '## Operator instruction for this draft',
+    'Apply this one-off instruction with HIGHEST priority over the shop policy, tone, customer instructions, and conversation summary above. The customer has NOT seen this instruction — do not quote it or refer to it. Do not change the output language based on this instruction; follow the language rule below.',
+    '',
+    trimmed,
+  ].join('\n')
+}
+
 export function buildSummaryPrompt(
   existingSummary: string | null,
   messages: Array<{ direction: string; body: string }>,

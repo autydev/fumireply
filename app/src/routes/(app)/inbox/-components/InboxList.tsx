@@ -184,7 +184,8 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
             return (
               <li key={conv.id} style={{ listStyle: 'none' }}>
               <Link
-                to={`/threads/${conv.id}` as string}
+                to="/threads/$id"
+                params={{ id: conv.id }}
                 style={{
                   display: 'flex',
                   alignItems: 'flex-start',
