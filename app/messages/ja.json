@@ -70,6 +70,8 @@
   "thread_no_messages": "メッセージはありません",
   "thread_message_sent": "送信済み",
   "thread_message_failed": "送信失敗",
+  "thread_translate_button": "翻訳",
+  "thread_translate_aria": "Google 翻訳で日本語訳を開く",
   "token_banner_invalid": "ページアクセストークンが無効です。Meta Developer Console でトークンを再発行してください。",
   "time_just_now": "たった今",
   "time_minutes_ago": "{minutes}分前",

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { MessageWithDraft } from '../-lib/get-conversation.fn'
 import { CheckIcon, ClockIcon } from '~/components/ui/icons'
 import { m } from '~/paraglide/messages'
+import { buildTranslateUrl } from '~/lib/translate-url'
 
 export function ThreadMessages({ messages }: { messages: MessageWithDraft[] }) {
   const bottomRef = useRef<HTMLLIElement>(null)
@@ -62,6 +63,7 @@ function MessageBubble({ msg }: { msg: MessageWithDraft }) {
   })
 
   if (isInbound) {
+    const canTranslate = msg.body.trim().length > 0
     return (
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', maxWidth: '75%' }}>
         <div>
@@ -87,9 +89,29 @@ function MessageBubble({ msg }: { msg: MessageWithDraft }) {
               color: 'var(--color-ink-4)',
               marginTop: 4,
               fontFamily: 'var(--font-mono)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
             }}
           >
-            {timeStr}
+            <span>{timeStr}</span>
+            {canTranslate && (
+              <a
+                href={buildTranslateUrl(msg.body, 'ja')}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={m.thread_translate_aria()}
+                style={{
+                  color: 'var(--color-ink-3)',
+                  textDecoration: 'underline',
+                  textDecorationStyle: 'dotted',
+                  textUnderlineOffset: 2,
+                  fontFamily: 'inherit',
+                }}
+              >
+                {m.thread_translate_button()}
+              </a>
+            )}
           </div>
         </div>
       </div>

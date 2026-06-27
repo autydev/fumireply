@@ -10,6 +10,7 @@ import { RegeneratePanel } from './RegeneratePanel'
 import type { ConversationDetail } from '../-lib/get-conversation.fn'
 import { SparkleIcon, SendIcon, XIcon, ThumbUpIcon, ThumbDownIcon, AlertTriIcon } from '~/components/ui/icons'
 import { m } from '~/paraglide/messages'
+import { buildTranslateUrl } from '~/lib/translate-url'
 
 type Props = {
   conversationId: string
@@ -295,8 +296,31 @@ export function ReplyForm({
               {m.reply_ai_suggestion_label()}
             </span>
 
-            {/* Feedback buttons */}
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+            {/* Feedback + translate buttons */}
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center' }}>
+              {/* 007: 下書き本文の概要把握用に Google 翻訳を新規タブで開く。
+                  対象は最新の textarea 値 (body) — 編集後の文章も翻訳できる。 */}
+              {body.trim() && (
+                <a
+                  href={buildTranslateUrl(body, 'ja')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={m.thread_translate_aria()}
+                  style={{
+                    padding: '3px 6px',
+                    borderRadius: 5,
+                    fontSize: 11,
+                    color: 'var(--color-ink-3)',
+                    background: 'transparent',
+                    border: '1px solid transparent',
+                    textDecoration: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 120ms',
+                  }}
+                >
+                  {m.thread_translate_button()}
+                </a>
+              )}
               <button
                 onClick={() => setFeedback(feedback === 'up' ? null : 'up')}
                 aria-label={m.reply_feedback_good()}
