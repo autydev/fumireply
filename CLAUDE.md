@@ -1,16 +1,17 @@
 <!-- SPECKIT START -->
-Active feature plan: [specs/005-draft-regenerate-oneoff/plan.md](specs/005-draft-regenerate-oneoff/plan.md)
+Active feature plan: [specs/006-message-echoes-ingest/plan.md](specs/006-message-echoes-ingest/plan.md)
 
 Related artifacts (same directory):
-- spec.md — feature specification (AI 下書きの条件付き再生成。ワンオフ指示は永続化せず最新で上書き、失敗時は旧本文保持、90s タイムアウト)
-- research.md — design decisions (app→SQS publish 経路の追加、coalesce bypass、失敗時 ready 維持、プロンプト合成順序、stale-pending guard)
-- data-model.md — DB スキーマ変更ゼロ。ai_drafts の既存列 (`error`) 用途拡張と状態遷移の追記のみ
-- contracts/regenerate-pipeline.md — SQS payload 拡張 (`triggerType:'regenerate'` / `instruction`)、prompt 合成位置、server fn (`regenerate-draft.fn.ts`) 契約、UI 契約
-- quickstart.md — env 追加 (SQS_QUEUE_URL, AWS_REGION)、IAM (`sqs:SendMessage`) 付与、新規 npm 1 つ (`@aws-sdk/client-sqs`)
+- spec.md — feature specification (Meta `message_echoes` 経由で外部送信を取り込み、スレッドに `outbound` として表示。fumireply 自送信 echo は冪等更新、外部送信は新規 INSERT。 未返信バッチ判定 #004 の境界に自然反映)
+- research.md — design decisions (両側 UPSERT スキーム / `recipient.id` ベースの会話 upsert / echo は AI 下書きと副作用を発火しない / 構造化ログイベント名 / 非テキスト body=''/ 購読切替手順)
+- data-model.md — DB スキーマ変更ゼロ。`messages` の既存列と `metaMessageId` UNIQUE を再利用、状態遷移 4 パターンと不変条件を明記
+- contracts/echo-pipeline.md — Webhook 購読フィールド契約、echo handler の UPSERT 契約、send-reply の UNIQUE 違反 catch + attribute 補正契約、構造化ログイベント名
+- quickstart.md — env/IAM/SSM 追加なし。Meta App 管理画面で `message_echoes` 購読フィールド有効化 (人手 1 回) + CloudWatch Logs Insights クエリ例
 
 Predecessors:
-- [specs/004-batch-draft-unanswered/plan.md](specs/004-batch-draft-unanswered/plan.md) — 会話スコープのアクティブ下書き 1 件モデル + デバウンス + 未返信バッチ。005 はこの基盤に乗る。
-- [specs/003-customer-context-and-settings/plan.md](specs/003-customer-context-and-settings/plan.md) — 永続 custom_prompt / DraftSettingsEditor / 5 段プロンプト合成。005 はワンオフ指示層を追加。
+- [specs/005-draft-regenerate-oneoff/plan.md](specs/005-draft-regenerate-oneoff/plan.md) — AI 下書きのワンオフ再生成。echo 経路は ai_drafts と非干渉。
+- [specs/004-batch-draft-unanswered/plan.md](specs/004-batch-draft-unanswered/plan.md) — 会話スコープのアクティブ下書き 1 件モデル + 未返信バッチ。006 で外部送信が境界に正しく入る。
+- [specs/003-customer-context-and-settings/plan.md](specs/003-customer-context-and-settings/plan.md) — 永続 custom_prompt / DraftSettingsEditor / 5 段プロンプト合成。
 - [specs/002-app-review-submission/plan.md](specs/002-app-review-submission/plan.md) — Connect Page UI + Paraglide JS i18n。
 - [specs/001-mvp-app-review/plan.md](specs/001-mvp-app-review/plan.md) — MVP for the underlying Messenger inbox + AI draft pipeline.
 
