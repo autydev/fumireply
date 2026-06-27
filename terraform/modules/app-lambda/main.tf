@@ -76,6 +76,17 @@ data "aws_iam_policy_document" "app_lambda_policy" {
       resources = [var.summary_queue_arn]
     }
   }
+
+  # 005: app から ai_draft キューに publish するための SendMessage 権限。
+  # 既存 SQSSendSummary とは別キュー (=別 ARN) なので使い回せず、追加で文を持つ。
+  dynamic "statement" {
+    for_each = var.draft_queue_arn != "" ? [1] : []
+    content {
+      sid       = "SQSSendDraft"
+      actions   = ["sqs:SendMessage"]
+      resources = [var.draft_queue_arn]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "app_lambda" {
@@ -137,6 +148,10 @@ resource "aws_lambda_function" "app" {
       AI_SUMMARY_QUEUE_URL            = var.summary_queue_url
       SUMMARY_TRIGGER_THRESHOLD_CHARS = var.summary_trigger_threshold_chars
       SUMMARY_PIPELINE_ENABLED        = var.summary_pipeline_enabled
+
+      # Draft regenerate pipeline (005-draft-regenerate-oneoff)
+      # app から ai_draft キューに publish するために必要。webhook と同じキュー URL。
+      SQS_QUEUE_URL = var.draft_queue_url
     }
   }
 
