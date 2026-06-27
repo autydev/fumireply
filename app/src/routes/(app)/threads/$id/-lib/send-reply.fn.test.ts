@@ -50,11 +50,17 @@ function buildMockTx(opts: {
   lastInboundAt?: Date | null
   conversationExists?: boolean
   pageExists?: boolean
+  /** 006: 1 つ目の messages.update() で UNIQUE 違反を投げる (mid 書き戻し race) */
+  midWriteThrowsUnique?: boolean
+  /** 006: attribute 補正で claimed 行が返す ID (デフォルトは echo 行のダミー) */
+  claimedRowId?: string
 }): TenantTx {
   const {
     lastInboundAt = LAST_INBOUND_AT,
     conversationExists = true,
     pageExists = true,
+    midWriteThrowsUnique = false,
+    claimedRowId = '00000000-0000-0000-0000-000000000099',
   } = opts
 
   const convRows = conversationExists
@@ -69,8 +75,42 @@ function buildMockTx(opts: {
     { id: MESSAGE_ID, body: 'Hello', timestamp: new Date('2026-05-01T00:00:01Z') },
   ]
 
-  const updateBuilder = {
-    set: vi.fn().mockReturnThis(),
+  // 006: update() builder を呼び出し順に切り替えるため stateful 化。
+  // 期待される呼び出し順 (sendResult.ok 経路):
+  //   1) messages: mid 書き戻し (UNIQUE 違反シミュレート対象)
+  //   2) messages: claimed 行への attribute (returning() で claimed ID を返す) — UNIQUE catch 時のみ
+  //   3) conversations: lastMessageAt 更新
+  //   4) aiDrafts: status=dismissed
+  //
+  // ポイント: where() は await されるが、attribute 補正パスでは `where().returning()` と
+  // チェーンされるため、where() は **thenable + .returning を持つオブジェクト** を返す必要がある。
+  let updateCallCount = 0
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const buildAwaitableWithReturning = (): any => ({
+    then: (resolve: (v: undefined) => void) => resolve(undefined),
+    returning: vi.fn().mockResolvedValue([{ id: claimedRowId }]),
+  })
+  const updateBuilder = () => {
+    updateCallCount++
+    const callIdx = updateCallCount
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const b: any = {}
+    b.set = vi.fn().mockReturnValue(b)
+    if (callIdx === 1 && midWriteThrowsUnique) {
+      const err = {
+        code: '23505',
+        constraint_name: 'messages_meta_message_id_unique',
+        message: 'duplicate key value violates unique constraint',
+      }
+      b.where = vi.fn().mockReturnValue(Promise.reject(err))
+    } else {
+      b.where = vi.fn().mockReturnValue(buildAwaitableWithReturning())
+    }
+    return b
+  }
+
+  // delete() builder (006: UNIQUE 違反時に tentative 行を消す)
+  const deleteBuilder = {
     where: vi.fn().mockResolvedValue(undefined),
   }
 
@@ -90,7 +130,8 @@ function buildMockTx(opts: {
     insert: vi.fn().mockReturnThis(),
     values: vi.fn().mockReturnThis(),
     returning: vi.fn().mockResolvedValue(insertedRows),
-    update: vi.fn().mockReturnValue(updateBuilder),
+    update: vi.fn().mockImplementation(updateBuilder),
+    delete: vi.fn().mockReturnValue(deleteBuilder),
   } as unknown as TenantTx
 }
 
@@ -156,6 +197,44 @@ describe('handleSendReply', () => {
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toBe('token_expired')
+  })
+
+  // 006: T015 — echo 先着 → mid 書き戻しで UNIQUE 違反 → attribute 補正経路
+  it('T015: echo race → UNIQUE catch で attribute 補正し finalMessageId が echo 行 ID に置換', async () => {
+    server.use(
+      http.post(META_MESSAGES_URL, () =>
+        HttpResponse.json({ recipient_id: 'psid-123', message_id: 'm_race_001' }),
+      ),
+    )
+
+    const ECHO_ROW_ID = '00000000-0000-0000-0000-0000000000ec'
+    const tx = buildMockTx({ midWriteThrowsUnique: true, claimedRowId: ECHO_ROW_ID })
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    const { handleSendReply } = await import('./send-reply.server')
+    const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
+      conversationId: CONVERSATION_ID,
+      body: 'Hello',
+    })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      // tentative 行は DELETE され、戻り値の id は echo 行に置き換わる
+      expect(result.message.id).toBe(ECHO_ROW_ID)
+      expect(result.message.send_status).toBe('sent')
+    }
+    // delete + attribute UPDATE が呼ばれた
+    expect((tx.delete as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBeGreaterThan(0)
+    // 構造化ログ
+    const attrLog = infoSpy.mock.calls.find((c) => c[0] === 'echo_send_attribution_recovered')
+    expect(attrLog).toBeDefined()
+    expect(attrLog![1]).toMatchObject({
+      conversationId: CONVERSATION_ID,
+      mid: 'm_race_001',
+      droppedRowId: MESSAGE_ID,
+      sentByAuthUid: USER_ID,
+    })
+    infoSpy.mockRestore()
   })
 
   it(

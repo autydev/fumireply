@@ -35,7 +35,7 @@ description: "Tasks for 006 — 外部送信メッセージを `message_echoes` 
 <!-- unit: U1.1 | deps: none | scope: setup | tasks: T001 | files: 0 | automation: auto -->
 **Unit U1.1 (Setup PR)**: 依存追加なし。最小レビューでマージ可能 (実質変更なしのため U2.1 と一括化も可)。
 
-- [ ] T001 Verify branch is `006-message-echoes-ingest` (created by /speckit.specify) and run `npm ci` in `app/` and `webhook/` to ensure clean install. 新規パッケージは追加しない (drizzle の `onConflictDoUpdate` / `onConflictDoNothing` を流用)。
+- [x] T001 Verify branch is `006-message-echoes-ingest` (created by /speckit.specify) and run `npm ci` in `app/` and `webhook/` to ensure clean install. 新規パッケージは追加しない (drizzle の `onConflictDoUpdate` / `onConflictDoNothing` を流用)。
 
 ---
 
@@ -50,15 +50,15 @@ description: "Tasks for 006 — 外部送信メッセージを `message_echoes` 
 
 ### webhook: 共通ヘルパの切り出し
 
-- [ ] T002 Refactor `webhook/src/handler.ts` lines 143-155 — extract the existing conversation upsert into a new exported function `upsertConversation(tx, tenantId, pageUuid, customerPsid): Promise<{ id: string; customerName: string | null }>`. Call it from the existing inbound branch unchanged (no behavior change). この関数は US1 で echo 分岐からも呼ばれる。
+- [x] T002 Refactor `webhook/src/handler.ts` lines 143-155 — extract the existing conversation upsert into a new exported function `upsertConversation(tx, tenantId, pageUuid, customerPsid): Promise<{ id: string; customerName: string | null }>`. Call it from the existing inbound branch unchanged (no behavior change). この関数は US1 で echo 分岐からも呼ばれる。
 
-- [ ] T003 [P] Add NEW pure function `determineEchoMessageType(msg): { messageType: string; body: string }` to `webhook/src/handler.ts` per research.md R5 / Q1: テキスト → `body=msg.text, messageType='text'`、sticker / image / 未知 → `body='', messageType=...`。inbound 用の既存 `determineMessageType` とは別関数として共存させる (inbound 画像経路は URL を body に入れる挙動を維持)。
+- [x] T003 [P] Add NEW pure function `determineEchoMessageType(msg): { messageType: string; body: string }` to `webhook/src/handler.ts` per research.md R5 / Q1: テキスト → `body=msg.text, messageType='text'`、sticker / image / 未知 → `body='', messageType=...`。inbound 用の既存 `determineMessageType` とは別関数として共存させる (inbound 画像経路は URL を body に入れる挙動を維持)。
 
 ### app: UNIQUE 違反判定ヘルパ
 
-- [ ] T004 [P] Add NEW helper `isUniqueViolation(err: unknown, constraint: string): boolean` to `app/src/server/db/errors.ts` (NEW file) per contracts/echo-pipeline.md C4. Postgres エラーコード `23505` と `constraint_name === constraint` の両条件で `true`。`postgres` / `drizzle` のエラーオブジェクトの実形を `console.error` のスナップショットで一度確認してから書く。
+- [x] T004 [P] Add NEW helper `isUniqueViolation(err: unknown, constraint: string): boolean` to `app/src/server/db/errors.ts` (NEW file) per contracts/echo-pipeline.md C4. Postgres エラーコード `23505` と `constraint_name === constraint` の両条件で `true`。`postgres` / `drizzle` のエラーオブジェクトの実形を `console.error` のスナップショットで一度確認してから書く。
 
-- [ ] T005 [P] Add a vitest unit test for `determineEchoMessageType` in `webhook/src/handler.test.ts` (or new `webhook/src/determine-echo-message-type.test.ts` if preferred): 4 ケース (text / sticker / image / 未知) で expected `(messageType, body)` を assert。テキストは `body` に Meta テキストがそのまま入ること、それ以外は `body === ''` を確認。
+- [x] T005 [P] Add a vitest unit test for `determineEchoMessageType` in `webhook/src/handler.test.ts` (or new `webhook/src/determine-echo-message-type.test.ts` if preferred): 4 ケース (text / sticker / image / 未知) で expected `(messageType, body)` を assert。テキストは `body` に Meta テキストがそのまま入ること、それ以外は `body === ''` を確認。
 
 **Checkpoint**: Foundation ready — US1 / US2 / US3 は並列で着手可能。
 
@@ -77,17 +77,17 @@ description: "Tasks for 006 — 外部送信メッセージを `message_echoes` 
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T006 [P] [US1] Add vitest test "echo INSERT (text) で新規 outbound 行が作られる" in `webhook/src/handler.test.ts`: setup で connectedPages と空の conversations を用意、`is_echo=true, text='Hello', mid='m_us1_text'` の echo を `processMessagingEvent` に渡す → DB に行 1 件、`(direction, metaMessageId, body, messageType, sendStatus, sentByAuthUid)` を assert。`event.timestamp` が `messages.timestamp` に反映されること。
+- [x] T006 [P] [US1] Add vitest test "echo INSERT (text) で新規 outbound 行が作られる" in `webhook/src/handler.test.ts`: setup で connectedPages と空の conversations を用意、`is_echo=true, text='Hello', mid='m_us1_text'` の echo を `processMessagingEvent` に渡す → DB に行 1 件、`(direction, metaMessageId, body, messageType, sendStatus, sentByAuthUid)` を assert。`event.timestamp` が `messages.timestamp` に反映されること。
 
-- [ ] T007 [P] [US1] Add vitest test "echo INSERT (sticker) で body='' / messageType='sticker'" in `webhook/src/handler.test.ts`: sticker_id 入り attachments を持つ echo ペイロードに対し `body === ''` `messageType === 'sticker'` を assert。
+- [x] T007 [P] [US1] Add vitest test "echo INSERT (sticker) で body='' / messageType='sticker'" in `webhook/src/handler.test.ts`: sticker_id 入り attachments を持つ echo ペイロードに対し `body === ''` `messageType === 'sticker'` を assert。
 
-- [ ] T008 [P] [US1] Add vitest test "echo INSERT (image) で body='' / messageType='image'" in `webhook/src/handler.test.ts`: type='image' の attachments 入り echo に対し `body === ''` `messageType === 'image'` を assert (注: inbound 画像経路と差分があることを認識する)。
+- [x] T008 [P] [US1] Add vitest test "echo INSERT (image) で body='' / messageType='image'" in `webhook/src/handler.test.ts`: type='image' の attachments 入り echo に対し `body === ''` `messageType === 'image'` を assert (注: inbound 画像経路と差分があることを認識する)。
 
-- [ ] T009 [P] [US1] Add vitest test "echo の recipient.id が新規 PSID のとき会話を自動生成する" in `webhook/src/handler.test.ts`: conversations 未設定で `recipient.id='psid_new_us1'` の echo を流す → `conversations` に行 1 件 (page_id, customer_psid)、その上に `messages` 1 件が乗ることを assert。`upsertConversation` 関数経由で動作することの実装確認。
+- [x] T009 [P] [US1] Add vitest test "echo の recipient.id が新規 PSID のとき会話を自動生成する" in `webhook/src/handler.test.ts`: conversations 未設定で `recipient.id='psid_new_us1'` の echo を流す → `conversations` に行 1 件 (page_id, customer_psid)、その上に `messages` 1 件が乗ることを assert。`upsertConversation` 関数経由で動作することの実装確認。
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Modify `webhook/src/handler.ts` `processMessagingEvent` — replace the existing 4-line `is_echo` branch (lines 130-138) with the contracts/echo-pipeline.md C3 implementation:
+- [x] T010 [US1] Modify `webhook/src/handler.ts` `processMessagingEvent` — replace the existing 4-line `is_echo` branch (lines 130-138) with the contracts/echo-pipeline.md C3 implementation:
   1. `const psid = event.recipient.id`
   2. `const { messageType, body } = determineEchoMessageType(msg)` (T003 で追加した helper)
   3. `withTenant(tenantId, async tx => {...})` 内で `upsertConversation` (T002) → `messages.insert(...).onConflictDoUpdate({ target: messages.metaMessageId, set: { sendStatus: 'sent' } }).returning({ id, inserted: sql<boolean>\`(xmax = 0)\` })` を実行
@@ -96,7 +96,7 @@ description: "Tasks for 006 — 外部送信メッセージを `message_echoes` 
   
   既存 inbound 経路には一切手を入れない。echo は副作用 (SQS / Summary / customerName fetch / lastInboundAt / unreadCount) を呼ばない (FR-009)。
 
-- [ ] T011 [US1] Verify T006〜T009 tests pass (red → green). 念のため `npm test -- handler.test.ts` を実行し、既存テスト (inbound 経路、未知 Page、Signature) もすべて green であることを確認。
+- [x] T011 [US1] Verify T006〜T009 tests pass (red → green). 念のため `npm test -- handler.test.ts` を実行し、既存テスト (inbound 経路、未知 Page、Signature) もすべて green であることを確認。
 
 **Checkpoint**: US1 完了。Messenger 公式アプリ → fumireply スレッドの外部送信流入が動作する。Meta App 購読フィールド有効化前なら本番デプロイしても挙動変化なし (デプロイ→購読フラグ ON の二段切替)。
 
@@ -115,19 +115,19 @@ description: "Tasks for 006 — 外部送信メッセージを `message_echoes` 
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T012 [P] [US2] Add vitest test "echo UPDATE で既存自送信行の sendStatus を 'sent' に確定、他列は不変" in `webhook/src/handler.test.ts`: setup で `(direction='outbound', metaMessageId='m_us2_self', body='Hello self', sendStatus='pending', sentByAuthUid=<UUID>)` を pre-insert → 同 mid の echo を流す → 行数 1、`sendStatus='sent'`、`timestamp`/`body`/`sentByAuthUid`/`messageType` 不変を assert。`event=self_echo_confirmed` ログが出ることも `console.info` の spy で確認。
+- [x] T012 [P] [US2] Add vitest test "echo UPDATE で既存自送信行の sendStatus を 'sent' に確定、他列は不変" in `webhook/src/handler.test.ts`: setup で `(direction='outbound', metaMessageId='m_us2_self', body='Hello self', sendStatus='pending', sentByAuthUid=<UUID>)` を pre-insert → 同 mid の echo を流す → 行数 1、`sendStatus='sent'`、`timestamp`/`body`/`sentByAuthUid`/`messageType` 不変を assert。`event=self_echo_confirmed` ログが出ることも `console.info` の spy で確認。
 
-- [ ] T013 [P] [US2] Add vitest test "同一 mid の echo を 2 連発しても行数は 1 のまま" in `webhook/src/handler.test.ts`: 同 mid の echo を `processMessagingEvent` に 2 回流す → 1 件目は INSERT、2 件目は UPDATE (no-op)、`messages` の総件数が 1 件のまま `sendStatus='sent'` であることを assert。
+- [x] T013 [P] [US2] Add vitest test "同一 mid の echo を 2 連発しても行数は 1 のまま" in `webhook/src/handler.test.ts`: 同 mid の echo を `processMessagingEvent` に 2 回流す → 1 件目は INSERT、2 件目は UPDATE (no-op)、`messages` の総件数が 1 件のまま `sendStatus='sent'` であることを assert。
 
-- [ ] T014 [P] [US2] Add vitest test "echo は SQS 送信 / Summary trigger / customerName fetch を起動しない" in `webhook/src/handler.test.ts`: `sqsClient.send`, `maybeEnqueueSummaryJob`, `fetchCustomerName` を spy しておき、echo 流入時に 0 回呼ばれることを assert。同時に `conversations.lastInboundAt` / `lastMessageAt` / `unreadCount` が **不変**であることも DB を再読みして assert。
+- [x] T014 [P] [US2] Add vitest test "echo は SQS 送信 / Summary trigger / customerName fetch を起動しない" in `webhook/src/handler.test.ts`: `sqsClient.send`, `maybeEnqueueSummaryJob`, `fetchCustomerName` を spy しておき、echo 流入時に 0 回呼ばれることを assert。同時に `conversations.lastInboundAt` / `lastMessageAt` / `unreadCount` が **不変**であることも DB を再読みして assert。
 
-- [ ] T015 [P] [US2] Add vitest test "send-reply の mid 書き戻しが UNIQUE 違反になったとき attribute 補正される" in `app/src/routes/(app)/threads/$id/-lib/send-reply.fn.test.ts`: setup で echo 行を pre-insert (`metaMessageId='m_us2_race', sentByAuthUid=null, sendStatus='sent'`)、`sendMessengerReply` を mock して `{ ok: true, messageId: 'm_us2_race' }` を返す → `sendReplyFn` を呼ぶ → TX1 で tentative 行 R が INSERT され、TX2 で UPDATE が UNIQUE 違反、catch 内で R が DELETE、echo 行の `sentByAuthUid` が `context.user.id` に更新、戻り値 `message.id` が echo 行 ID に一致することを assert。`event=echo_send_attribution_recovered` ログ出力も spy で確認。
+- [x] T015 [P] [US2] Add vitest test "send-reply の mid 書き戻しが UNIQUE 違反になったとき attribute 補正される" in `app/src/routes/(app)/threads/$id/-lib/send-reply.fn.test.ts`: setup で echo 行を pre-insert (`metaMessageId='m_us2_race', sentByAuthUid=null, sendStatus='sent'`)、`sendMessengerReply` を mock して `{ ok: true, messageId: 'm_us2_race' }` を返す → `sendReplyFn` を呼ぶ → TX1 で tentative 行 R が INSERT され、TX2 で UPDATE が UNIQUE 違反、catch 内で R が DELETE、echo 行の `sentByAuthUid` が `context.user.id` に更新、戻り値 `message.id` が echo 行 ID に一致することを assert。`event=echo_send_attribution_recovered` ログ出力も spy で確認。
 
 ### Implementation for User Story 2
 
-- [ ] T016 [US2] Modify `webhook/src/handler.ts` `processMessagingEvent` echo branch (T010 で書いた箇所) — `outcome.inserted === false` の else 節に `console.info('self_echo_confirmed', { conversationId, mid, pageId })` を追加。T012〜T014 テストが green になることを `npm test -- handler.test.ts` で確認。
+- [x] T016 [US2] Modify `webhook/src/handler.ts` `processMessagingEvent` echo branch (T010 で書いた箇所) — `outcome.inserted === false` の else 節に `console.info('self_echo_confirmed', { conversationId, mid, pageId })` を追加。T012〜T014 テストが green になることを `npm test -- handler.test.ts` で確認。
 
-- [ ] T017 [US2] Modify `app/src/routes/(app)/threads/$id/-lib/send-reply.fn.ts` TX2 (現在 line 87-105) — `sendResult.ok` ブロック内の `await tx.update(messages).set({ sendStatus: 'sent', metaMessageId: sendResult.messageId }).where(eq(messages.id, prep.insertedId))` を `try/catch` で包み、`isUniqueViolation(err, 'messages_meta_message_id_unique')` (T004) のとき:
+- [x] T017 [US2] Modify `app/src/routes/(app)/threads/$id/-lib/send-reply.fn.ts` TX2 (現在 line 87-105) — `sendResult.ok` ブロック内の `await tx.update(messages).set({ sendStatus: 'sent', metaMessageId: sendResult.messageId }).where(eq(messages.id, prep.insertedId))` を `try/catch` で包み、`isUniqueViolation(err, 'messages_meta_message_id_unique')` (T004) のとき:
   1. `await tx.delete(messages).where(eq(messages.id, prep.insertedId))`
   2. `const claimed = await tx.update(messages).set({ sentByAuthUid, sendStatus: 'sent' }).where(eq(messages.metaMessageId, sendResult.messageId)).returning({ id: messages.id })`
   3. `finalMessageId = claimed[0]?.id ?? prep.insertedId`
@@ -150,7 +150,7 @@ description: "Tasks for 006 — 外部送信メッセージを `message_echoes` 
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T018 [US3] Add vitest integration test "echo INSERT 後の会話は #004 未返信バッチ判定で空配列になる" in `webhook/src/handler.test.ts` (既存テストファイル集約。新規ファイルは作らない): setup で conversation に inbound 2 通 (`ts1 < ts2`)、`direction='outbound'` 行ゼロを用意 → echo (`is_echo=true, recipient.id=psid, ts=ts3 > ts2`) を `processMessagingEvent` で取り込み → 同会話に対して #004 と同じクエリ `SELECT MAX(timestamp) FROM messages WHERE conversation_id=C AND direction='outbound'` を実行して `ts3` が返ること、続いて `SELECT * FROM messages WHERE conversation_id=C AND direction='inbound' AND timestamp > <max_outbound>` が **0 行**であることを assert。**実装ファイルは触らない**。
+- [x] T018 [US3] Add vitest integration test "echo INSERT 後の会話は #004 未返信バッチ判定で空配列になる" in `webhook/src/handler.test.ts` (既存テストファイル集約。新規ファイルは作らない): setup で conversation に inbound 2 通 (`ts1 < ts2`)、`direction='outbound'` 行ゼロを用意 → echo (`is_echo=true, recipient.id=psid, ts=ts3 > ts2`) を `processMessagingEvent` で取り込み → 同会話に対して #004 と同じクエリ `SELECT MAX(timestamp) FROM messages WHERE conversation_id=C AND direction='outbound'` を実行して `ts3` が返ること、続いて `SELECT * FROM messages WHERE conversation_id=C AND direction='inbound' AND timestamp > <max_outbound>` が **0 行**であることを assert。**実装ファイルは触らない**。
 
 **Checkpoint**: US1〜US3 すべて完了。spec の P1 ストーリー 3 件が全て独立に検証可能。
 
@@ -163,7 +163,7 @@ description: "Tasks for 006 — 外部送信メッセージを `message_echoes` 
 <!-- unit: U6.1 | deps: U5.1 | scope: docs | tasks: T019 | files: 1 | automation: auto -->
 **Unit U6.1 (Docs PR)**: 運用手順書の購読フィールド追記のみ。コード変更なし。
 
-- [ ] T019 [P] Modify `docs/resume-webhook-bringup.md` per contracts/echo-pipeline.md C6 — 「Subscription Fields」行を `messages, messaging_postbacks, message_echoes` に書き換え、本文末尾に「2026-06-27 以降の必須設定」セクションを追加 (具体的な購読有効化手順と、未購読時の挙動説明)。`specs/006-message-echoes-ingest/` への参照リンクを含める。
+- [x] T019 [P] Modify `docs/resume-webhook-bringup.md` per contracts/echo-pipeline.md C6 — 「Subscription Fields」行を `messages, messaging_postbacks, message_echoes` に書き換え、本文末尾に「2026-06-27 以降の必須設定」セクションを追加 (具体的な購読有効化手順と、未購読時の挙動説明)。`specs/006-message-echoes-ingest/` への参照リンクを含める。
 
 <!-- unit: U6.2 | deps: U5.1 | scope: e2e | tasks: T020-T022 | files: 1 | automation: manual -->
 **Unit U6.2 (E2E + Release PR)**: Playwright スモーク 1 本 + CI green 確認 + 本番デプロイ手順チェック + リリース後の SC-001 観測 TODO。

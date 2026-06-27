@@ -7,6 +7,7 @@ import { withTenant } from '~/server/db/with-tenant'
 import { decryptToken, getMasterKey } from '~/server/services/crypto'
 import { sendMessengerReply } from '~/server/services/messenger'
 import { maybeEnqueueSummaryJob } from '~/server/services/summary-trigger'
+import { isUniqueViolation, META_MESSAGE_ID_UNIQUE } from '~/server/db/errors'
 import { TWENTY_FOUR_HOURS_MS, type SendReplyResult } from './send-reply.server'
 
 export type { SendReplyResult } from './send-reply.server'
@@ -87,7 +88,34 @@ export const sendReplyFn = createServerFn({ method: 'POST' })
     // TX2 (short): UPDATE message to sent/failed → commit
     const result = await withTenant(tenantId, async (tx) => {
       if (sendResult.ok) {
-        await tx.update(messages).set({ sendStatus: 'sent', metaMessageId: sendResult.messageId }).where(eq(messages.id, prep.insertedId))
+        // 006: echo が `mid` 書き戻し前に到着して同 mid で既に行を作っているケースを catch。
+        // UNIQUE 違反のときは tentative 行を DELETE して echo 行に sentByAuthUid を attribute。
+        // 最終的に 1 行に収束させる (FR-008a)。
+        let finalMessageId = prep.insertedId
+        try {
+          await tx
+            .update(messages)
+            .set({ sendStatus: 'sent', metaMessageId: sendResult.messageId })
+            .where(eq(messages.id, prep.insertedId))
+        } catch (err) {
+          if (isUniqueViolation(err, META_MESSAGE_ID_UNIQUE)) {
+            await tx.delete(messages).where(eq(messages.id, prep.insertedId))
+            const claimed = await tx
+              .update(messages)
+              .set({ sentByAuthUid, sendStatus: 'sent' })
+              .where(eq(messages.metaMessageId, sendResult.messageId))
+              .returning({ id: messages.id })
+            finalMessageId = claimed[0]?.id ?? prep.insertedId
+            console.info('echo_send_attribution_recovered', {
+              conversationId: data.conversationId,
+              mid: sendResult.messageId,
+              droppedRowId: prep.insertedId,
+              sentByAuthUid,
+            })
+          } else {
+            throw err
+          }
+        }
         await tx.update(conversations).set({ lastMessageAt: new Date() }).where(eq(conversations.id, data.conversationId))
         // Consume the active draft: sending a reply answers the pending batch.
         await tx
@@ -101,7 +129,7 @@ export const sendReplyFn = createServerFn({ method: 'POST' })
           )
         return {
           ok: true as const,
-          message: { id: prep.insertedId, body: prep.insertedBody, timestamp: prep.insertedTimestamp.toISOString(), send_status: 'sent' as const },
+          message: { id: finalMessageId, body: prep.insertedBody, timestamp: prep.insertedTimestamp.toISOString(), send_status: 'sent' as const },
         }
       }
 
