@@ -3,6 +3,7 @@ import { aiDrafts, connectedPages, conversations, messages } from '~/server/db/s
 import type { TenantTx } from '~/server/db/with-tenant'
 import { decryptToken, getMasterKey } from '~/server/services/crypto'
 import { sendMessengerReply } from '~/server/services/messenger'
+import { isUniqueViolation, META_MESSAGE_ID_UNIQUE } from '~/server/db/errors'
 
 export const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
 
@@ -94,10 +95,33 @@ export async function handleSendReply(
   })
 
   if (sendResult.ok) {
-    await tx
-      .update(messages)
-      .set({ sendStatus: 'sent', metaMessageId: sendResult.messageId })
-      .where(eq(messages.id, inserted.id))
+    // 006: UNIQUE 違反 catch + attribute 補正。詳細は send-reply.fn.ts の同名コメント参照。
+    let finalMessageId = inserted.id
+    try {
+      await tx
+        .update(messages)
+        .set({ sendStatus: 'sent', metaMessageId: sendResult.messageId })
+        .where(eq(messages.id, inserted.id))
+    } catch (err) {
+      if (isUniqueViolation(err, META_MESSAGE_ID_UNIQUE)) {
+        await tx.delete(messages).where(eq(messages.id, inserted.id))
+        const claimed = await tx
+          .update(messages)
+          .set({ sentByAuthUid, sendStatus: 'sent' })
+          .where(eq(messages.metaMessageId, sendResult.messageId))
+          .returning({ id: messages.id })
+        finalMessageId = claimed[0]?.id ?? inserted.id
+        console.info({
+          event: 'echo_send_attribution_recovered',
+          conversationId: data.conversationId,
+          mid: sendResult.messageId,
+          droppedRowId: inserted.id,
+          sentByAuthUid,
+        })
+      } else {
+        throw err
+      }
+    }
 
     await tx
       .update(conversations)
@@ -118,7 +142,7 @@ export async function handleSendReply(
     return {
       ok: true,
       message: {
-        id: inserted.id,
+        id: finalMessageId,
         body: inserted.body,
         timestamp: inserted.timestamp.toISOString(),
         send_status: 'sent',

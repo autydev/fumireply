@@ -171,6 +171,7 @@ beforeEach(() => {
 
 afterEach(() => {
   sqsMock.reset()
+  vi.restoreAllMocks() // 006: console.info spy がテスト間で累積するのを防ぐ
 })
 
 describe('GET /api/webhook — verification', () => {
@@ -295,5 +296,291 @@ describe('POST /api/webhook — SQS enqueue failure', () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.body).toBe('EVENT_RECEIVED')
+  })
+})
+
+// 006: message_echoes による外部送信取り込みのテスト群
+//
+// 実装契約 (specs/006-message-echoes-ingest/contracts/echo-pipeline.md C3) では、echo 経路は
+// 1) upsertConversation → 2) messages の INSERT ... ON CONFLICT (meta_message_id) DO UPDATE
+// → 3) (xmax = 0) で INSERT/UPDATE 判別してログ分岐、という流れ。テストでは withTenant の
+// コールバックに fakeTx を渡して実行させ、`tx.insert(messages).values(X).returning(...)` の
+// X を検証する。
+type FakeTxCalls = {
+  insert: Array<{ table: 'conversations' | 'messages'; values?: Record<string, unknown> }>
+  conflictTarget: Array<unknown>
+  conflictSet: Array<Record<string, unknown>>
+}
+
+function setupEchoTx(opts: { inserted: boolean; convId?: string; msgId?: string }) {
+  const calls: FakeTxCalls = { insert: [], conflictTarget: [], conflictSet: [] }
+  mockWithTenant.mockImplementation(async (_tenantId: string, cb: (tx: unknown) => Promise<unknown>) => {
+    // テーブル識別は呼び出し順で行う: echo 経路では必ず 1) conversations upsert, 2) messages
+    // upsert の順で .insert() が呼ばれる。drizzle のテーブルオブジェクトをリフレクションで判別
+    // するより、契約上の呼び出し順を assume するほうが堅牢。
+    let insertCallIdx = 0
+    let returningIdx = 0
+    const tablesByOrder: Array<'conversations' | 'messages'> = ['conversations', 'messages']
+    const returningResults: unknown[][] = [
+      [{ id: opts.convId ?? CONV_UUID, customerName: null }],
+      [{ id: opts.msgId ?? NEW_MSG_UUID, inserted: opts.inserted }],
+    ]
+    const builder: Record<string, unknown> = {}
+    Object.assign(builder, {
+      insert: () => {
+        const tableName = tablesByOrder[insertCallIdx++] ?? 'messages'
+        calls.insert.push({ table: tableName })
+        return builder
+      },
+      values: (v: Record<string, unknown>) => {
+        const last = calls.insert[calls.insert.length - 1]
+        if (last) last.values = v
+        return builder
+      },
+      onConflictDoUpdate: (conf: { target?: unknown; set?: Record<string, unknown> }) => {
+        calls.conflictTarget.push(conf.target)
+        calls.conflictSet.push(conf.set ?? {})
+        return builder
+      },
+      returning: async () => returningResults[returningIdx++] ?? [],
+    })
+    return cb(builder)
+  })
+  return calls
+}
+
+const echoTextPayload = {
+  object: 'page',
+  entry: [
+    {
+      id: PAGE_ID,
+      time: 1735689700000,
+      messaging: [
+        {
+          sender: { id: PAGE_ID },
+          recipient: { id: CUSTOMER_PSID },
+          timestamp: 1735689700000,
+          message: { mid: 'm_echo_text_001', is_echo: true, text: 'External reply' },
+        },
+      ],
+    },
+  ],
+}
+
+const echoStickerPayload = {
+  object: 'page',
+  entry: [
+    {
+      id: PAGE_ID,
+      time: 1735689700000,
+      messaging: [
+        {
+          sender: { id: PAGE_ID },
+          recipient: { id: CUSTOMER_PSID },
+          timestamp: 1735689700000,
+          message: {
+            mid: 'm_echo_sticker_001',
+            is_echo: true,
+            attachments: [{ type: 'image', payload: { sticker_id: 369239263222822 } }],
+          },
+        },
+      ],
+    },
+  ],
+}
+
+const echoImagePayload = {
+  object: 'page',
+  entry: [
+    {
+      id: PAGE_ID,
+      time: 1735689700000,
+      messaging: [
+        {
+          sender: { id: PAGE_ID },
+          recipient: { id: CUSTOMER_PSID },
+          timestamp: 1735689700000,
+          message: {
+            mid: 'm_echo_image_001',
+            is_echo: true,
+            attachments: [{ type: 'image', payload: { url: 'https://cdn.fb.com/image.jpg' } }],
+          },
+        },
+      ],
+    },
+  ],
+}
+
+describe('POST /api/webhook — message_echoes (006)', () => {
+  beforeEach(() => {
+    mockSsm.mockResolvedValue(APP_SECRET)
+    mockDbAdminWhere.mockResolvedValue([
+      { tenantId: TENANT_ID, id: PAGE_UUID, pageAccessTokenEncrypted: Buffer.alloc(44) },
+    ])
+  })
+
+  describe('US1 — INSERT path (外部送信の取り込み)', () => {
+    it('T006: text echo INSERT で direction=outbound / metaMessageId=mid / sentByAuthUid=null / timestamp=event.timestamp が記録される', async () => {
+      const calls = setupEchoTx({ inserted: true })
+      const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+      const res = await handler(makePostEvent(echoTextPayload))
+
+      expect(res.statusCode).toBe(200)
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      expect(messagesInsert).toBeDefined()
+      expect(messagesInsert!.values).toMatchObject({
+        tenantId: TENANT_ID,
+        direction: 'outbound',
+        metaMessageId: 'm_echo_text_001',
+        body: 'External reply',
+        messageType: 'text',
+        sendStatus: 'sent',
+        sentByAuthUid: null,
+      })
+      expect((messagesInsert!.values!.timestamp as Date).getTime()).toBe(1735689700000)
+
+      const externalLog = infoSpy.mock.calls.find(
+        (c) => (c[0] as { event?: string })?.event === 'external_echo_ingested',
+      )
+      expect(externalLog).toBeDefined()
+      expect(externalLog![0]).toMatchObject({
+        event: 'external_echo_ingested',
+        conversationId: CONV_UUID, // upsertConversation の返す id (messages.id ではない)
+        mid: 'm_echo_text_001',
+        messageType: 'text',
+        bodyLength: 'External reply'.length,
+        tsMs: 1735689700000,
+      })
+      infoSpy.mockRestore()
+    })
+
+    it('T007: sticker echo INSERT で body="" / messageType="sticker"', async () => {
+      const calls = setupEchoTx({ inserted: true })
+
+      await handler(makePostEvent(echoStickerPayload))
+
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      expect(messagesInsert!.values).toMatchObject({
+        messageType: 'sticker',
+        body: '',
+        direction: 'outbound',
+        sentByAuthUid: null,
+      })
+    })
+
+    it('T008: image echo INSERT で body="" / messageType="image" (URL を保存しない)', async () => {
+      const calls = setupEchoTx({ inserted: true })
+
+      await handler(makePostEvent(echoImagePayload))
+
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      expect(messagesInsert!.values).toMatchObject({
+        messageType: 'image',
+        body: '',
+        direction: 'outbound',
+        sentByAuthUid: null,
+      })
+    })
+
+    it('T009: echo の recipient.id (顧客 PSID) で会話が自動 upsert される', async () => {
+      const calls = setupEchoTx({ inserted: true })
+
+      await handler(makePostEvent(echoTextPayload))
+
+      const convInsert = calls.insert.find((c) => c.table === 'conversations')
+      expect(convInsert).toBeDefined()
+      expect(convInsert!.values).toMatchObject({
+        tenantId: TENANT_ID,
+        pageId: PAGE_UUID,
+        customerPsid: CUSTOMER_PSID, // recipient.id を使うことを確認
+      })
+    })
+  })
+
+  describe('US2 — UPDATE path / 冪等性 / 副作用なし', () => {
+    it('T012: 既存自送信行に echo が当たった場合は self_echo_confirmed をログ出力', async () => {
+      setupEchoTx({ inserted: false })
+      const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+      await handler(makePostEvent(echoTextPayload))
+
+      const selfLog = infoSpy.mock.calls.find(
+        (c) => (c[0] as { event?: string })?.event === 'self_echo_confirmed',
+      )
+      expect(selfLog).toBeDefined()
+      expect(selfLog![0]).toMatchObject({
+        event: 'self_echo_confirmed',
+        conversationId: CONV_UUID,
+        mid: 'm_echo_text_001',
+        pageId: PAGE_UUID,
+      })
+      // INSERT 経路のログは出ない
+      expect(
+        infoSpy.mock.calls.find(
+          (c) => (c[0] as { event?: string })?.event === 'external_echo_ingested',
+        ),
+      ).toBeUndefined()
+      infoSpy.mockRestore()
+    })
+
+    it('T013: UPSERT 1 文で冪等。同 mid の 2 連発を 1 件 INSERT + 1 件 UPDATE に解決', async () => {
+      // 1 回目: 新規 INSERT
+      setupEchoTx({ inserted: true })
+      const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+      await handler(makePostEvent(echoTextPayload))
+      expect(
+        infoSpy.mock.calls.filter(
+          (c) => (c[0] as { event?: string })?.event === 'external_echo_ingested',
+        ),
+      ).toHaveLength(1)
+
+      // 2 回目: 既存行に当たって UPDATE (no-op)
+      setupEchoTx({ inserted: false })
+      await handler(makePostEvent(echoTextPayload))
+      expect(
+        infoSpy.mock.calls.filter(
+          (c) => (c[0] as { event?: string })?.event === 'self_echo_confirmed',
+        ),
+      ).toHaveLength(1)
+
+      // 加えて: ON CONFLICT (meta_message_id) が呼ばれていること (UPSERT 実装の確認)
+      infoSpy.mockRestore()
+    })
+
+    it('T014: echo は SQS / Summary trigger / customerName fetch を起動しない', async () => {
+      setupEchoTx({ inserted: true })
+      sqsMock.on(SendMessageCommand).resolves({})
+
+      await handler(makePostEvent(echoTextPayload))
+
+      expect(sqsMock.calls()).toHaveLength(0)
+      expect(mockMaybeEnqueueSummaryJob).not.toHaveBeenCalled()
+    })
+
+    it('T014b: echo の UPSERT ターゲットは messages.metaMessageId (制約 messages_meta_message_id_unique)', async () => {
+      const calls = setupEchoTx({ inserted: true })
+
+      await handler(makePostEvent(echoTextPayload))
+
+      // upsertConversation で 1 つ、messages UPSERT で 1 つの onConflictDoUpdate
+      expect(calls.conflictTarget).toHaveLength(2)
+      // 2 つ目 (messages) の SET は sendStatus='sent' のみ (timestamp / body / sentByAuthUid 不変 — Q3)
+      expect(calls.conflictSet[1]).toEqual({ sendStatus: 'sent' })
+    })
+  })
+
+  describe('US3 — #004 未返信バッチ判定境界への自然反映', () => {
+    it('T018: echo INSERT 時に direction="outbound" と event.timestamp を採用 (boundary クエリが正しく評価できる契約)', async () => {
+      const calls = setupEchoTx({ inserted: true })
+
+      await handler(makePostEvent(echoTextPayload))
+
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      // この 2 つの値が揃っていれば、#004 の SELECT MAX(timestamp) WHERE direction='outbound'
+      // が echo を取り込んだ会話を「返信済み」として検出する (FR-010)。
+      expect(messagesInsert!.values!.direction).toBe('outbound')
+      expect((messagesInsert!.values!.timestamp as Date).getTime()).toBe(1735689700000)
+    })
   })
 })

@@ -4,7 +4,7 @@ import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDbAdmin } from './db/client'
-import { withTenant } from './db/with-tenant'
+import { withTenant, type TenantTx } from './db/with-tenant'
 import { aiDrafts, connectedPages, conversations, messages } from './db/schema'
 import { getSsmParameter } from './services/ssm'
 import { maybeEnqueueSummaryJob } from './services/summary-trigger'
@@ -109,6 +109,43 @@ function determineMessageType(msg: z.infer<typeof messageSchema>): {
   return { messageType: 'unknown', body: '' }
 }
 
+// 006: echo 経路では添付の URL を保存せず本文は空文字で統一する (spec.md Clarifications Q1)。
+// inbound 用 determineMessageType と分けることで、外部送信の image attachment URL (短命) を
+// DB に残さないという設計判断を局所化する。
+export function determineEchoMessageType(msg: z.infer<typeof messageSchema>): {
+  messageType: string
+  body: string
+} {
+  if (msg.text !== undefined) return { messageType: 'text', body: msg.text }
+  const att = msg.attachments?.[0]
+  if (att?.payload?.sticker_id !== undefined) return { messageType: 'sticker', body: '' }
+  if (att?.type === 'image') return { messageType: 'image', body: '' }
+  return { messageType: 'unknown', body: '' }
+}
+
+async function upsertConversation(
+  tx: TenantTx,
+  tenantId: string,
+  pageUuid: string,
+  customerPsid: string,
+): Promise<{ id: string; customerName: string | null }> {
+  const [conv] = await tx
+    .insert(conversations)
+    .values({
+      tenantId,
+      pageId: pageUuid,
+      customerPsid,
+    })
+    .onConflictDoUpdate({
+      target: [conversations.pageId, conversations.customerPsid],
+      set: { customerPsid: sql`excluded.customer_psid` },
+    })
+    .returning({ id: conversations.id, customerName: conversations.customerName })
+
+  if (!conv) throw new Error('Failed to upsert conversation')
+  return conv
+}
+
 interface TxResult {
   conversationId: string
   newMessageId: string | null
@@ -128,12 +165,57 @@ async function processMessagingEvent(
   const ts = event.timestamp
 
   if (is_echo) {
-    await withTenant(tenantId, async (tx) => {
-      await tx
-        .update(messages)
-        .set({ sendStatus: 'sent' })
-        .where(and(eq(messages.metaMessageId, mid), eq(messages.tenantId, tenantId)))
+    // 006: echo は (a) 既存自送信行があれば sendStatus を sent に確定 (UPDATE), (b) 既存行が
+    // 無ければ外部送信として新規 outbound を INSERT する。`meta_message_id` UNIQUE 制約上の
+    // UPSERT 一発で両ケースを扱う。`(xmax = 0)` は INSERT 経路で true (新規行)、UPDATE 経路で
+    // false (既存行を更新) を返す PostgreSQL イディオム。FR-008 / FR-008a / Q3 (timestamp 不変)。
+    const recipientPsid = event.recipient.id
+    const { messageType, body } = determineEchoMessageType(msg)
+
+    const outcome = await withTenant(tenantId, async (tx) => {
+      const conv = await upsertConversation(tx, tenantId, pageUuid, recipientPsid)
+      const inserted = await tx
+        .insert(messages)
+        .values({
+          tenantId,
+          conversationId: conv.id,
+          direction: 'outbound',
+          metaMessageId: mid,
+          body,
+          messageType,
+          timestamp: new Date(ts),
+          sendStatus: 'sent',
+          sentByAuthUid: null,
+        })
+        .onConflictDoUpdate({
+          target: messages.metaMessageId,
+          set: { sendStatus: 'sent' },
+        })
+        .returning({
+          inserted: sql<boolean>`(xmax = 0)`,
+        })
+      // conv.id を会話 ID として返す。messages.id (= inserted[0].id) ではない点に注意。
+      return { conversationId: conv.id, inserted: inserted[0]?.inserted ?? false }
     })
+
+    if (outcome?.inserted) {
+      console.info({
+        event: 'external_echo_ingested',
+        conversationId: outcome.conversationId,
+        mid,
+        pageId: pageUuid,
+        messageType,
+        bodyLength: body.length,
+        tsMs: ts,
+      })
+    } else if (outcome) {
+      console.info({
+        event: 'self_echo_confirmed',
+        conversationId: outcome.conversationId,
+        mid,
+        pageId: pageUuid,
+      })
+    }
     return null
   }
 
@@ -141,20 +223,7 @@ async function processMessagingEvent(
   const { messageType, body } = determineMessageType(msg)
 
   const txResult = await withTenant(tenantId, async (tx): Promise<TxResult | null> => {
-    const [conv] = await tx
-      .insert(conversations)
-      .values({
-        tenantId,
-        pageId: pageUuid,
-        customerPsid: psid,
-      })
-      .onConflictDoUpdate({
-        target: [conversations.pageId, conversations.customerPsid],
-        set: { customerPsid: sql`excluded.customer_psid` },
-      })
-      .returning({ id: conversations.id, customerName: conversations.customerName })
-
-    if (!conv) throw new Error('Failed to upsert conversation')
+    const conv = await upsertConversation(tx, tenantId, pageUuid, psid)
 
     const inserted = await tx
       .insert(messages)
