@@ -192,15 +192,16 @@ async function processMessagingEvent(
           set: { sendStatus: 'sent' },
         })
         .returning({
-          id: messages.id,
           inserted: sql<boolean>`(xmax = 0)`,
         })
-      return inserted[0]
+      // conv.id を会話 ID として返す。messages.id (= inserted[0].id) ではない点に注意。
+      return { conversationId: conv.id, inserted: inserted[0]?.inserted ?? false }
     })
 
     if (outcome?.inserted) {
-      console.info('external_echo_ingested', {
-        conversationId: outcome.id,
+      console.info({
+        event: 'external_echo_ingested',
+        conversationId: outcome.conversationId,
         mid,
         pageId: pageUuid,
         messageType,
@@ -208,8 +209,9 @@ async function processMessagingEvent(
         tsMs: ts,
       })
     } else if (outcome) {
-      console.info('self_echo_confirmed', {
-        conversationId: outcome.id,
+      console.info({
+        event: 'self_echo_confirmed',
+        conversationId: outcome.conversationId,
         mid,
         pageId: pageUuid,
       })

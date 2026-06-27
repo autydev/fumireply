@@ -210,11 +210,15 @@ function isUniqueViolation(err: unknown, constraint: string): boolean {
 
 CloudWatch Logs に以下のイベントが上記の場面で必ず 1 度だけ出ること。フィールド名・型は固定。
 
+**形式**: 既存 `~/server/services/summary-trigger.ts` や `regenerate-draft.fn.ts` 等と揃え、 `console.info({ event: '...', ...fields })` の **単一引数オブジェクト形式**で出力する。これにより CloudWatch Logs Insights で `filter event = "..."` がそのまま使えるようになる。
+
 | event | 出力箇所 | 必須フィールド |
 |---|---|---|
-| `external_echo_ingested` | webhook handler.ts (UPSERT INSERT 経路) | `conversationId: string`, `mid: string`, `pageId: string (uuid)`, `messageType: 'text'|'sticker'|'image'|'unknown'`, `bodyLength: number`, `tsMs: number` |
-| `self_echo_confirmed` | webhook handler.ts (UPSERT UPDATE 経路) | `conversationId: string`, `mid: string`, `pageId: string (uuid)` |
-| `echo_send_attribution_recovered` | app send-reply.fn.ts (UNIQUE 違反 catch) | `conversationId: string`, `mid: string`, `droppedRowId: string`, `sentByAuthUid: string` |
+| `external_echo_ingested` | webhook handler.ts (UPSERT INSERT 経路) | `event: string`, `conversationId: string`, `mid: string`, `pageId: string (uuid)`, `messageType: 'text'|'sticker'|'image'|'unknown'`, `bodyLength: number`, `tsMs: number` |
+| `self_echo_confirmed` | webhook handler.ts (UPSERT UPDATE 経路) | `event: string`, `conversationId: string`, `mid: string`, `pageId: string (uuid)` |
+| `echo_send_attribution_recovered` | app send-reply.fn.ts (UNIQUE 違反 catch) | `event: string`, `conversationId: string`, `mid: string`, `droppedRowId: string`, `sentByAuthUid: string` |
+
+**注意**: `conversationId` は `conversations.id` であり `messages.id` ではない。echo 経路では `upsertConversation` の戻り値 `conv.id` を採用する (RETURNING で `messages.id` を取って間違って使わないこと)。
 
 PII (本文・名前など) は出力しない。`bodyLength` は文字数 (string.length)。
 

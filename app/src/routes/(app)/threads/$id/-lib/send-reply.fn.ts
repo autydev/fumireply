@@ -106,7 +106,8 @@ export const sendReplyFn = createServerFn({ method: 'POST' })
               .where(eq(messages.metaMessageId, sendResult.messageId))
               .returning({ id: messages.id })
             finalMessageId = claimed[0]?.id ?? prep.insertedId
-            console.info('echo_send_attribution_recovered', {
+            console.info({
+              event: 'echo_send_attribution_recovered',
               conversationId: data.conversationId,
               mid: sendResult.messageId,
               droppedRowId: prep.insertedId,

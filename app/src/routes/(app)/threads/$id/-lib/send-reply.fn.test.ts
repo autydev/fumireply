@@ -225,10 +225,13 @@ describe('handleSendReply', () => {
     }
     // delete + attribute UPDATE が呼ばれた
     expect((tx.delete as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBeGreaterThan(0)
-    // 構造化ログ
-    const attrLog = infoSpy.mock.calls.find((c) => c[0] === 'echo_send_attribution_recovered')
+    // 構造化ログ ({ event: '...', ... } 形式 — codebase convention に揃える)
+    const attrLog = infoSpy.mock.calls.find(
+      (c) => (c[0] as { event?: string })?.event === 'echo_send_attribution_recovered',
+    )
     expect(attrLog).toBeDefined()
-    expect(attrLog![1]).toMatchObject({
+    expect(attrLog![0]).toMatchObject({
+      event: 'echo_send_attribution_recovered',
       conversationId: CONVERSATION_ID,
       mid: 'm_race_001',
       droppedRowId: MESSAGE_ID,

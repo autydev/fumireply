@@ -440,9 +440,13 @@ describe('POST /api/webhook — message_echoes (006)', () => {
       })
       expect((messagesInsert!.values!.timestamp as Date).getTime()).toBe(1735689700000)
 
-      const externalLog = infoSpy.mock.calls.find((c) => c[0] === 'external_echo_ingested')
+      const externalLog = infoSpy.mock.calls.find(
+        (c) => (c[0] as { event?: string })?.event === 'external_echo_ingested',
+      )
       expect(externalLog).toBeDefined()
-      expect(externalLog![1]).toMatchObject({
+      expect(externalLog![0]).toMatchObject({
+        event: 'external_echo_ingested',
+        conversationId: CONV_UUID, // upsertConversation の返す id (messages.id ではない)
         mid: 'm_echo_text_001',
         messageType: 'text',
         bodyLength: 'External reply'.length,
@@ -501,14 +505,22 @@ describe('POST /api/webhook — message_echoes (006)', () => {
 
       await handler(makePostEvent(echoTextPayload))
 
-      const selfLog = infoSpy.mock.calls.find((c) => c[0] === 'self_echo_confirmed')
+      const selfLog = infoSpy.mock.calls.find(
+        (c) => (c[0] as { event?: string })?.event === 'self_echo_confirmed',
+      )
       expect(selfLog).toBeDefined()
-      expect(selfLog![1]).toMatchObject({
+      expect(selfLog![0]).toMatchObject({
+        event: 'self_echo_confirmed',
+        conversationId: CONV_UUID,
         mid: 'm_echo_text_001',
         pageId: PAGE_UUID,
       })
       // INSERT 経路のログは出ない
-      expect(infoSpy.mock.calls.find((c) => c[0] === 'external_echo_ingested')).toBeUndefined()
+      expect(
+        infoSpy.mock.calls.find(
+          (c) => (c[0] as { event?: string })?.event === 'external_echo_ingested',
+        ),
+      ).toBeUndefined()
       infoSpy.mockRestore()
     })
 
@@ -517,12 +529,20 @@ describe('POST /api/webhook — message_echoes (006)', () => {
       setupEchoTx({ inserted: true })
       const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
       await handler(makePostEvent(echoTextPayload))
-      expect(infoSpy.mock.calls.filter((c) => c[0] === 'external_echo_ingested')).toHaveLength(1)
+      expect(
+        infoSpy.mock.calls.filter(
+          (c) => (c[0] as { event?: string })?.event === 'external_echo_ingested',
+        ),
+      ).toHaveLength(1)
 
       // 2 回目: 既存行に当たって UPDATE (no-op)
       setupEchoTx({ inserted: false })
       await handler(makePostEvent(echoTextPayload))
-      expect(infoSpy.mock.calls.filter((c) => c[0] === 'self_echo_confirmed')).toHaveLength(1)
+      expect(
+        infoSpy.mock.calls.filter(
+          (c) => (c[0] as { event?: string })?.event === 'self_echo_confirmed',
+        ),
+      ).toHaveLength(1)
 
       // 加えて: ON CONFLICT (meta_message_id) が呼ばれていること (UPSERT 実装の確認)
       infoSpy.mockRestore()

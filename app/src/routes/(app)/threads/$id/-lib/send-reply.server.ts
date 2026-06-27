@@ -111,7 +111,8 @@ export async function handleSendReply(
           .where(eq(messages.metaMessageId, sendResult.messageId))
           .returning({ id: messages.id })
         finalMessageId = claimed[0]?.id ?? inserted.id
-        console.info('echo_send_attribution_recovered', {
+        console.info({
+          event: 'echo_send_attribution_recovered',
           conversationId: data.conversationId,
           mid: sendResult.messageId,
           droppedRowId: inserted.id,
