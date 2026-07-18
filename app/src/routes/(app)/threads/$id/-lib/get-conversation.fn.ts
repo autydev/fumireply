@@ -82,7 +82,7 @@ export const getConversationFn = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }) => {
     const tenantId = context.user.tenantId
 
-    return withTenant(tenantId, (tx) => handleGetConversation(tx, data.id))
+    return withTenant(tenantId, (tx) => handleGetConversation(tx, tenantId, data.id))
   })
 
 // 009: テスト可能性のため本体を pure handler として抽出
@@ -91,6 +91,7 @@ export const getConversationFn = createServerFn({ method: 'POST' })
 // presigned URL 発行には到達しない (FR-010 / SC-006)。
 export async function handleGetConversation(
   tx: TenantTx,
+  tenantId: string,
   conversationId: string,
 ): Promise<ConversationDetail> {
   const convRows = await tx
@@ -153,6 +154,22 @@ export async function handleGetConversation(
 
   // 009: RLS (withTenant) を通過した行の s3Key だけを presigned URL 化する。
   // これがテナント分離の境界 (FR-010/FR-011)。s3Key はクライアントに渡さない。
+  // 防御的二重化: 万一 DB に不正な s3Key が混入しても、この会話のプレフィックス
+  // ({tenantId}/{conversationId}/) 以外のキーは presign しない。
+  const expectedKeyPrefix = `${tenantId}/${conversationId}/`
+  const toUrl = async (s3Key: string | null): Promise<string | null> => {
+    if (!s3Key) return null
+    if (!s3Key.startsWith(expectedKeyPrefix)) {
+      console.warn({
+        event: 'attachment_key_prefix_mismatch',
+        tenantId,
+        conversationId,
+      })
+      return null
+    }
+    return getAttachmentUrl(s3Key)
+  }
+
   const mappedMessages: MessageWithDraft[] = await Promise.all(
     msgRows.map(async (row) => ({
       id: row.id,
@@ -168,7 +185,7 @@ export async function handleGetConversation(
         (row.attachments ?? []).map(async (att) => ({
           index: att.index,
           type: att.type,
-          url: att.s3Key ? await getAttachmentUrl(att.s3Key) : null,
+          url: await toUrl(att.s3Key),
         })),
       ),
       ai_draft: null,

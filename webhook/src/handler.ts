@@ -266,7 +266,8 @@ async function fetchAndStoreAttachment(
     type: plan.type,
     attempts: attemptsMade,
     reason: lastReason,
-    ...(lastError !== undefined ? { error: lastError } : {}),
+    // error は put_failed の原因分析用。別 reason で確定したときに紐づけると誤診を招く
+    ...(lastReason === 'put_failed' && lastError !== undefined ? { error: lastError } : {}),
   })
   return { index: plan.index, type: plan.type, s3Key: null }
 }

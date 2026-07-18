@@ -278,7 +278,7 @@ describe('handleGetConversation — attachments (009 T018/T027)', () => {
       [],
     ])
 
-    const result = await handleGetConversation(tx, CONV_ID)
+    const result = await handleGetConversation(tx, TENANT_ID, CONV_ID)
 
     const atts = result.messages[0]!.attachments
     expect(atts).toEqual([
@@ -299,7 +299,7 @@ describe('handleGetConversation — attachments (009 T018/T027)', () => {
       [],
     ])
 
-    const result = await handleGetConversation(tx, CONV_ID)
+    const result = await handleGetConversation(tx, TENANT_ID, CONV_ID)
 
     expect(result.messages[0]!.attachments).toEqual([])
     expect(result.messages[0]!.message_type).toBe('image')
@@ -313,15 +313,42 @@ describe('handleGetConversation — attachments (009 T018/T027)', () => {
       [],
     ])
 
-    const result = await handleGetConversation(tx, CONV_ID)
+    const result = await handleGetConversation(tx, TENANT_ID, CONV_ID)
     expect(result.messages[0]!.message_type).toBe('unknown')
+  })
+
+  it('rejects s3Key outside this conversation prefix — url null, presign never called (defense in depth)', async () => {
+    const tx = makeGetConversationTx([
+      [CONV_ROW],
+      [
+        makeMsgRow({
+          attachments: [
+            // 別テナント/別会話のプレフィックスを持つ不正キー
+            { index: 0, type: 'image', s3Key: 'other-tenant/other-conv/m_x/0' },
+          ],
+        }),
+      ],
+      [],
+    ])
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = await handleGetConversation(tx, TENANT_ID, CONV_ID)
+
+    expect(result.messages[0]!.attachments).toEqual([{ index: 0, type: 'image', url: null }])
+    expect(mockGetAttachmentUrl).not.toHaveBeenCalled()
+    expect(
+      warnSpy.mock.calls.find(
+        (c) => (c[0] as { event?: string })?.event === 'attachment_key_prefix_mismatch',
+      ),
+    ).toBeDefined()
+    warnSpy.mockRestore()
   })
 
   it('cross-tenant / unknown conversation id → notFound thrown and presign never called (FR-010 / SC-006)', async () => {
     // RLS 下では他テナントの会話は SELECT に現れない = 空配列
     const tx = makeGetConversationTx([[]])
 
-    await expect(handleGetConversation(tx, CONV_ID)).rejects.toSatisfy((err) => isNotFound(err))
+    await expect(handleGetConversation(tx, TENANT_ID, CONV_ID)).rejects.toSatisfy((err) => isNotFound(err))
     expect(mockGetAttachmentUrl).not.toHaveBeenCalled()
   })
 })
