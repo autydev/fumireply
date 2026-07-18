@@ -23,6 +23,8 @@ interface CacheEntry {
   windowStart: number
 }
 
+const URL_CACHE_MAX_ENTRIES = 5000
+
 const urlCache = new Map<string, CacheEntry>()
 
 // 009: 保存済み添付の presigned GET URL を発行する。署名はローカル計算のみで
@@ -40,11 +42,14 @@ export async function getAttachmentUrl(s3Key: string): Promise<string | null> {
     new GetObjectCommand({ Bucket: env.MEDIA_BUCKET_NAME, Key: s3Key }),
     { expiresIn: ATTACHMENT_URL_EXPIRES_IN, signingDate: new Date(windowStart) },
   )
-  // 無制限に伸びないよう、閾値超過時に旧ウィンドウのエントリを掃除する
-  if (urlCache.size >= 5000) {
+  // 無制限に伸びないよう、閾値超過時に旧ウィンドウのエントリを掃除する。
+  // 同一ウィンドウ内のエントリだけで閾値を超えた場合は全クリアで上限を確実に効かせる —
+  // 署名時刻は量子化済みなので再署名しても同一 URL になり、クリアの副作用は CPU 再計算のみ。
+  if (urlCache.size >= URL_CACHE_MAX_ENTRIES) {
     for (const [key, entry] of urlCache) {
       if (entry.windowStart !== windowStart) urlCache.delete(key)
     }
+    if (urlCache.size >= URL_CACHE_MAX_ENTRIES) urlCache.clear()
   }
   urlCache.set(s3Key, { url, windowStart })
   return url
