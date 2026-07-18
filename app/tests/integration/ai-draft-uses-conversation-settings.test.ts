@@ -90,7 +90,7 @@ type ConvoSettings = {
 // Read tx mock for the conversation-scoped flow. Query order:
 //   1. latest inbound text (coalesce)  — from().where().orderBy().limit()
 //   2. settings (leftJoin)             — from().leftJoin().where()
-//   3. last outbound ts                — from().where()
+//   3. last outbound ts (008)          — from().where().orderBy().limit()
 //   4. unanswered batch                — from().where().orderBy().limit()
 //   5. context history                 — from().where().orderBy().limit()
 function buildReadTx(convoSettings: ConvoSettings) {
@@ -110,8 +110,7 @@ function buildReadTx(convoSettings: ConvoSettings) {
             leftJoin: vi.fn(() => ({ where: vi.fn(() => Promise.resolve([convoSettings])) })),
           })),
         }
-      if (n === 3)
-        return { from: vi.fn(() => ({ where: vi.fn(() => Promise.resolve([{ ts: null }])) })) }
+      if (n === 3) return limitChain([{ ts: null }])
       if (n === 4) return limitChain([{ body: 'Hello, do you have this in stock?' }])
       return limitChain([
         { direction: 'inbound', body: 'Hello, do you have this in stock?', messageType: 'text' },
