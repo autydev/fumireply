@@ -68,7 +68,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 const { handler } = await import('./handler')
 
-function makeSqsEvent(body: unknown): SQSEvent {
+function makeSqsEvent(body: unknown, receiveCount = 1): SQSEvent {
   return {
     Records: [
       {
@@ -76,7 +76,7 @@ function makeSqsEvent(body: unknown): SQSEvent {
         receiptHandle: 'h',
         body: JSON.stringify(body),
         attributes: {
-          ApproximateReceiveCount: '1',
+          ApproximateReceiveCount: String(receiveCount),
           SentTimestamp: '1',
           SenderId: 's',
           ApproximateFirstReceiveTimestamp: '1',
@@ -367,6 +367,27 @@ describe('regenerate: failure path keeps body', () => {
     expect(setArg).not.toHaveProperty('model')
     // updatedAt must be set so the webhook stale-pending guard releases.
     expect(setArg.updatedAt).toBeInstanceOf(Date)
+  })
+})
+
+describe('regenerate: 008 outer catch — final receive keeps body (INV-3)', () => {
+  it('writes status=ready + internal_error without touching body/model on receive 3', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { mockTx: writeTx, setMock } = buildWriteTx()
+    mockWithTenant
+      .mockRejectedValueOnce(new Error('read boom'))
+      .mockImplementationOnce(async (_id, fn) => fn(writeTx))
+
+    await handler(makeSqsEvent(regenJob(), 3), {} as never, () => {})
+
+    expect(mockAnthropicCreate).not.toHaveBeenCalled()
+    const setArg = setMock.mock.calls[0][0]
+    expect(setArg.status).toBe('ready')
+    expect(setArg.error).toBe('internal_error')
+    expect(setArg).not.toHaveProperty('body')
+    expect(setArg).not.toHaveProperty('model')
+    expect(setArg.updatedAt).toBeInstanceOf(Date)
+    errorSpy.mockRestore()
   })
 })
 

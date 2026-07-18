@@ -42,6 +42,10 @@ const ANTHROPIC_API_KEY_SSM =
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001'
 const ANTHROPIC_TIMEOUT_MS = 30_000
 const RETRY_DELAYS_MS = [1000, 3000, 9000]
+// 008: must equal maxReceiveCount in terraform/modules/queue/main.tf. On the
+// final receive, processDraftJob writes a terminal draft state instead of
+// rethrowing, so a failed job can never leave its draft stuck in 'pending'.
+const MAX_RECEIVE_COUNT = 3
 
 interface ApiError {
   status?: number
@@ -120,11 +124,16 @@ async function processDraftJob(input: {
   triggerMessageId?: string
   triggerType?: 'regenerate'
   instruction?: string
+  // 008: 1-based SQS delivery attempt (ApproximateReceiveCount) — drives the
+  // unexpected-error handling below.
+  receiveCount: number
 }): Promise<void> {
-  const { conversationId, triggerMessageId, triggerType, instruction } = input
+  const { conversationId, triggerType, receiveCount } = input
   const isRegenerate = triggerType === 'regenerate'
 
-  // 1. Resolve tenant_id with service role (bypasses RLS)
+  // 1. Resolve tenant_id with service role (bypasses RLS). Kept outside the
+  // outer catch: without a tenant we cannot write a terminal draft state, so a
+  // failure here falls through to SQS retry / DLQ unchanged.
   const rows = await dbAdmin
     .select({ tenantId: conversations.tenantId })
     .from(conversations)
@@ -136,6 +145,70 @@ async function processDraftJob(input: {
   }
 
   const { tenantId } = rows[0]
+
+  // 008: an unexpected throw below (DB, SSM, prompt build — the Anthropic call
+  // has its own catch) must not leave the draft stuck in 'pending'. Non-final
+  // receives rethrow so SQS retries transient failures; the final receive
+  // writes a terminal state instead. See contracts/draft-failure-handling.md.
+  try {
+    await generateDraft({ ...input, tenantId, isRegenerate })
+  } catch (err) {
+    const willRetry = receiveCount < MAX_RECEIVE_COUNT
+    console.error({
+      event: 'draft_job_unexpected_error',
+      conversationId,
+      receiveCount,
+      willRetry,
+      error: String(err),
+    })
+    if (willRetry) throw err
+
+    // Final receive: terminal state per the 005 failure semantics (auto jobs
+    // fail; regenerate keeps the previous body visible). If this write itself
+    // throws, the record goes to the DLQ.
+    const update: AiDraftUpdate = isRegenerate
+      ? { status: 'ready', error: 'internal_error' }
+      : { status: 'failed', error: 'internal_error' }
+    await withTenant(tenantId, async (tx) => {
+      await tx
+        .update(aiDrafts)
+        .set({ ...update, latencyMs: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(aiDrafts.conversationId, conversationId),
+            inArray(aiDrafts.status, ['pending', 'ready']),
+          ),
+        )
+    })
+    if (isRegenerate) {
+      console.info({
+        event: 'draft_regenerate_failed',
+        conversationId,
+        error: 'internal_error',
+        latencyMs: null,
+      })
+    }
+    console.info({
+      event: 'draft_persisted',
+      conversationId,
+      status: update.status,
+      latencyMs: null,
+      ...(isRegenerate ? { triggerType: 'regenerate' as const } : {}),
+    })
+  }
+}
+
+// Steps 2–5 of the draft job (read state → prompt → Anthropic → persist).
+// 008: extracted from processDraftJob so its outer catch can convert unexpected
+// throws into a terminal draft state.
+async function generateDraft(input: {
+  conversationId: string
+  triggerMessageId?: string
+  instruction?: string
+  tenantId: string
+  isRegenerate: boolean
+}): Promise<void> {
+  const { conversationId, triggerMessageId, instruction, tenantId, isRegenerate } = input
 
   // 005: log the regenerate entry once we've resolved the tenant. instruction
   // body itself is NOT logged — only its length — to avoid leaking operator text.
@@ -494,6 +567,10 @@ async function processRecord(record: SQSRecord): Promise<void> {
     return
   }
 
+  // 008: 1-based delivery attempt. Missing/invalid attribute counts as the
+  // first receive (rethrow path) so we never write a premature terminal state.
+  const receiveCount = Number.parseInt(record.attributes?.ApproximateReceiveCount ?? '', 10) || 1
+
   // Draft job (conversation-scoped)
   const draftResult = DRAFT_BODY_SCHEMA.safeParse(parsed)
   if (draftResult.success) {
@@ -502,6 +579,7 @@ async function processRecord(record: SQSRecord): Promise<void> {
       triggerMessageId: draftResult.data.triggerMessageId,
       triggerType: draftResult.data.triggerType,
       instruction: draftResult.data.instruction,
+      receiveCount,
     })
     return
   }
@@ -521,6 +599,7 @@ async function processRecord(record: SQSRecord): Promise<void> {
     await processDraftJob({
       conversationId: row.conversationId,
       triggerMessageId: legacy.data.messageId,
+      receiveCount,
     })
     return
   }

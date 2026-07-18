@@ -62,14 +62,14 @@
 
 ### Tests for User Story 2(先行)
 
-- [ ] T006 [P] [US2] Add outer-catch tests in `ai-worker/src/handler.test.ts`: (a) `withTenant` が throw + `ApproximateReceiveCount: '1'` → handler が reject し draft 書き込みなし、`draft_job_unexpected_error` (willRetry=true) がログされる; (b) `ApproximateReceiveCount: '3'` → `{ status: 'failed', error: 'internal_error' }` が `status IN ('pending','ready')` 対象で書かれ handler は resolve; (c) 終端書き込み自体も throw する場合は reject(DLQ 行き)
-- [ ] T007 [P] [US2] Add outer-catch regenerate test in `ai-worker/src/regenerate.test.ts`: `ApproximateReceiveCount: '3'` で `{ status: 'ready', error: 'internal_error' }` が書かれ body/model/tokens に触れないこと(INV-3)
+- [X] T006 [P] [US2] Add outer-catch tests in `ai-worker/src/handler.test.ts`: (a) `withTenant` が throw + `ApproximateReceiveCount: '1'` → handler が reject し draft 書き込みなし、`draft_job_unexpected_error` (willRetry=true) がログされる; (b) `ApproximateReceiveCount: '3'` → `{ status: 'failed', error: 'internal_error' }` が `status IN ('pending','ready')` 対象で書かれ handler は resolve; (c) 終端書き込み自体も throw する場合は reject(DLQ 行き)
+- [X] T007 [P] [US2] Add outer-catch regenerate test in `ai-worker/src/regenerate.test.ts`: `ApproximateReceiveCount: '3'` で `{ status: 'ready', error: 'internal_error' }` が書かれ body/model/tokens に触れないこと(INV-3)
 
 ### Implementation for User Story 2
 
-- [ ] T008 [US2] Thread `receiveCount` in `ai-worker/src/handler.ts`: parse `record.attributes.ApproximateReceiveCount`(欠損時 1)in `processRecord`, pass to `processDraftJob`(legacy 経路含む)、`MAX_RECEIVE_COUNT = 3` 定数を terraform の `maxReceiveCount` との対応コメント付きで定義(contract C2 シグネチャ)
-- [ ] T009 [US2] Wrap `processDraftJob` body in outer try/catch in `ai-worker/src/handler.ts` per contract C2: 非最終受信は `draft_job_unexpected_error` (willRetry=true) ログ + rethrow / 最終受信は willRetry=false ログ + 終端状態書き込み(auto: `failed`+`internal_error`, regen: `ready`+`internal_error`, latencyMs null 許容)+ 正常 return / 終端書き込み失敗は rethrow。既存の早期 return(conversation_not_found / superseded / no_unanswered)と内側の Anthropic catch は不変
-- [ ] T010 [US2] Run ai-worker test suite — T006/T007 を含め全 green
+- [X] T008 [US2] Thread `receiveCount` in `ai-worker/src/handler.ts`: parse `record.attributes.ApproximateReceiveCount`(欠損時 1)in `processRecord`, pass to `processDraftJob`(legacy 経路含む)、`MAX_RECEIVE_COUNT = 3` 定数を terraform の `maxReceiveCount` との対応コメント付きで定義(contract C2 シグネチャ)
+- [X] T009 [US2] Wrap `processDraftJob` body in outer try/catch in `ai-worker/src/handler.ts` per contract C2: 非最終受信は `draft_job_unexpected_error` (willRetry=true) ログ + rethrow / 最終受信は willRetry=false ログ + 終端状態書き込み(auto: `failed`+`internal_error`, regen: `ready`+`internal_error`, latencyMs null 許容)+ 正常 return / 終端書き込み失敗は rethrow。既存の早期 return(conversation_not_found / superseded / no_unanswered)と内側の Anthropic catch は不変
+- [X] T010 [US2] Run ai-worker test suite — T006/T007 を含め全 green
 
 **Checkpoint**: pending 放置が構造的に解消(US1 と独立に検証可能)
 

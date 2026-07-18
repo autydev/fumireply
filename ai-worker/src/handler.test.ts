@@ -43,13 +43,13 @@ const { handler } = await import('./handler')
 
 // --- helpers ---
 
-function makeSqsEvent(body: unknown, count = 1): SQSEvent {
+function makeSqsEvent(body: unknown, count = 1, receiveCount = 1): SQSEvent {
   const makeRecord = (i: number) => ({
     messageId: `sqs-msg-${i}`,
     receiptHandle: `handle-${i}`,
     body: JSON.stringify(body),
     attributes: {
-      ApproximateReceiveCount: '1',
+      ApproximateReceiveCount: String(receiveCount),
       SentTimestamp: '1735689600000',
       SenderId: 'sender',
       ApproximateFirstReceiveTimestamp: '1735689600000',
@@ -457,6 +457,65 @@ describe('handler — Anthropic API errors', () => {
     const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
     expect(setCall.status).toBe('failed')
     expect(setCall.error).toBe('unexpected_response_type')
+  })
+})
+
+describe('handler — 008 outer catch (unexpected errors)', () => {
+  it('rethrows on non-final receive without writing the draft (willRetry=true)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockWithTenant.mockRejectedValueOnce(new Error('read boom'))
+
+    await expect(
+      handler(makeSqsEvent(draftJob(), 1, 1), {} as never, () => {}),
+    ).rejects.toThrow('read boom')
+
+    // Read tx only — no terminal-state write on a non-final receive.
+    expect(mockWithTenant).toHaveBeenCalledTimes(1)
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'draft_job_unexpected_error',
+        receiveCount: 1,
+        willRetry: true,
+      }),
+    )
+    errorSpy.mockRestore()
+  })
+
+  it('writes failed + internal_error and resolves on the final receive (auto)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { mockTx: writeTx, updateWhere } = buildWriteTx()
+    mockWithTenant
+      .mockRejectedValueOnce(new Error('read boom'))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
+
+    await handler(makeSqsEvent(draftJob(), 1, 3), {} as never, () => {})
+
+    expect(updateWhere).toHaveBeenCalledOnce()
+    const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
+    expect(setCall.status).toBe('failed')
+    expect(setCall.error).toBe('internal_error')
+    expect(setCall.updatedAt).toBeInstanceOf(Date)
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'draft_job_unexpected_error',
+        receiveCount: 3,
+        willRetry: false,
+      }),
+    )
+    errorSpy.mockRestore()
+  })
+
+  it('rethrows when the terminal write itself fails (record goes to the DLQ)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // Both the read tx and the terminal-state write fail.
+    mockWithTenant
+      .mockRejectedValueOnce(new Error('db down'))
+      .mockRejectedValueOnce(new Error('db down'))
+
+    await expect(
+      handler(makeSqsEvent(draftJob(), 1, 3), {} as never, () => {}),
+    ).rejects.toThrow('db down')
+    errorSpy.mockRestore()
   })
 })
 
