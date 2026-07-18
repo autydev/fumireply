@@ -18,10 +18,14 @@ export function InternalNoteEditor({ conversationId, note: initialNote }: Intern
   const [note, setNote] = useState(initialNote ?? '')
   const [saveState, setSaveState] = useState<AutoSaveState>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mountedRef = useRef(true)
 
-  // Cancel pending debounce on unmount
+  // Cancel pending debounce on unmount; an already in-flight save still
+  // completes server-side, but must not set state afterwards (key remount).
   useEffect(() => {
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [])
@@ -35,8 +39,10 @@ export function InternalNoteEditor({ conversationId, note: initialNote }: Intern
       setSaveState('saving')
       try {
         await updateConversationSettingsFn({ data: { conversationId, note: value } })
+        if (!mountedRef.current) return
         setSaveState('saved')
       } catch {
+        if (!mountedRef.current) return
         setSaveState(null)
       }
     }, DEBOUNCE_MS)

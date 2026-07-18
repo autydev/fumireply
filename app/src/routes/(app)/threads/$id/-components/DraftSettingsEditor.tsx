@@ -33,10 +33,14 @@ export function DraftSettingsEditor({
   const [prompt, setPrompt] = useState(initialPrompt ?? '')
   const [promptSaveState, setPromptSaveState] = useState<AutoSaveState>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mountedRef = useRef(true)
 
-  // Cancel pending debounce on unmount
+  // Cancel pending debounce on unmount; an already in-flight save still
+  // completes server-side, but must not set state afterwards (key remount).
   useEffect(() => {
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [])
@@ -64,8 +68,10 @@ export function DraftSettingsEditor({
       setPromptSaveState('saving')
       try {
         await updateConversationSettingsFn({ data: { conversationId, customPrompt: value } })
+        if (!mountedRef.current) return
         setPromptSaveState('saved')
       } catch {
+        if (!mountedRef.current) return
         setPromptSaveState(null)
       }
     }, DEBOUNCE_MS)
