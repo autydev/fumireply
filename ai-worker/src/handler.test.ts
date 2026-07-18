@@ -419,7 +419,7 @@ describe('handler — Anthropic API errors', () => {
     vi.useRealTimers()
   })
 
-  it('updates the active draft with server_error after 3 consecutive 503 failures', async () => {
+  it('updates the active draft with server_error after all attempts fail with 503', async () => {
     vi.useFakeTimers()
     const readTx = buildReadTx()
     const { mockTx: writeTx, updateWhere } = buildWriteTx()
@@ -432,8 +432,9 @@ describe('handler — Anthropic API errors', () => {
     await vi.runAllTimersAsync()
     await handlerPromise
 
-    // 4 attempts: 1 initial + 3 retries
-    expect(mockAnthropicCreate).toHaveBeenCalledTimes(4)
+    // 008: 3 attempts (1 initial + 2 retries) — the ladder must fit in the 60s
+    // Lambda timeout (worst case 3×15s + 1s + 3s = 49s).
+    expect(mockAnthropicCreate).toHaveBeenCalledTimes(3)
     expect(updateWhere).toHaveBeenCalledOnce()
     const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
     expect(setCall.status).toBe('failed')

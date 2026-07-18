@@ -40,8 +40,12 @@ const SUMMARY_BODY_SCHEMA = z.object({
 const ANTHROPIC_API_KEY_SSM =
   process.env.ANTHROPIC_API_KEY_SSM_KEY ?? '/fumireply/review/anthropic/api-key'
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001'
-const ANTHROPIC_TIMEOUT_MS = 30_000
-const RETRY_DELAYS_MS = [1000, 3000, 9000]
+// 008: the whole retry ladder must finish inside the Lambda timeout (60s,
+// terraform/modules/ai-worker-lambda/main.tf) so a slow Anthropic response can
+// never kill the job mid-flight and leave the draft 'pending'.
+// Worst case: 3 attempts × 15s + delays (1s + 3s) = 49s; ≈55s with DB/SSM.
+const ANTHROPIC_TIMEOUT_MS = 15_000
+const RETRY_DELAYS_MS = [1000, 3000]
 // 008: must equal maxReceiveCount in terraform/modules/queue/main.tf. On the
 // final receive, processDraftJob writes a terminal draft state instead of
 // rethrowing, so a failed job can never leave its draft stuck in 'pending'.

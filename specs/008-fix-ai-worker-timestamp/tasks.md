@@ -83,9 +83,9 @@
 
 ### Implementation for User Story 3
 
-- [ ] T011 [US3] Change `ANTHROPIC_TIMEOUT_MS` to `15_000` and `RETRY_DELAYS_MS` to `[1000, 3000]` in `ai-worker/src/handler.ts`, with a comment documenting the worst-case budget (49s + DB/SSM ≒55s < Lambda 60s, contract C3)
-- [ ] T012 [US3] Update existing retry-ladder tests in `ai-worker/src/handler.test.ts`(および `regenerate.test.ts` に同種があれば): 最大試行回数 4→3 の期待値を更新し、リトライ対象/非対象の判定(429/5xx retry, その他 4xx 即 throw)が不変であることを確認(research D5-6)
-- [ ] T013 [US3] Run ai-worker test suite — 全 green
+- [X] T011 [US3] Change `ANTHROPIC_TIMEOUT_MS` to `15_000` and `RETRY_DELAYS_MS` to `[1000, 3000]` in `ai-worker/src/handler.ts`, with a comment documenting the worst-case budget (49s + DB/SSM ≒55s < Lambda 60s, contract C3)
+- [X] T012 [US3] Update existing retry-ladder tests in `ai-worker/src/handler.test.ts`(および `regenerate.test.ts` に同種があれば): 最大試行回数 4→3 の期待値を更新し、リトライ対象/非対象の判定(429/5xx retry, その他 4xx 即 throw)が不変であることを確認(research D5-6)
+- [X] T013 [US3] Run ai-worker test suite — 全 green
 
 **Checkpoint**: 全コード変更完了
 
