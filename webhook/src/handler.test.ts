@@ -347,12 +347,19 @@ type FakeTxCalls = {
   conflictSet: Array<Record<string, unknown>>
 }
 
-function setupEchoTx(opts: { inserted: boolean; convId?: string; msgId?: string }) {
+function setupEchoTx(opts: {
+  inserted: boolean
+  convId?: string
+  msgId?: string
+  midExists?: boolean
+}) {
   const calls: FakeTxCalls = { insert: [], conflictTarget: [], conflictSet: [] }
   mockWithTenant.mockImplementation(async (_tenantId: string, cb: (tx: unknown) => Promise<unknown>) => {
     // テーブル識別は呼び出し順で行う: echo 経路では必ず 1) conversations upsert, 2) messages
     // upsert の順で .insert() が呼ばれる。drizzle のテーブルオブジェクトをリフレクションで判別
     // するより、契約上の呼び出し順を assume するほうが堅牢。
+    // 009: 添付ありのときは前段 tx (conversations upsert + 既存 mid select) が先に走る。
+    // withTenant 呼び出しごとに状態を持つため、この実装は前段/本体の両方を受けられる。
     let insertCallIdx = 0
     let returningIdx = 0
     const tablesByOrder: Array<'conversations' | 'messages'> = ['conversations', 'messages']
@@ -378,6 +385,14 @@ function setupEchoTx(opts: { inserted: boolean; convId?: string; msgId?: string 
         return builder
       },
       returning: async () => returningResults[returningIdx++] ?? [],
+      // 009: 前段 tx の既存 mid チェック (select().from().where().limit(1))
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => (opts.midExists ? [{ id: opts.msgId ?? NEW_MSG_UUID }] : []),
+          }),
+        }),
+      }),
     })
     return cb(builder)
   })
@@ -652,8 +667,8 @@ function makeInboundAttachmentPayload(
 
 // inbound 経路の fakeTx。非テキストは messages INSERT + conversations UPDATE の後に
 // 早期 return するため、draft 系のクエリは実装不要。preliminary media tx (conversations
-// upsert のみ) と本体 tx の両方をこの実装で受ける (呼び出しごとに状態を持つ)。
-function setupInboundTx() {
+// upsert + 既存 mid select) と本体 tx の両方をこの実装で受ける (呼び出しごとに状態を持つ)。
+function setupInboundTx(opts: { midExists?: boolean } = {}) {
   const calls: FakeTxCalls = { insert: [], conflictTarget: [], conflictSet: [] }
   mockWithTenant.mockImplementation(async (_tenantId: string, cb: (tx: unknown) => Promise<unknown>) => {
     let insertCallIdx = 0
@@ -686,6 +701,13 @@ function setupInboundTx() {
       update: () => builder,
       set: () => builder,
       where: async () => [],
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => (opts.midExists ? [{ id: NEW_MSG_UUID }] : []),
+          }),
+        }),
+      }),
     })
     return cb(builder)
   })
@@ -715,7 +737,11 @@ describe('POST /api/webhook — media attachments (009)', () => {
 
       expect(res.statusCode).toBe(200)
       expect(mockDownloadAttachment).toHaveBeenCalledTimes(1)
-      expect(mockDownloadAttachment).toHaveBeenCalledWith('https://cdn.fb.com/photo.jpg')
+      // timeoutMs は残時間予算でクランプされる (≤ 8s)
+      expect(mockDownloadAttachment).toHaveBeenCalledWith(
+        'https://cdn.fb.com/photo.jpg',
+        expect.objectContaining({ timeoutMs: expect.any(Number) }),
+      )
       expect(mockStoreAttachment).toHaveBeenCalledTimes(1)
       expect(mockStoreAttachment).toHaveBeenCalledWith({
         bucket: 'test-media-bucket',
@@ -936,7 +962,10 @@ describe('POST /api/webhook — media attachments (009)', () => {
 
       await handler(makePostEvent(echoImagePayload))
 
-      expect(mockDownloadAttachment).toHaveBeenCalledWith('https://cdn.fb.com/image.jpg')
+      expect(mockDownloadAttachment).toHaveBeenCalledWith(
+        'https://cdn.fb.com/image.jpg',
+        expect.objectContaining({ timeoutMs: expect.any(Number) }),
+      )
       expect(mockStoreAttachment).toHaveBeenCalledTimes(1)
       expect(mockStoreAttachment).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1010,6 +1039,94 @@ describe('POST /api/webhook — media attachments (009)', () => {
           (c) => (c[0] as { event?: string })?.event === 'attachment_download_failed',
         ),
       ).toBeUndefined()
+      warnSpy.mockRestore()
+    })
+  })
+
+  describe('レビュー修正 — 再配信スキップ / 時間予算 / put_failed 詳細', () => {
+    it('既存 mid の再配信ではダウンロードを丸ごとスキップする (最大 25MB の再取得なし)', async () => {
+      const calls = setupInboundTx({ midExists: true })
+
+      const res = await handler(
+        makePostEvent(
+          makeInboundAttachmentPayload('m_dup_1', [
+            { type: 'image', payload: { url: 'https://cdn.fb.com/dup.jpg' } },
+          ]),
+        ),
+      )
+
+      expect(res.statusCode).toBe(200)
+      expect(mockDownloadAttachment).not.toHaveBeenCalled()
+      expect(mockStoreAttachment).not.toHaveBeenCalled()
+      // INSERT 自体は走り、onConflictDoNothing で no-op に収束する (attachments は null)
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      expect(messagesInsert).toBeDefined()
+      expect(messagesInsert!.values!.attachments).toBeNull()
+    })
+
+    it('時間予算を使い切ったら残り試行を打ち切り time_budget_exceeded で確定、INSERT は成功', async () => {
+      const calls = setupInboundTx()
+      mockDownloadAttachment.mockResolvedValue({ ok: false, reason: 'timeout' })
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      // Date.now を 1 呼び出しごとに 7 秒進める: 予算 12s は 2 回目の試行前に尽きる
+      let fakeNow = 1_700_000_000_000
+      const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => {
+        const t = fakeNow
+        fakeNow += 7_000
+        return t
+      })
+
+      const res = await handler(
+        makePostEvent(
+          makeInboundAttachmentPayload('m_slow_1', [
+            { type: 'video', payload: { url: 'https://cdn.fb.com/slow.mp4' } },
+          ]),
+        ),
+      )
+      nowSpy.mockRestore()
+
+      expect(res.statusCode).toBe(200)
+      // 予算切れにより 3 試行までは行かない
+      expect(mockDownloadAttachment.mock.calls.length).toBeLessThan(3)
+      // FR-003: メッセージ INSERT には必ず到達する
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      expect(messagesInsert).toBeDefined()
+      expect(messagesInsert!.values).toMatchObject({
+        attachments: [{ index: 0, type: 'video', s3Key: null }],
+      })
+
+      const failedLog = warnSpy.mock.calls.find(
+        (c) => (c[0] as { event?: string })?.event === 'attachment_download_failed',
+      )
+      expect(failedLog).toBeDefined()
+      expect((failedLog![0] as { reason?: string }).reason).toBe('time_budget_exceeded')
+      warnSpy.mockRestore()
+    })
+
+    it('S3 PutObject 失敗時は error メッセージ付きで attachment_download_failed を出す', async () => {
+      setupInboundTx()
+      mockStoreAttachment.mockRejectedValue(
+        new Error('AccessDenied: not authorized to perform s3:PutObject'),
+      )
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      await handler(
+        makePostEvent(
+          makeInboundAttachmentPayload('m_put_1', [
+            { type: 'image', payload: { url: 'https://cdn.fb.com/p.jpg' } },
+          ]),
+        ),
+      )
+
+      const failedLog = warnSpy.mock.calls.find(
+        (c) => (c[0] as { event?: string })?.event === 'attachment_download_failed',
+      )
+      expect(failedLog).toBeDefined()
+      expect(failedLog![0]).toMatchObject({
+        reason: 'put_failed',
+        error: expect.stringContaining('AccessDenied'),
+      })
       warnSpy.mockRestore()
     })
   })

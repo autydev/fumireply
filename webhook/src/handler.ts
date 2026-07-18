@@ -117,6 +117,13 @@ const STORABLE_ATTACHMENT_TYPES: ReadonlySet<MessageAttachment['type']> = new Se
 // 短い即時リトライのみ行う (spec Q2: 最大 2 回再試行 = 計 3 試行)。
 const ATTACHMENT_RETRY_DELAYS_MS = [200, 500]
 
+// 009: メディア処理全体の時間予算。Lambda timeout 20s の内側で必ずメッセージ INSERT に
+// 到達させるための上限 (FR-003)。予算を使い切ったら残りの添付は time_budget_exceeded で
+// 「取得不可」確定し、取り込みを続行する。1 試行あたりの fetch timeout も残予算でクランプする。
+const MEDIA_TOTAL_BUDGET_MS = 12_000
+const MEDIA_MIN_ATTEMPT_MS = 1_000
+const MEDIA_FETCH_TIMEOUT_MS = 8_000
+
 export interface AttachmentPlan {
   index: number
   type: MessageAttachment['type']
@@ -171,17 +178,29 @@ function sleep(ms: number): Promise<void> {
 
 // 009: 1 添付のダウンロード + S3 保存。oversize は決定的失敗なのでリトライしない。
 // それ以外 (timeout / network_error / http_error / put_failed) は短い即時リトライを行い、
-// 使い切ったら s3Key: null (取得不可) で確定する。
+// 使い切るか deadline (メディア処理全体の時間予算) に達したら s3Key: null で確定する。
 async function fetchAndStoreAttachment(
   plan: AttachmentPlan,
   ctx: { tenantId: string; conversationId: string; mid: string },
+  deadline: number,
 ): Promise<MessageAttachment> {
   const { tenantId, conversationId, mid } = ctx
   const maxAttempts = 1 + ATTACHMENT_RETRY_DELAYS_MS.length
   let lastReason = 'network_error'
+  let lastError: string | undefined
+  let attemptsMade = 0
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const dl = await downloadAttachment(plan.url as string)
+    const remainingMs = deadline - Date.now()
+    if (remainingMs < MEDIA_MIN_ATTEMPT_MS) {
+      lastReason = 'time_budget_exceeded'
+      break
+    }
+    attemptsMade = attempt
+
+    const dl = await downloadAttachment(plan.url as string, {
+      timeoutMs: Math.min(MEDIA_FETCH_TIMEOUT_MS, remainingMs),
+    })
 
     if (dl.ok) {
       try {
@@ -210,8 +229,10 @@ async function fetchAndStoreAttachment(
           contentType: dl.contentType,
           sizeBytes: dl.sizeBytes,
         }
-      } catch {
+      } catch (err) {
+        // S3 側の失敗理由 (AccessDenied 等) を運用ログで判別できるよう残す
         lastReason = 'put_failed'
+        lastError = err instanceof Error ? err.message : String(err)
       }
     } else if (dl.reason === 'oversize') {
       console.warn({
@@ -227,7 +248,12 @@ async function fetchAndStoreAttachment(
     }
 
     if (attempt < maxAttempts) {
-      await sleep(ATTACHMENT_RETRY_DELAYS_MS[attempt - 1] ?? 0)
+      const delay = ATTACHMENT_RETRY_DELAYS_MS[attempt - 1] ?? 0
+      if (deadline - Date.now() <= delay) {
+        lastReason = 'time_budget_exceeded'
+        break
+      }
+      await sleep(delay)
     }
   }
 
@@ -237,22 +263,26 @@ async function fetchAndStoreAttachment(
     mid,
     index: plan.index,
     type: plan.type,
-    attempts: maxAttempts,
+    attempts: attemptsMade,
     reason: lastReason,
+    ...(lastError !== undefined ? { error: lastError } : {}),
   })
   return { index: plan.index, type: plan.type, s3Key: null }
 }
 
 // 009: 全添付の保存を逐次実行し、messages.attachments に入れる値を確定する。
 // メッセージ INSERT の成否とは独立 — ここでの失敗は s3Key: null に落ちるだけで
-// 呼び出し側の取り込みは必ず続行される (FR-003)。conversationId が null のとき
-// (MEDIA_BUCKET_NAME 未設定) は保存対象をすべて bucket_not_configured で記録する。
+// 呼び出し側の取り込みは必ず続行される (FR-003)。処理全体で MEDIA_TOTAL_BUDGET_MS の
+// 時間予算を共有し、Lambda timeout (20s) 前に必ず INSERT へ到達する。
+// conversationId が null のとき (MEDIA_BUCKET_NAME 未設定) は保存対象をすべて
+// bucket_not_configured で記録する。
 async function resolveAttachments(
   plans: AttachmentPlan[],
   ctx: { tenantId: string; conversationId: string | null; mid: string },
 ): Promise<MessageAttachment[] | null> {
   if (plans.length === 0) return null
 
+  const deadline = Date.now() + MEDIA_TOTAL_BUDGET_MS
   const results: MessageAttachment[] = []
   for (const plan of plans) {
     if (!plan.shouldStore || plan.url === null) {
@@ -273,11 +303,15 @@ async function resolveAttachments(
       continue
     }
     results.push(
-      await fetchAndStoreAttachment(plan, {
-        tenantId: ctx.tenantId,
-        conversationId: ctx.conversationId,
-        mid: ctx.mid,
-      }),
+      await fetchAndStoreAttachment(
+        plan,
+        {
+          tenantId: ctx.tenantId,
+          conversationId: ctx.conversationId,
+          mid: ctx.mid,
+        },
+        deadline,
+      ),
     )
   }
   return results
@@ -327,17 +361,31 @@ async function processMessagingEvent(
   // 009: S3 キーが conversationId を含むため、保存対象の添付があるときだけ
   // 会話を先に解決する (idempotent upsert)。ダウンロード + PutObject を DB
   // トランザクション外で行うための前段で、本体 tx 側の upsert はそのまま残す
-  // (2 回目の upsert は同一行に収束するだけで無害)。
-  const resolveConversationIdForMedia = async (
+  // (2 回目の upsert は同一行に収束するだけで無害)。この前段で会話行だけが先に
+  // 生まれ、直後にプロセスが落ちると空会話が一時的に残りうるが、upsert は冪等で
+  // Meta の再配信により自己修復する (時間予算により INSERT 未達自体が例外的)。
+  // 同じ前段で既存 mid を確認し、再配信 (重複) ならダウンロードを丸ごと省いて
+  // 最大 25MB × N の無駄な再取得を避ける — INSERT はどのみち conflict で no-op。
+  const prepareMediaAttachments = async (
     customerPsid: string,
     plans: AttachmentPlan[],
-  ): Promise<string | null> => {
-    if (!env.MEDIA_BUCKET_NAME) return null
-    if (!plans.some((p) => p.shouldStore)) return null
-    const conv = await withTenant(tenantId, (tx) =>
-      upsertConversation(tx, tenantId, pageUuid, customerPsid),
-    )
-    return conv.id
+    mid: string,
+  ): Promise<MessageAttachment[] | null> => {
+    if (plans.length === 0) return null
+    if (!env.MEDIA_BUCKET_NAME || !plans.some((p) => p.shouldStore)) {
+      return resolveAttachments(plans, { tenantId, conversationId: null, mid })
+    }
+    const pre = await withTenant(tenantId, async (tx) => {
+      const conv = await upsertConversation(tx, tenantId, pageUuid, customerPsid)
+      const existing = await tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(eq(messages.metaMessageId, mid))
+        .limit(1)
+      return { conversationId: conv.id, midExists: existing.length > 0 }
+    })
+    if (pre.midExists) return null
+    return resolveAttachments(plans, { tenantId, conversationId: pre.conversationId, mid })
   }
 
   if (is_echo) {
@@ -349,12 +397,7 @@ async function processMessagingEvent(
     // 従来どおり sendStatus のみ — 既存自送信行の attachments を echo で上書きしない。
     const recipientPsid = event.recipient.id
     const { messageType, body, attachments: plans } = classifyAttachments(msg)
-    const mediaConversationId = await resolveConversationIdForMedia(recipientPsid, plans)
-    const attachments = await resolveAttachments(plans, {
-      tenantId,
-      conversationId: mediaConversationId,
-      mid,
-    })
+    const attachments = await prepareMediaAttachments(recipientPsid, plans, mid)
 
     const outcome = await withTenant(tenantId, async (tx) => {
       const conv = await upsertConversation(tx, tenantId, pageUuid, recipientPsid)
@@ -406,12 +449,7 @@ async function processMessagingEvent(
 
   const psid = event.sender.id
   const { messageType, body, attachments: plans } = classifyAttachments(msg)
-  const mediaConversationId = await resolveConversationIdForMedia(psid, plans)
-  const attachments = await resolveAttachments(plans, {
-    tenantId,
-    conversationId: mediaConversationId,
-    mid,
-  })
+  const attachments = await prepareMediaAttachments(psid, plans, mid)
 
   const txResult = await withTenant(tenantId, async (tx): Promise<TxResult | null> => {
     const conv = await upsertConversation(tx, tenantId, pageUuid, psid)

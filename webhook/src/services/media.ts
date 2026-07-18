@@ -9,9 +9,11 @@ export type DownloadResult =
   | { ok: true; buffer: Buffer; contentType: string; sizeBytes: number }
   | { ok: false; reason: 'oversize' | 'http_error' | 'network_error' | 'timeout' }
 
-// Meta の mid は base64 系文字列で `=` 等を含みうるため、S3 キーとして安全な文字に落とす。
-export function sanitizeMid(mid: string): string {
-  return mid.replace(/[^A-Za-z0-9._-]/g, '_')
+// Meta の mid は base64 系文字列で `+` `/` `=` を含みうる。正規表現での置換は
+// 異なる mid が同一文字列に潰れて S3 キーが衝突しうる (例: 'a+b' と 'a/b') ため、
+// 単射な base64url 再エンコードで S3 セーフに変換する。
+export function encodeMidForKey(mid: string): string {
+  return Buffer.from(mid, 'utf8').toString('base64url')
 }
 
 export function buildMediaKey(params: {
@@ -20,7 +22,7 @@ export function buildMediaKey(params: {
   mid: string
   index: number
 }): string {
-  return `${params.tenantId}/${params.conversationId}/${sanitizeMid(params.mid)}/${params.index}`
+  return `${params.tenantId}/${params.conversationId}/${encodeMidForKey(params.mid)}/${params.index}`
 }
 
 export async function downloadAttachment(

@@ -51,14 +51,16 @@ storeAttachment(params: {
 ```
 
 - リトライは呼び出し側 (handler): `oversize` 以外の失敗を最大 2 回再試行 (計 3 試行、間隔 200ms → 500ms)
+- **時間予算**: メッセージ 1 通のメディア処理全体で `MEDIA_TOTAL_BUDGET_MS = 12_000`。各試行の `timeoutMs` は残予算でクランプし、残りが 1 秒未満なら `reason: 'time_budget_exceeded'` で打ち切る。これにより Lambda timeout (20s) 前に必ずメッセージ INSERT へ到達する (FR-003)
 - `Content-Length > maxBytes` なら本文を読まず即 `oversize`。ヘッダなしはストリーミング累積で超過時に中断
-- S3 キー: `{tenantId}/{conversationId}/{sanitizeMid(mid)}/{index}`。`sanitizeMid` = `/[^A-Za-z0-9._-]/g` → `'_'`
+- S3 キー: `{tenantId}/{conversationId}/{encodeMidForKey(mid)}/{index}`。`encodeMidForKey` = mid の **base64url 再エンコード** (正規表現置換は異なる mid が同一キーに衝突しうるため単射なエンコードを使う)
 - `PutObject` に `ContentType` を設定 (欠落時 `application/octet-stream`)
 - `MEDIA_BUCKET_NAME` 未設定時: handler はダウンロード自体をスキップし全対象を `s3Key: null` で記録 (`reason: 'bucket_not_configured'` を warn ログ)
 
 ## 3. DB 書き込み契約 (inbound / echo 共通)
 
 - ダウンロード・保存は **トランザクション外で先行実行**し、確定した `MessageAttachment[]` を値として INSERT する (S3 I/O で DB tx を長時間保持しない)
+- 先行実行の前段 tx (会話 upsert) で **既存 mid をチェックし、再配信 (重複) ならダウンロードを丸ごとスキップ**する (INSERT はどのみち conflict で no-op のため、最大 25MB × N の再取得を避ける)
 - inbound INSERT: 既存列 + `attachments` (計画ゼロ件なら NULL)。`onConflictDoNothing` は現行維持 — 重複 mid 時は S3 に保存済みオブジェクトが残るが、同一キーなので孤児にならない
 - echo UPSERT: INSERT 値に `attachments` を追加。**`onConflictDoUpdate` の SET は現行どおり `sendStatus` のみ** (既存自送信行の attachments を echo で上書きしない — fumireply 送信にはそもそも添付機能がないため常に無害)
 - 非テキスト inbound は現行どおり AI 下書きを発火しない。echo の副作用なし (SQS/Summary/NameFetch) も現行維持
@@ -66,8 +68,10 @@ storeAttachment(params: {
 ## 4. 配信契約 — `app/src/server/services/media-url.ts` + `get-conversation.fn.ts`
 
 ```ts
-getAttachmentUrl(s3Key: string): Promise<string>
+getAttachmentUrl(s3Key: string): Promise<string | null>
 // GetObjectCommand + getSignedUrl, expiresIn: 3600
+// 署名時刻は 15 分単位に量子化 + インスタンス内キャッシュ — スレッド画面の 7 秒ポーリングで
+// URL が毎回変わって <img> が再取得されるのを防ぐ (同一ウィンドウ内は同一 URL、残有効期限 ≥ 45 分)
 // MEDIA_BUCKET_NAME 未設定なら null を返す (呼び出し側で url: null)
 ```
 
@@ -110,7 +114,7 @@ webhook は Put のみ・app は Get のみ (最小権限)。`s3:ListBucket` は
 | event | level | 必須 fields |
 |---|---|---|
 | `attachment_stored` | info | `tenantId`, `conversationId`, `mid`, `index`, `type`, `sizeBytes` |
-| `attachment_download_failed` | warn | `tenantId`, `mid`, `index`, `type`, `attempts`, `reason` (`http_error`\|`network_error`\|`timeout`\|`put_failed`\|`bucket_not_configured`) |
+| `attachment_download_failed` | warn | `tenantId`, `mid`, `index`, `type`, `attempts`, `reason` (`http_error`\|`network_error`\|`timeout`\|`put_failed`\|`bucket_not_configured`\|`time_budget_exceeded`)。`put_failed` 時は `error` (S3 例外メッセージ) を含める |
 | `attachment_skipped_oversize` | warn | `tenantId`, `mid`, `index`, `type` (+`sizeBytes` 判明時) |
 
 保存成功率 (SC-005) = `attachment_stored` / (`attachment_stored` + `attachment_download_failed` + `attachment_skipped_oversize`) で Logs Insights 集計。

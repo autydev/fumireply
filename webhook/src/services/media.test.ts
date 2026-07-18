@@ -4,7 +4,7 @@ import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import {
   buildMediaKey,
   downloadAttachment,
-  sanitizeMid,
+  encodeMidForKey,
   storeAttachment,
 } from './media'
 
@@ -16,10 +16,15 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('sanitizeMid / buildMediaKey', () => {
-  it('replaces non-safe characters in mid with underscore', () => {
-    expect(sanitizeMid('m_AbC123.x-y_z')).toBe('m_AbC123.x-y_z')
-    expect(sanitizeMid('m_a+b/c=d:e')).toBe('m_a_b_c_d_e')
+describe('encodeMidForKey / buildMediaKey', () => {
+  it('encodes mid as base64url (S3-safe, no +/=)', () => {
+    const encoded = encodeMidForKey('m_a+b/c=d:e')
+    expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/)
+    expect(Buffer.from(encoded, 'base64url').toString('utf8')).toBe('m_a+b/c=d:e')
+  })
+
+  it('is injective: distinct mids that a regex-replace would collapse stay distinct', () => {
+    expect(encodeMidForKey('m_ab+cd')).not.toBe(encodeMidForKey('m_ab/cd'))
   })
 
   it('builds tenant-prefixed key with index', () => {
@@ -29,7 +34,7 @@ describe('sanitizeMid / buildMediaKey', () => {
       mid: 'm_a=b',
       index: 2,
     })
-    expect(key).toBe('ten-1/conv-1/m_a_b/2')
+    expect(key).toBe(`ten-1/conv-1/${encodeMidForKey('m_a=b')}/2`)
   })
 })
 
@@ -138,12 +143,13 @@ describe('storeAttachment', () => {
       contentType: 'image/png',
     })
 
-    expect(key).toBe('ten-1/conv-1/m_x_1/0')
+    const expectedKey = `ten-1/conv-1/${encodeMidForKey('m_x=1')}/0`
+    expect(key).toBe(expectedKey)
     const calls = s3Mock.commandCalls(PutObjectCommand)
     expect(calls).toHaveLength(1)
     const input = calls[0]!.args[0].input
     expect(input.Bucket).toBe('media-bucket')
-    expect(input.Key).toBe('ten-1/conv-1/m_x_1/0')
+    expect(input.Key).toBe(expectedKey)
     expect(input.ContentType).toBe('image/png')
   })
 

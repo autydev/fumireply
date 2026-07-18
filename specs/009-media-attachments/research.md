@@ -21,6 +21,7 @@ Phase 0 成果物。spec.md の要求 (FR-001〜FR-014, Clarifications Q1〜Q4) 
 
 **Rationale**:
 - presign はローカル署名のみ (ネットワーク I/O なし、<1ms/件)。`@aws-sdk/s3-request-presigner` の追加だけで実現できる。
+- **URL 安定化 (レビュー反映)**: スレッド画面は 7 秒ポーリングで再取得するため、毎回署名し直すと URL が変わり `<img>` がキャッシュを失って再ダウンロードされる。署名時刻を 15 分単位に量子化 + インスタンス内キャッシュすることで、同一ウィンドウ内は同一 URL (残有効期限 ≥ 45 分) になりブラウザキャッシュが効く。
 - 認可は「server fn の authMiddleware + RLS を通過した行だけが URL 化される」ことで担保 (FR-011)。URL 自体も 1 時間で失効するため、恒久公開 URL は存在しない。
 - app には CSP が未設定 (`__root.tsx` は charset/viewport/title のみ) のため、S3 ドメインの `<img>` 読み込みに障害はない。
 - スレッド画面は既存のポーリング再取得があるため、長時間開きっぱなしでも URL は自然に更新される。
@@ -38,7 +39,7 @@ Phase 0 成果物。spec.md の要求 (FR-001〜FR-014, Clarifications Q1〜Q4) 
 {tenantId}/{conversationId}/{sanitized_mid}/{index}
 ```
 
-- `sanitized_mid`: Meta の `mid` を `[^A-Za-z0-9._-]` → `_` に置換したもの (mid は `m_` 始まりの base64 系文字列で `=` 等を含みうる)
+- `sanitized_mid`: Meta の `mid` を **base64url 再エンコード**したもの (mid は `m_` 始まりの base64 系文字列で `+` `/` `=` を含みうる。正規表現置換は異なる mid が同一キーに衝突しうるため単射なエンコードを採用 — レビュー反映)
 - `index`: メッセージ内の添付順序 (0 始まり)
 - オブジェクトメタデータに `Content-Type` (ダウンロード時のレスポンスヘッダ由来、欠落時 `application/octet-stream`) を設定 — presigned GET で正しい MIME で配信するため
 
@@ -87,6 +88,8 @@ Phase 0 成果物。spec.md の要求 (FR-001〜FR-014, Clarifications Q1〜Q4) 
 4. 成功時 `{ ok: true, buffer, contentType, sizeBytes }`
 
 リトライ: 呼び出し側で最大 3 試行 (初回 + 2 リトライ、間隔 200ms / 500ms)。`oversize` はリトライしない (決定的失敗)。ネットワークエラー・非 2xx・タイムアウトのみリトライ対象。
+
+**時間予算 (レビュー反映)**: 単純な 8 秒 × 3 試行はワーストで ~24.7 秒となり Lambda timeout (20 秒) を超えて INSERT 未達 (FR-003 違反) になりうるため、メッセージ 1 通のメディア処理全体に 12 秒の総予算を設ける。各試行の fetch timeout は残予算でクランプし、残り 1 秒未満で `time_budget_exceeded` として打ち切る。また、前段 tx で既存 mid を確認し、Meta 再配信 (重複) ではダウンロード自体をスキップする。
 
 **Rationale**:
 - 25MB は spec Q4 で確定。Messenger 送信上限相当のため、実運用で `oversize` はほぼ発生しない防御線。
