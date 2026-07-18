@@ -220,7 +220,7 @@ describe('AI Worker handler — integration', () => {
       mockAnthropicCreate.mockRejectedValue(serverError)
 
       const handlerPromise = handler(makeSqsEvent(draftJob()), {} as never, vi.fn())
-      // Advance all retry delays (1s + 3s + 9s) without waiting real time
+      // Advance all retry delays (008: 1s + 3s) without waiting real time
       await vi.runAllTimersAsync()
       await handlerPromise
 
