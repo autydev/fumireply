@@ -28,7 +28,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
     "@aws-sdk/client-s3": "^3.1090.0",
-    "@aws-sdk/client-ssm": "^3.1039.0",
+    "@aws-sdk/client-ssm": "^3.1090.0",
     "@aws-sdk/s3-request-presigner": "^3.1090.0",
     "@supabase/supabase-js": "^2.105.1",
     "@tanstack/react-router": "^1.168.23",

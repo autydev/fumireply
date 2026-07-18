@@ -41,8 +41,8 @@ export async function downloadAttachment(
   }
 
   if (!res.ok) {
-    // 失敗レスポンスの body は読み捨てて接続を解放する
-    await res.arrayBuffer().catch(() => undefined)
+    // 失敗レスポンスは本文をバッファせず即キャンセルして接続を解放する
+    await res.body?.cancel().catch(() => undefined)
     return { ok: false, reason: 'http_error' }
   }
 
