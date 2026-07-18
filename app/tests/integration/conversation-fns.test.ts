@@ -1,12 +1,19 @@
 // @vitest-environment node
 // Integration: updateConversationSettings — partial updates, validation, RLS cross-tenant guard
+// 009: getConversation の attachments マッピング (presigned URL / 取得不可 / レガシー行) と
+// クロステナント時に presign が呼ばれないことの検証を追加
 
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { isNotFound } from '@tanstack/react-router'
 import type { TenantTx } from '~/server/db/with-tenant'
 import type { ConversationDetail } from '~/routes/(app)/threads/$id/-lib/get-conversation.fn'
 
 const TENANT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const CONV_ID   = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+
+const { mockGetAttachmentUrl } = vi.hoisted(() => ({
+  mockGetAttachmentUrl: vi.fn(),
+}))
 
 beforeAll(() => {
   vi.stubEnv('DATABASE_URL', 'postgresql://test:test@localhost:5432/test')
@@ -22,10 +29,16 @@ afterAll(() => {
 
 vi.mock('~/server/db/client', () => ({ db: {}, dbAdmin: {} }))
 
+// 009: presigner はローカル署名のみだが、テストでは URL 生成の呼び出し境界を検証する
+vi.mock('~/server/services/media-url', () => ({
+  getAttachmentUrl: mockGetAttachmentUrl,
+}))
+
 import {
   handleUpdateConversationSettings,
   updateConversationSettingsSchema,
 } from '~/routes/(app)/threads/$id/-lib/update-conversation-settings.server'
+import { handleGetConversation } from '~/routes/(app)/threads/$id/-lib/get-conversation.fn'
 
 function makeTx(opts: { rows?: unknown[]; onSet?: (v: Record<string, unknown>) => void }) {
   const { rows = [{ id: CONV_ID }], onSet } = opts
@@ -190,5 +203,125 @@ describe('handleUpdateConversationSettings', () => {
       customPrompt: 'Be formal.',
       note: 'VIP customer.',
     })
+  })
+})
+
+// --- 009: getConversation attachments マッピング ---
+
+// handleGetConversation が発行するクエリ列に順番どおり結果を返す fake tx。
+// 1) conversations select (.limit(1)) 2) unreadCount update 3) messages select
+// (.orderBy() を await) 4) aiDrafts select (.limit(1))
+function makeGetConversationTx(selectResults: unknown[][]) {
+  let i = 0
+  const makeChain = () => {
+    const result = selectResults[i++] ?? []
+    const chain: Record<string, unknown> = {}
+    Object.assign(chain, {
+      from: () => chain,
+      where: () => chain,
+      orderBy: () => chain,
+      limit: async () => result,
+      then: (onFulfilled: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) =>
+        Promise.resolve(result).then(onFulfilled, onRejected),
+    })
+    return chain
+  }
+  return {
+    select: () => makeChain(),
+    update: () => ({ set: () => ({ where: async () => [] }) }),
+  } as unknown as TenantTx
+}
+
+const CONV_ROW = {
+  id: CONV_ID,
+  customerPsid: 'psid-1',
+  customerName: 'Alice',
+  lastInboundAt: null,
+  summary: null,
+  lastSummarizedAt: null,
+  tonePreset: null,
+  customPrompt: null,
+  note: null,
+}
+
+function makeMsgRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'mmmmmmmm-mmmm-4mmm-8mmm-mmmmmmmmmmmm',
+    direction: 'inbound',
+    body: '',
+    messageType: 'image',
+    timestamp: new Date('2026-07-18T00:00:00Z'),
+    sendStatus: null,
+    sendError: null,
+    attachments: null,
+    ...overrides,
+  }
+}
+
+describe('handleGetConversation — attachments (009 T018/T027)', () => {
+  beforeEach(() => {
+    mockGetAttachmentUrl.mockReset()
+    mockGetAttachmentUrl.mockImplementation(async (key: string) => `https://signed.example/${key}`)
+  })
+
+  it('maps stored attachment to presigned url and unavailable one to url: null, without leaking s3Key', async () => {
+    const tx = makeGetConversationTx([
+      [CONV_ROW],
+      [
+        makeMsgRow({
+          attachments: [
+            { index: 0, type: 'image', s3Key: `${TENANT_ID}/${CONV_ID}/m_1/0`, contentType: 'image/jpeg', sizeBytes: 123 },
+            { index: 1, type: 'video', s3Key: null },
+          ],
+        }),
+      ],
+      [],
+    ])
+
+    const result = await handleGetConversation(tx, CONV_ID)
+
+    const atts = result.messages[0]!.attachments
+    expect(atts).toEqual([
+      { index: 0, type: 'image', url: `https://signed.example/${TENANT_ID}/${CONV_ID}/m_1/0` },
+      { index: 1, type: 'video', url: null },
+    ])
+    // s3Key は内部キーのためクライアントに露出させない (contracts §4)
+    for (const att of atts) {
+      expect(Object.keys(att).sort()).toEqual(['index', 'type', 'url'])
+    }
+    expect(mockGetAttachmentUrl).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns [] for legacy rows (attachments NULL) and keeps message_type-driven rendering possible', async () => {
+    const tx = makeGetConversationTx([
+      [CONV_ROW],
+      [makeMsgRow({ attachments: null, messageType: 'image', body: '' })],
+      [],
+    ])
+
+    const result = await handleGetConversation(tx, CONV_ID)
+
+    expect(result.messages[0]!.attachments).toEqual([])
+    expect(result.messages[0]!.message_type).toBe('image')
+    expect(mockGetAttachmentUrl).not.toHaveBeenCalled()
+  })
+
+  it("normalizes out-of-union message_type (e.g. legacy 'other') to 'unknown'", async () => {
+    const tx = makeGetConversationTx([
+      [CONV_ROW],
+      [makeMsgRow({ messageType: 'other' })],
+      [],
+    ])
+
+    const result = await handleGetConversation(tx, CONV_ID)
+    expect(result.messages[0]!.message_type).toBe('unknown')
+  })
+
+  it('cross-tenant / unknown conversation id → notFound thrown and presign never called (FR-010 / SC-006)', async () => {
+    // RLS 下では他テナントの会話は SELECT に現れない = 空配列
+    const tx = makeGetConversationTx([[]])
+
+    await expect(handleGetConversation(tx, CONV_ID)).rejects.toSatisfy((err) => isNotFound(err))
+    expect(mockGetAttachmentUrl).not.toHaveBeenCalled()
   })
 })

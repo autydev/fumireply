@@ -17,6 +17,9 @@ const envSchema = z.object({
   // SQS_QUEUE_URL isn't set in their test fixtures. The SQS service itself
   // throws a clear error if invoked without it.
   SQS_QUEUE_URL: z.string().default(''),
+  // 009: 添付メディアバケット。未設定時は presigned URL を発行せず url: null を
+  // 返す (UI はプレースホルダ表示)。research.md R11 のフェイルセーフ。
+  MEDIA_BUCKET_NAME: z.string().default(''),
 })
 
 export type Env = z.infer<typeof envSchema>

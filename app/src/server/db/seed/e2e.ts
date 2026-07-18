@@ -187,6 +187,32 @@ async function main() {
   if (!inboundMsg) throw new Error('message insert returned no row')
   console.log(`      conversationId=${conv.id}, inboundMessageId=${inboundMsg.id}`)
 
+  // 009: 添付メッセージ fixture — presign 不要なケース (取得不可プレースホルダ /
+  // スタンプラベル) で media-attachments.spec.ts を成立させる。
+  await db.insert(messages).values([
+    {
+      tenantId,
+      conversationId: conv.id,
+      direction: 'inbound',
+      metaMessageId: `e2e-inbound-img-${Date.now()}`,
+      body: '',
+      messageType: 'image',
+      timestamp: new Date(inboundAt.getTime() + 1000),
+      attachments: [{ index: 0, type: 'image', s3Key: null }],
+    },
+    {
+      tenantId,
+      conversationId: conv.id,
+      direction: 'inbound',
+      metaMessageId: `e2e-inbound-stk-${Date.now()}`,
+      body: '',
+      messageType: 'sticker',
+      timestamp: new Date(inboundAt.getTime() + 2000),
+      attachments: [{ index: 0, type: 'sticker', s3Key: null }],
+    },
+  ])
+  console.log('      attachment fixture messages inserted (image-unavailable / sticker)')
+
   // 5. ai_drafts (status='ready') — ReplyForm が即時 textarea にプリフィルする
   console.log(`[5/5] ai_drafts (status=ready)`)
   await db.insert(aiDrafts).values({

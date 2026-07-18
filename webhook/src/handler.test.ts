@@ -15,23 +15,44 @@ const NEW_MSG_UUID = 'msg-uuid-cccc'
 const CONV_UUID = 'conv-uuid-dddd'
 
 // hoisted mocks
-const { mockSsm, mockWithTenant, mockDbAdminWhere, mockMaybeEnqueueSummaryJob } = vi.hoisted(() => ({
+const {
+  mockSsm,
+  mockWithTenant,
+  mockDbAdminWhere,
+  mockMaybeEnqueueSummaryJob,
+  mockDownloadAttachment,
+  mockStoreAttachment,
+  mockEnv,
+} = vi.hoisted(() => ({
   mockSsm: vi.fn(),
   mockWithTenant: vi.fn(),
   mockDbAdminWhere: vi.fn(),
   mockMaybeEnqueueSummaryJob: vi.fn(),
-}))
-
-vi.mock('./env', () => ({
-  env: {
+  mockDownloadAttachment: vi.fn(),
+  mockStoreAttachment: vi.fn(),
+  // 009: MEDIA_BUCKET_NAME をテストごとに変えられるよう可変オブジェクトにする
+  // (handler は env.MEDIA_BUCKET_NAME を都度プロパティアクセスで読む)。
+  mockEnv: {
     SSM_PATH_PREFIX: '/fumireply/test',
     SQS_QUEUE_URL: 'https://sqs.ap-northeast-1.amazonaws.com/123/test-queue',
     AWS_REGION: 'ap-northeast-1',
+    MEDIA_BUCKET_NAME: 'test-media-bucket',
   },
+}))
+
+vi.mock('./env', () => ({
+  env: mockEnv,
 }))
 
 vi.mock('./services/ssm', () => ({
   getSsmParameter: mockSsm,
+}))
+
+// 009: ダウンロード/保存は media.test.ts で単体検証済みのため、handler テストでは
+// 呼び出し境界 (URL・回数・キー構成要素) をモックで検証する。
+vi.mock('./services/media', () => ({
+  downloadAttachment: mockDownloadAttachment,
+  storeAttachment: mockStoreAttachment,
 }))
 
 vi.mock('./services/summary-trigger', () => ({
@@ -167,6 +188,20 @@ beforeEach(() => {
   mockDbAdminWhere.mockReset()
   mockMaybeEnqueueSummaryJob.mockReset()
   mockMaybeEnqueueSummaryJob.mockResolvedValue(undefined)
+  mockEnv.MEDIA_BUCKET_NAME = 'test-media-bucket'
+  mockDownloadAttachment.mockReset()
+  mockStoreAttachment.mockReset()
+  // 既定は成功: 個別テストで失敗/超過を上書きする
+  mockDownloadAttachment.mockResolvedValue({
+    ok: true,
+    buffer: Buffer.from('img-bytes'),
+    contentType: 'image/jpeg',
+    sizeBytes: 9,
+  })
+  mockStoreAttachment.mockImplementation(
+    async (p: { tenantId: string; conversationId: string; mid: string; index: number }) =>
+      `${p.tenantId}/${p.conversationId}/${p.mid}/${p.index}`,
+  )
 })
 
 afterEach(() => {
@@ -581,6 +616,401 @@ describe('POST /api/webhook — message_echoes (006)', () => {
       // が echo を取り込んだ会話を「返信済み」として検出する (FR-010)。
       expect(messagesInsert!.values!.direction).toBe('outbound')
       expect((messagesInsert!.values!.timestamp as Date).getTime()).toBe(1735689700000)
+    })
+  })
+})
+
+// 009: 添付メディアの保存 (specs/009-media-attachments) のテスト群
+//
+// 実装契約 (contracts/media-pipeline.md): classifyAttachments → (保存対象があれば
+// 会話を先行 upsert) → downloadAttachment (最大 3 試行) → storeAttachment →
+// messages INSERT に attachments JSONB。ダウンロード失敗はメッセージ取り込みを
+// 妨げない (FR-003)。media.ts の中身は media.test.ts で単体検証済み。
+function makeInboundAttachmentPayload(
+  mid: string,
+  attachments: Array<Record<string, unknown>>,
+  text?: string,
+) {
+  return {
+    object: 'page',
+    entry: [
+      {
+        id: PAGE_ID,
+        time: 1735689800000,
+        messaging: [
+          {
+            sender: { id: CUSTOMER_PSID },
+            recipient: { id: PAGE_ID },
+            timestamp: 1735689800000,
+            message: { mid, ...(text !== undefined ? { text } : {}), attachments },
+          },
+        ],
+      },
+    ],
+  }
+}
+
+// inbound 経路の fakeTx。非テキストは messages INSERT + conversations UPDATE の後に
+// 早期 return するため、draft 系のクエリは実装不要。preliminary media tx (conversations
+// upsert のみ) と本体 tx の両方をこの実装で受ける (呼び出しごとに状態を持つ)。
+function setupInboundTx() {
+  const calls: FakeTxCalls = { insert: [], conflictTarget: [], conflictSet: [] }
+  mockWithTenant.mockImplementation(async (_tenantId: string, cb: (tx: unknown) => Promise<unknown>) => {
+    let insertCallIdx = 0
+    let returningIdx = 0
+    const tablesByOrder: Array<'conversations' | 'messages'> = ['conversations', 'messages']
+    const returningResults: unknown[][] = [
+      // customerName を持たせて needsNameFetch 経路 (SSM/Graph API) を切る
+      [{ id: CONV_UUID, customerName: 'Test Customer' }],
+      [{ id: NEW_MSG_UUID }],
+    ]
+    const builder: Record<string, unknown> = {}
+    Object.assign(builder, {
+      insert: () => {
+        const tableName = tablesByOrder[insertCallIdx++] ?? 'messages'
+        calls.insert.push({ table: tableName })
+        return builder
+      },
+      values: (v: Record<string, unknown>) => {
+        const last = calls.insert[calls.insert.length - 1]
+        if (last) last.values = v
+        return builder
+      },
+      onConflictDoUpdate: (conf: { target?: unknown; set?: Record<string, unknown> }) => {
+        calls.conflictTarget.push(conf.target)
+        calls.conflictSet.push(conf.set ?? {})
+        return builder
+      },
+      onConflictDoNothing: () => builder,
+      returning: async () => returningResults[returningIdx++] ?? [],
+      update: () => builder,
+      set: () => builder,
+      where: async () => [],
+    })
+    return cb(builder)
+  })
+  return calls
+}
+
+describe('POST /api/webhook — media attachments (009)', () => {
+  beforeEach(() => {
+    mockSsm.mockResolvedValue(APP_SECRET)
+    mockDbAdminWhere.mockResolvedValue([
+      { tenantId: TENANT_ID, id: PAGE_UUID, pageAccessTokenEncrypted: Buffer.alloc(44) },
+    ])
+  })
+
+  describe('US1 — inbound 画像の保存と attachments 記録', () => {
+    it('T013: inbound image が保存され attachments に s3Key が記録される (body に URL を入れない)', async () => {
+      const calls = setupInboundTx()
+      const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+      const res = await handler(
+        makePostEvent(
+          makeInboundAttachmentPayload('m_img_1', [
+            { type: 'image', payload: { url: 'https://cdn.fb.com/photo.jpg' } },
+          ]),
+        ),
+      )
+
+      expect(res.statusCode).toBe(200)
+      expect(mockDownloadAttachment).toHaveBeenCalledTimes(1)
+      expect(mockDownloadAttachment).toHaveBeenCalledWith('https://cdn.fb.com/photo.jpg')
+      expect(mockStoreAttachment).toHaveBeenCalledTimes(1)
+      expect(mockStoreAttachment).toHaveBeenCalledWith({
+        bucket: 'test-media-bucket',
+        tenantId: TENANT_ID,
+        conversationId: CONV_UUID,
+        mid: 'm_img_1',
+        index: 0,
+        buffer: expect.any(Buffer),
+        contentType: 'image/jpeg',
+      })
+
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      expect(messagesInsert!.values).toMatchObject({
+        direction: 'inbound',
+        metaMessageId: 'm_img_1',
+        body: '', // FR-004: CDN URL を body に保存する旧挙動の廃止
+        messageType: 'image',
+        attachments: [
+          {
+            index: 0,
+            type: 'image',
+            s3Key: `${TENANT_ID}/${CONV_UUID}/m_img_1/0`,
+            contentType: 'image/jpeg',
+            sizeBytes: 9,
+          },
+        ],
+      })
+
+      const storedLog = infoSpy.mock.calls.find(
+        (c) => (c[0] as { event?: string })?.event === 'attachment_stored',
+      )
+      expect(storedLog).toBeDefined()
+      expect(storedLog![0]).toMatchObject({
+        event: 'attachment_stored',
+        tenantId: TENANT_ID,
+        conversationId: CONV_UUID,
+        mid: 'm_img_1',
+        index: 0,
+        type: 'image',
+        sizeBytes: 9,
+      })
+      // 非テキストなので AI 下書きは発火しない (FR-014)
+      expect(sqsMock.calls()).toHaveLength(0)
+      infoSpy.mockRestore()
+    })
+
+    it('T014: 複数画像 (2 枚) が全件 index 順に保存される', async () => {
+      const calls = setupInboundTx()
+
+      await handler(
+        makePostEvent(
+          makeInboundAttachmentPayload('m_img_2', [
+            { type: 'image', payload: { url: 'https://cdn.fb.com/a.jpg' } },
+            { type: 'image', payload: { url: 'https://cdn.fb.com/b.jpg' } },
+          ]),
+        ),
+      )
+
+      expect(mockStoreAttachment).toHaveBeenCalledTimes(2)
+      expect(mockStoreAttachment.mock.calls[0]![0]).toMatchObject({ index: 0 })
+      expect(mockStoreAttachment.mock.calls[1]![0]).toMatchObject({ index: 1 })
+
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      const attachments = messagesInsert!.values!.attachments as Array<{
+        index: number
+        s3Key: string | null
+      }>
+      expect(attachments).toHaveLength(2)
+      expect(attachments.map((a) => a.index)).toEqual([0, 1])
+      expect(attachments.map((a) => a.s3Key)).toEqual([
+        `${TENANT_ID}/${CONV_UUID}/m_img_2/0`,
+        `${TENANT_ID}/${CONV_UUID}/m_img_2/1`,
+      ])
+    })
+
+    it('T015: ダウンロード失敗はリトライ 2 回 (計 3 試行) の後 s3Key=null で確定し、INSERT は成功する', async () => {
+      const calls = setupInboundTx()
+      mockDownloadAttachment.mockResolvedValue({ ok: false, reason: 'network_error' })
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const res = await handler(
+        makePostEvent(
+          makeInboundAttachmentPayload('m_img_3', [
+            { type: 'image', payload: { url: 'https://cdn.fb.com/dead.jpg' } },
+          ]),
+        ),
+      )
+
+      expect(res.statusCode).toBe(200)
+      expect(mockDownloadAttachment).toHaveBeenCalledTimes(3)
+      expect(mockStoreAttachment).not.toHaveBeenCalled()
+
+      // FR-003: 保存失敗してもメッセージ取り込みは成功
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      expect(messagesInsert).toBeDefined()
+      expect(messagesInsert!.values).toMatchObject({
+        messageType: 'image',
+        body: '',
+        attachments: [{ index: 0, type: 'image', s3Key: null }],
+      })
+
+      const failedLog = warnSpy.mock.calls.find(
+        (c) => (c[0] as { event?: string })?.event === 'attachment_download_failed',
+      )
+      expect(failedLog).toBeDefined()
+      expect(failedLog![0]).toMatchObject({
+        event: 'attachment_download_failed',
+        tenantId: TENANT_ID,
+        mid: 'm_img_3',
+        index: 0,
+        type: 'image',
+        attempts: 3,
+        reason: 'network_error',
+      })
+      warnSpy.mockRestore()
+    })
+
+    it('T015b: MEDIA_BUCKET_NAME 未設定時はダウンロードせず bucket_not_configured で記録、INSERT は成功', async () => {
+      mockEnv.MEDIA_BUCKET_NAME = ''
+      const calls = setupInboundTx()
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const res = await handler(
+        makePostEvent(
+          makeInboundAttachmentPayload('m_img_4', [
+            { type: 'image', payload: { url: 'https://cdn.fb.com/photo.jpg' } },
+          ]),
+        ),
+      )
+
+      expect(res.statusCode).toBe(200)
+      expect(mockDownloadAttachment).not.toHaveBeenCalled()
+      expect(mockStoreAttachment).not.toHaveBeenCalled()
+
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      expect(messagesInsert!.values).toMatchObject({
+        attachments: [{ index: 0, type: 'image', s3Key: null }],
+      })
+
+      const failedLog = warnSpy.mock.calls.find(
+        (c) => (c[0] as { event?: string })?.event === 'attachment_download_failed',
+      )
+      expect(failedLog![0]).toMatchObject({ attempts: 0, reason: 'bucket_not_configured' })
+      warnSpy.mockRestore()
+    })
+  })
+
+  describe('US2 — 非画像種別の判定・保存と echo 添付', () => {
+    it.each([
+      ['video', 'https://cdn.fb.com/v.mp4'],
+      ['audio', 'https://cdn.fb.com/a.mp4'],
+      ['file', 'https://cdn.fb.com/doc.pdf'],
+    ] as const)(
+      'T021: inbound %s は正しい messageType で保存され AI 下書きを発火しない',
+      async (type, url) => {
+        const calls = setupInboundTx()
+        sqsMock.on(SendMessageCommand).resolves({})
+
+        await handler(
+          makePostEvent(makeInboundAttachmentPayload(`m_${type}_1`, [{ type, payload: { url } }])),
+        )
+
+        expect(mockStoreAttachment).toHaveBeenCalledTimes(1)
+        const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+        expect(messagesInsert!.values).toMatchObject({
+          messageType: type,
+          body: '',
+          attachments: [
+            { index: 0, type, s3Key: `${TENANT_ID}/${CONV_UUID}/m_${type}_1/0` },
+          ],
+        })
+        // FR-014: 非テキストは SQS enqueue (AI 下書き) を呼ばない
+        expect(sqsMock.calls()).toHaveLength(0)
+      },
+    )
+
+    it('T021b: sticker はダウンロードせず s3Key=null で記録される', async () => {
+      const calls = setupInboundTx()
+
+      await handler(
+        makePostEvent(
+          makeInboundAttachmentPayload('m_stk_1', [
+            { type: 'image', payload: { sticker_id: 369239263222822 } },
+          ]),
+        ),
+      )
+
+      expect(mockDownloadAttachment).not.toHaveBeenCalled()
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      expect(messagesInsert!.values).toMatchObject({
+        messageType: 'sticker',
+        attachments: [{ index: 0, type: 'sticker', s3Key: null }],
+      })
+    })
+
+    it('T021c: 未知 type (fallback) は unknown として記録され空バブル要素 (body) は空文字', async () => {
+      const calls = setupInboundTx()
+
+      await handler(
+        makePostEvent(
+          makeInboundAttachmentPayload('m_unk_1', [
+            { type: 'fallback', payload: { url: 'https://example.com/share' } },
+          ]),
+        ),
+      )
+
+      expect(mockDownloadAttachment).not.toHaveBeenCalled()
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      expect(messagesInsert!.values).toMatchObject({
+        messageType: 'unknown',
+        body: '',
+        attachments: [{ index: 0, type: 'unknown', s3Key: null }],
+      })
+    })
+
+    it('T022: echo image 添付も保存され attachments 付きで INSERT、UPSERT SET は sendStatus のみ (FR-009)', async () => {
+      const calls = setupEchoTx({ inserted: true })
+
+      await handler(makePostEvent(echoImagePayload))
+
+      expect(mockDownloadAttachment).toHaveBeenCalledWith('https://cdn.fb.com/image.jpg')
+      expect(mockStoreAttachment).toHaveBeenCalledTimes(1)
+      expect(mockStoreAttachment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: TENANT_ID,
+          conversationId: CONV_UUID,
+          mid: 'm_echo_image_001',
+          index: 0,
+        }),
+      )
+
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      expect(messagesInsert!.values).toMatchObject({
+        direction: 'outbound',
+        messageType: 'image',
+        body: '',
+        attachments: [
+          {
+            index: 0,
+            type: 'image',
+            s3Key: `${TENANT_ID}/${CONV_UUID}/m_echo_image_001/0`,
+          },
+        ],
+      })
+      // 既存自送信行の attachments を echo で上書きしない: SET は sendStatus のみ
+      expect(calls.conflictSet[calls.conflictSet.length - 1]).toEqual({ sendStatus: 'sent' })
+      // echo の副作用なしは既存 T014 で担保 (SQS / Summary 不発火)
+      expect(sqsMock.calls()).toHaveLength(0)
+      expect(mockMaybeEnqueueSummaryJob).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('US3 — サイズ超過スキップ', () => {
+    it('T026: 25MB 超過はリトライなしで attachment_skipped_oversize、INSERT は成功', async () => {
+      const calls = setupInboundTx()
+      mockDownloadAttachment.mockResolvedValue({ ok: false, reason: 'oversize' })
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const res = await handler(
+        makePostEvent(
+          makeInboundAttachmentPayload('m_big_1', [
+            { type: 'video', payload: { url: 'https://cdn.fb.com/huge.mp4' } },
+          ]),
+        ),
+      )
+
+      expect(res.statusCode).toBe(200)
+      // oversize は決定的失敗なのでリトライしない (fetch 1 回のみ)
+      expect(mockDownloadAttachment).toHaveBeenCalledTimes(1)
+      expect(mockStoreAttachment).not.toHaveBeenCalled()
+
+      const messagesInsert = calls.insert.find((c) => c.table === 'messages')
+      expect(messagesInsert!.values).toMatchObject({
+        messageType: 'video',
+        attachments: [{ index: 0, type: 'video', s3Key: null }],
+      })
+
+      const oversizeLog = warnSpy.mock.calls.find(
+        (c) => (c[0] as { event?: string })?.event === 'attachment_skipped_oversize',
+      )
+      expect(oversizeLog).toBeDefined()
+      expect(oversizeLog![0]).toMatchObject({
+        event: 'attachment_skipped_oversize',
+        tenantId: TENANT_ID,
+        mid: 'm_big_1',
+        index: 0,
+        type: 'video',
+      })
+      // attachment_download_failed は出ない (oversize は専用イベント)
+      expect(
+        warnSpy.mock.calls.find(
+          (c) => (c[0] as { event?: string })?.event === 'attachment_download_failed',
+        ),
+      ).toBeUndefined()
+      warnSpy.mockRestore()
     })
   })
 })

@@ -4,6 +4,7 @@ import {
   customType,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -12,6 +13,15 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core'
+
+// 009: messages.attachments の 1 要素。app/src/server/db/schema.ts と同一定義 (複製スキーマ方式)。
+export interface MessageAttachment {
+  index: number
+  type: 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'unknown'
+  s3Key: string | null
+  contentType?: string
+  sizeBytes?: number
+}
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType() {
@@ -97,6 +107,8 @@ export const messages = pgTable(
     sendStatus: varchar('send_status', { length: 20 }),
     sendError: text('send_error'),
     sentByAuthUid: uuid('sent_by_auth_uid'),
+    // 009: 添付情報 (NULL = 添付なし or レガシー行)。ゼロ件は [] でなく NULL に統一。
+    attachments: jsonb('attachments').$type<MessageAttachment[] | null>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

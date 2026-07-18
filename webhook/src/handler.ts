@@ -5,7 +5,14 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { getDbAdmin } from './db/client'
 import { withTenant, type TenantTx } from './db/with-tenant'
-import { aiDrafts, connectedPages, conversations, messages } from './db/schema'
+import {
+  aiDrafts,
+  connectedPages,
+  conversations,
+  messages,
+  type MessageAttachment,
+} from './db/schema'
+import { downloadAttachment, storeAttachment } from './services/media'
 import { getSsmParameter } from './services/ssm'
 import { maybeEnqueueSummaryJob } from './services/summary-trigger'
 import { env } from './env'
@@ -98,29 +105,182 @@ const webhookPayloadSchema = z.object({
 
 type MessagingEvent = z.infer<typeof messagingEventSchema>
 
-function determineMessageType(msg: z.infer<typeof messageSchema>): {
-  messageType: string
-  body: string
-} {
-  if (msg.text !== undefined) return { messageType: 'text', body: msg.text }
-  const att = msg.attachments?.[0]
-  if (att?.payload?.sticker_id !== undefined) return { messageType: 'sticker', body: '' }
-  if (att?.type === 'image') return { messageType: 'image', body: att.payload?.url ?? '' }
-  return { messageType: 'unknown', body: '' }
+// 009: 保存対象となる添付種別 (sticker は Meta 定型画像、unknown は URL 不定のため対象外)
+const STORABLE_ATTACHMENT_TYPES: ReadonlySet<MessageAttachment['type']> = new Set([
+  'image',
+  'video',
+  'audio',
+  'file',
+])
+
+// 009: リトライ間隔。Meta の CDN URL は受信直後しか生存が保証されないため
+// 短い即時リトライのみ行う (spec Q2: 最大 2 回再試行 = 計 3 試行)。
+const ATTACHMENT_RETRY_DELAYS_MS = [200, 500]
+
+export interface AttachmentPlan {
+  index: number
+  type: MessageAttachment['type']
+  url: string | null
+  shouldStore: boolean
 }
 
-// 006: echo 経路では添付の URL を保存せず本文は空文字で統一する (spec.md Clarifications Q1)。
-// inbound 用 determineMessageType と分けることで、外部送信の image attachment URL (短命) を
-// DB に残さないという設計判断を局所化する。
-export function determineEchoMessageType(msg: z.infer<typeof messageSchema>): {
+// 009: inbound / echo 共通の種別判定。006 の determineMessageType /
+// determineEchoMessageType を置換 — body に添付 URL を入れる経路は廃止し (FR-004)、
+// 全添付を index 順に AttachmentPlan として返す (先頭 1 件のみの制限を撤廃)。
+export function classifyAttachments(msg: z.infer<typeof messageSchema>): {
   messageType: string
   body: string
+  attachments: AttachmentPlan[]
 } {
-  if (msg.text !== undefined) return { messageType: 'text', body: msg.text }
-  const att = msg.attachments?.[0]
-  if (att?.payload?.sticker_id !== undefined) return { messageType: 'sticker', body: '' }
-  if (att?.type === 'image') return { messageType: 'image', body: '' }
-  return { messageType: 'unknown', body: '' }
+  const attachments: AttachmentPlan[] = (msg.attachments ?? []).map((att, index) => {
+    let type: MessageAttachment['type']
+    if (att.payload?.sticker_id !== undefined) {
+      type = 'sticker'
+    } else if (
+      att.type === 'image' ||
+      att.type === 'video' ||
+      att.type === 'audio' ||
+      att.type === 'file'
+    ) {
+      type = att.type
+    } else {
+      type = 'unknown'
+    }
+    const url = att.payload?.url ?? null
+    return {
+      index,
+      type,
+      url,
+      shouldStore: STORABLE_ATTACHMENT_TYPES.has(type) && url !== null,
+    }
+  })
+
+  if (msg.text !== undefined) {
+    return { messageType: 'text', body: msg.text, attachments }
+  }
+  return {
+    messageType: attachments[0]?.type ?? 'unknown',
+    body: '',
+    attachments,
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+// 009: 1 添付のダウンロード + S3 保存。oversize は決定的失敗なのでリトライしない。
+// それ以外 (timeout / network_error / http_error / put_failed) は短い即時リトライを行い、
+// 使い切ったら s3Key: null (取得不可) で確定する。
+async function fetchAndStoreAttachment(
+  plan: AttachmentPlan,
+  ctx: { tenantId: string; conversationId: string; mid: string },
+): Promise<MessageAttachment> {
+  const { tenantId, conversationId, mid } = ctx
+  const maxAttempts = 1 + ATTACHMENT_RETRY_DELAYS_MS.length
+  let lastReason = 'network_error'
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const dl = await downloadAttachment(plan.url as string)
+
+    if (dl.ok) {
+      try {
+        const s3Key = await storeAttachment({
+          bucket: env.MEDIA_BUCKET_NAME,
+          tenantId,
+          conversationId,
+          mid,
+          index: plan.index,
+          buffer: dl.buffer,
+          contentType: dl.contentType,
+        })
+        console.info({
+          event: 'attachment_stored',
+          tenantId,
+          conversationId,
+          mid,
+          index: plan.index,
+          type: plan.type,
+          sizeBytes: dl.sizeBytes,
+        })
+        return {
+          index: plan.index,
+          type: plan.type,
+          s3Key,
+          contentType: dl.contentType,
+          sizeBytes: dl.sizeBytes,
+        }
+      } catch {
+        lastReason = 'put_failed'
+      }
+    } else if (dl.reason === 'oversize') {
+      console.warn({
+        event: 'attachment_skipped_oversize',
+        tenantId,
+        mid,
+        index: plan.index,
+        type: plan.type,
+      })
+      return { index: plan.index, type: plan.type, s3Key: null }
+    } else {
+      lastReason = dl.reason
+    }
+
+    if (attempt < maxAttempts) {
+      await sleep(ATTACHMENT_RETRY_DELAYS_MS[attempt - 1] ?? 0)
+    }
+  }
+
+  console.warn({
+    event: 'attachment_download_failed',
+    tenantId,
+    mid,
+    index: plan.index,
+    type: plan.type,
+    attempts: maxAttempts,
+    reason: lastReason,
+  })
+  return { index: plan.index, type: plan.type, s3Key: null }
+}
+
+// 009: 全添付の保存を逐次実行し、messages.attachments に入れる値を確定する。
+// メッセージ INSERT の成否とは独立 — ここでの失敗は s3Key: null に落ちるだけで
+// 呼び出し側の取り込みは必ず続行される (FR-003)。conversationId が null のとき
+// (MEDIA_BUCKET_NAME 未設定) は保存対象をすべて bucket_not_configured で記録する。
+async function resolveAttachments(
+  plans: AttachmentPlan[],
+  ctx: { tenantId: string; conversationId: string | null; mid: string },
+): Promise<MessageAttachment[] | null> {
+  if (plans.length === 0) return null
+
+  const results: MessageAttachment[] = []
+  for (const plan of plans) {
+    if (!plan.shouldStore || plan.url === null) {
+      results.push({ index: plan.index, type: plan.type, s3Key: null })
+      continue
+    }
+    if (!env.MEDIA_BUCKET_NAME || ctx.conversationId === null) {
+      console.warn({
+        event: 'attachment_download_failed',
+        tenantId: ctx.tenantId,
+        mid: ctx.mid,
+        index: plan.index,
+        type: plan.type,
+        attempts: 0,
+        reason: 'bucket_not_configured',
+      })
+      results.push({ index: plan.index, type: plan.type, s3Key: null })
+      continue
+    }
+    results.push(
+      await fetchAndStoreAttachment(plan, {
+        tenantId: ctx.tenantId,
+        conversationId: ctx.conversationId,
+        mid: ctx.mid,
+      }),
+    )
+  }
+  return results
 }
 
 async function upsertConversation(
@@ -164,13 +324,37 @@ async function processMessagingEvent(
   const { mid, is_echo } = msg
   const ts = event.timestamp
 
+  // 009: S3 キーが conversationId を含むため、保存対象の添付があるときだけ
+  // 会話を先に解決する (idempotent upsert)。ダウンロード + PutObject を DB
+  // トランザクション外で行うための前段で、本体 tx 側の upsert はそのまま残す
+  // (2 回目の upsert は同一行に収束するだけで無害)。
+  const resolveConversationIdForMedia = async (
+    customerPsid: string,
+    plans: AttachmentPlan[],
+  ): Promise<string | null> => {
+    if (!env.MEDIA_BUCKET_NAME) return null
+    if (!plans.some((p) => p.shouldStore)) return null
+    const conv = await withTenant(tenantId, (tx) =>
+      upsertConversation(tx, tenantId, pageUuid, customerPsid),
+    )
+    return conv.id
+  }
+
   if (is_echo) {
     // 006: echo は (a) 既存自送信行があれば sendStatus を sent に確定 (UPDATE), (b) 既存行が
     // 無ければ外部送信として新規 outbound を INSERT する。`meta_message_id` UNIQUE 制約上の
     // UPSERT 一発で両ケースを扱う。`(xmax = 0)` は INSERT 経路で true (新規行)、UPDATE 経路で
     // false (既存行を更新) を返す PostgreSQL イディオム。FR-008 / FR-008a / Q3 (timestamp 不変)。
+    // 009: echo の添付も inbound と同じパイプラインで保存する (FR-009)。UPSERT の SET は
+    // 従来どおり sendStatus のみ — 既存自送信行の attachments を echo で上書きしない。
     const recipientPsid = event.recipient.id
-    const { messageType, body } = determineEchoMessageType(msg)
+    const { messageType, body, attachments: plans } = classifyAttachments(msg)
+    const mediaConversationId = await resolveConversationIdForMedia(recipientPsid, plans)
+    const attachments = await resolveAttachments(plans, {
+      tenantId,
+      conversationId: mediaConversationId,
+      mid,
+    })
 
     const outcome = await withTenant(tenantId, async (tx) => {
       const conv = await upsertConversation(tx, tenantId, pageUuid, recipientPsid)
@@ -186,6 +370,7 @@ async function processMessagingEvent(
           timestamp: new Date(ts),
           sendStatus: 'sent',
           sentByAuthUid: null,
+          attachments,
         })
         .onConflictDoUpdate({
           target: messages.metaMessageId,
@@ -220,7 +405,13 @@ async function processMessagingEvent(
   }
 
   const psid = event.sender.id
-  const { messageType, body } = determineMessageType(msg)
+  const { messageType, body, attachments: plans } = classifyAttachments(msg)
+  const mediaConversationId = await resolveConversationIdForMedia(psid, plans)
+  const attachments = await resolveAttachments(plans, {
+    tenantId,
+    conversationId: mediaConversationId,
+    mid,
+  })
 
   const txResult = await withTenant(tenantId, async (tx): Promise<TxResult | null> => {
     const conv = await upsertConversation(tx, tenantId, pageUuid, psid)
@@ -235,6 +426,7 @@ async function processMessagingEvent(
         body,
         messageType,
         timestamp: new Date(ts),
+        attachments,
       })
       .onConflictDoNothing()
       .returning({ id: messages.id })

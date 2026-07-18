@@ -64,6 +64,16 @@ data "aws_iam_policy_document" "webhook_lambda_policy" {
     resources = compact([var.sqs_queue_arn, var.summary_queue_arn])
   }
 
+  # 009: 受信添付メディアの保存先バケットへの書き込み (Put のみ、List は付与しない)
+  dynamic "statement" {
+    for_each = var.media_bucket_arn != "" ? [1] : []
+    content {
+      sid       = "S3PutMediaObject"
+      actions   = ["s3:PutObject"]
+      resources = ["${var.media_bucket_arn}/*"]
+    }
+  }
+
   statement {
     sid = "CloudWatchLogs"
     actions = [
@@ -101,8 +111,10 @@ resource "aws_lambda_function" "webhook" {
   role          = aws_iam_role.webhook_lambda.arn
   runtime       = "nodejs22.x"
   handler       = "handler.handler"
-  memory_size   = 512
-  timeout       = 10
+  # 009: 添付メディアの同期ダウンロード (最大 25MB) を受信処理内で行うため、
+  # 512MB/10s から引き上げ (research.md R6)。
+  memory_size = 1024
+  timeout     = 20
 
   s3_bucket = var.lambda_package_s3_bucket
   s3_key    = var.lambda_package_s3_key
@@ -114,6 +126,7 @@ resource "aws_lambda_function" "webhook" {
       AI_SUMMARY_QUEUE_URL            = var.summary_queue_url
       SUMMARY_TRIGGER_THRESHOLD_CHARS = var.summary_trigger_threshold_chars
       SUMMARY_PIPELINE_ENABLED        = var.summary_pipeline_enabled
+      MEDIA_BUCKET_NAME               = var.media_bucket_name
     }
   }
 
