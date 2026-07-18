@@ -42,6 +42,8 @@ const ATTACHMENT_ICONS: Record<MessageAttachmentView['type'], string> = {
 // 保存済み画像: <img> 表示 + クリックで原寸モーダル (Esc / 背景クリック / ✕ で閉じる)
 function ImageAttachment({ url }: { url: string }) {
   const [open, setOpen] = useState(false)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!open) return
@@ -49,12 +51,19 @@ function ImageAttachment({ url }: { url: string }) {
       if (e.key === 'Escape') setOpen(false)
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // aria-modal な dialog はフォーカス管理が前提: 開いたら閉じるボタンへ初期フォーカス、
+    // 閉じたら元のトリガーへ復帰させる
+    closeButtonRef.current?.focus()
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      triggerRef.current?.focus()
+    }
   }, [open])
 
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         aria-label={m.thread_attachment_image_alt()}
@@ -103,6 +112,7 @@ function ImageAttachment({ url }: { url: string }) {
             style={{ maxWidth: '92vw', maxHeight: '92vh', objectFit: 'contain', cursor: 'default' }}
           />
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={() => setOpen(false)}
             aria-label={m.thread_attachment_modal_close()}
