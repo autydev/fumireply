@@ -1,7 +1,7 @@
 # Contract: draft ジョブの境界クエリ・失敗ハンドリング・リトライラダー
 
 **Feature**: 008-fix-ai-worker-timestamp
-**Scope**: `ai-worker/src/handler.ts` のみ(app / webhook / terraform は変更なし)
+**Scope**: プロダクションコードは `ai-worker/src/handler.ts` のみ(app / webhook / terraform は変更なし)。テストは ai-worker の 2 ファイルに加え、handler を独自 DB モックで駆動する app 統合テスト 2 ファイル(`app/tests/integration/ai-draft-worker.test.ts` / `ai-draft-uses-conversation-settings.test.ts`)も C1 のクエリ形状に追随する
 
 ## C1. 未返信バッチ境界クエリ
 

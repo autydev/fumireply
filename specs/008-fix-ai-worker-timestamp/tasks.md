@@ -107,6 +107,7 @@
 
 - [X] T015 Run ai-worker typecheck/lint(`cd ai-worker && npx tsc --noEmit` + リポジトリの lint 手順)and full test suite; fix any fallout
 - [X] T016 Cross-check spec/plan/contracts against the final implementation and sync docs to code where they diverge(コードが正 — feedback_sync_spec_to_impl)。data-model.md の状態遷移表・contract C1–C4 のコード断片が最終実装と一致することを確認
+- [X] T017 Update app-side integration test mocks to the new boundary-query chain shape in `app/tests/integration/ai-draft-worker.test.ts` and `app/tests/integration/ai-draft-uses-conversation-settings.test.ts`(handler を独自 DB モックで駆動しているため。タスク分解時に漏れており CI 失敗で発覚 — /speckit.analyze G1 で追記)
 
 ---
 
