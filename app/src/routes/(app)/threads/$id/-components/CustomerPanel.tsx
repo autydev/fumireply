@@ -27,7 +27,16 @@ export function useCustomerPanelOpen() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-    setIsOpen(window.matchMedia(DESKTOP_QUERY).matches)
+    const mql = window.matchMedia(DESKTOP_QUERY)
+    const apply = () => setIsOpen(mql.matches)
+    apply()
+    // Re-sync when the viewport crosses the breakpoint (device rotation,
+    // devtools emulation, window resize). Without this a desktop-opened panel
+    // becomes a full-screen overlay covering the thread on mobile, and a
+    // mobile-closed panel becomes unreachable on desktop (toggle is hidden
+    // ≥1280px). Crossing resets to that mode's default (#80).
+    mql.addEventListener('change', apply)
+    return () => mql.removeEventListener('change', apply)
   }, [])
 
   const toggle = useCallback(() => setIsOpen((prev) => !prev), [])

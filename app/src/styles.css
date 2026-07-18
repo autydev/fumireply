@@ -381,8 +381,10 @@ input, textarea {
   /* Below the desktop 3-column width the thread page is a single pane: hide the
      in-thread inbox column so the conversation fills the screen (it would
      otherwise crowd out the thread and reappear when the panel overlay closes).
-     The inbox is reached via the header back button. */
-  .inbox-list--in-thread {
+     The inbox is reached via the header back button.
+     Doubled class: must beat the later-in-file `.inbox-list { display: flex }`
+     base rule regardless of source order. */
+  .inbox-list.inbox-list--in-thread {
     display: none;
   }
 }
@@ -395,9 +397,14 @@ input, textarea {
   flex-direction: column;
 }
 
+/* display/flex-direction/height must live here (not inline) so the
+   .inbox-list--in-thread media rule below can override display. */
 .inbox-list {
   width: 340px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .inbox-empty-pane {

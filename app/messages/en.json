@@ -67,6 +67,7 @@
   "thread_back_to_inbox": "Back to inbox",
   "thread_star_aria": "Add star",
   "thread_more_actions_aria": "More actions",
+  "thread_loading": "Loading conversation…",
   "thread_no_messages": "No messages",
   "thread_message_sent": "Sent",
   "thread_message_failed": "Failed to send",
