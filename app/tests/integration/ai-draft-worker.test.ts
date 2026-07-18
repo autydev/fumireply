@@ -98,7 +98,7 @@ function draftJob(overrides: Record<string, unknown> = {}) {
 // Read tx mock for the conversation-scoped flow. Query order:
 //   1. latest inbound text (coalesce)  — from().where().orderBy().limit()
 //   2. settings (leftJoin)             — from().leftJoin().where()
-//   3. last outbound ts                — from().where()
+//   3. last outbound ts (008)          — from().where().orderBy().limit()
 //   4. unanswered batch                — from().where().orderBy().limit()
 //   5. context history                 — from().where().orderBy().limit()
 function buildReadTx({
@@ -138,8 +138,7 @@ function buildReadTx({
             })),
           })),
         }
-      if (n === 3)
-        return { from: vi.fn(() => ({ where: vi.fn(() => Promise.resolve([{ ts: null }])) })) }
+      if (n === 3) return limitChain([{ ts: null }])
       if (n === 4) return limitChain(unansweredRows)
       return limitChain(historyRows)
     }),
@@ -214,14 +213,14 @@ describe('AI Worker handler — integration', () => {
     expect(capturedUpdate?.error).toBe('auth_failed')
   })
 
-  it('Anthropic 500 ×4: exhausts retries → updates to failed with server_error', async () => {
+  it('Anthropic 500 ×3: exhausts retries → updates to failed with server_error', async () => {
     vi.useFakeTimers()
     try {
       const serverError = Object.assign(new Error('Internal server error'), { status: 500 })
       mockAnthropicCreate.mockRejectedValue(serverError)
 
       const handlerPromise = handler(makeSqsEvent(draftJob()), {} as never, vi.fn())
-      // Advance all retry delays (1s + 3s + 9s) without waiting real time
+      // Advance all retry delays (008: 1s + 3s) without waiting real time
       await vi.runAllTimersAsync()
       await handlerPromise
 
