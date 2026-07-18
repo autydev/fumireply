@@ -22,7 +22,7 @@
 
 **Purpose**: 変更前のベースライン確認(新規セットアップは不要 — 既存プロジェクト)
 
-- [ ] T001 Run existing ai-worker test suite (`cd ai-worker && npx vitest run`) and confirm green baseline before any change
+- [X] T001 Run existing ai-worker test suite (`cd ai-worker && npx vitest run`) and confirm green baseline before any change
 
 ---
 
@@ -42,13 +42,13 @@
 
 ### Tests for User Story 1(先行 — 修正前に失敗すること)
 
-- [ ] T002 [P] [US1] Update `buildReadTx` mock in `ai-worker/src/handler.test.ts` to the new boundary-query chain shape (`select→from→where→orderBy→limit` 終端、research D5-3) and add regression test: outbound あり(`lastOutboundResult = [{ ts: new Date('2026-06-01T00:00:00Z') }]`)の auto 生成で draft が `ready` になり、境界クエリが `orderBy`+`limit(1)` 付き型付き select で発行されること
-- [ ] T003 [P] [US1] Add regression test in `ai-worker/src/regenerate.test.ts`: outbound ありの会話で regenerate(ワンオフ指示つき含む)が成功し `ready` になること(research D5-2。`buildReadTx` 相当のモックがこのファイルにもあれば同様にチェーン形状を追随)
+- [X] T002 [P] [US1] Update `buildReadTx` mock in `ai-worker/src/handler.test.ts` to the new boundary-query chain shape (`select→from→where→orderBy→limit` 終端、research D5-3) and add regression test: outbound あり(`lastOutboundResult = [{ ts: new Date('2026-06-01T00:00:00Z') }]`)の auto 生成で draft が `ready` になり、境界クエリが `orderBy`+`limit(1)` 付き型付き select で発行されること
+- [X] T003 [P] [US1] Add regression test in `ai-worker/src/regenerate.test.ts`: outbound ありの会話で regenerate(ワンオフ指示つき含む)が成功し `ready` になること(research D5-2。`buildReadTx` 相当のモックがこのファイルにもあれば同様にチェーン形状を追随)
 
 ### Implementation for User Story 1
 
-- [ ] T004 [US1] Replace raw `sql<Date | null>\`max(...)\`` boundary query with typed-column select + `orderBy(desc(messages.timestamp))` + `limit(1)` in `ai-worker/src/handler.ts:239-245` per contract C1 (`lastOutboundTs = lastOut?.ts ?? new Date(0)` フォールバックは維持)
-- [ ] T005 [US1] Run ai-worker test suite (`cd ai-worker && npx vitest run`) — T002/T003 を含め全 green
+- [X] T004 [US1] Replace raw `sql<Date | null>\`max(...)\`` boundary query with typed-column select + `orderBy(desc(messages.timestamp))` + `limit(1)` in `ai-worker/src/handler.ts:239-245` per contract C1 (`lastOutboundTs = lastOut?.ts ?? new Date(0)` フォールバックは維持)
+- [X] T005 [US1] Run ai-worker test suite (`cd ai-worker && npx vitest run`) — T002/T003 を含め全 green
 
 **Checkpoint**: バグ本体は解消。ここまでで MVP としてデプロイ可能(US2–US4 は堅牢化・運用)
 

@@ -1,6 +1,6 @@
 import type { SQSEvent, SQSHandler, SQSRecord } from 'aws-lambda'
 import Anthropic from '@anthropic-ai/sdk'
-import { and, asc, desc, eq, gt, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { dbAdmin } from './db/client'
 import { withTenant } from './db/with-tenant'
@@ -236,12 +236,17 @@ async function processDraftJob(input: {
     summary = convoSettings?.summary ?? null
 
     // Unanswered batch boundary = last outbound message timestamp.
+    // 008 (#75): must be a typed-column select — a raw sql`max(...)` fragment is
+    // returned as a string by the postgres-js driver (only typed columns are
+    // mapped to Date), which crashes the gt() comparison below at runtime.
     const [lastOut] = await tx
-      .select({ ts: sql<Date | null>`max(${messages.timestamp})` })
+      .select({ ts: messages.timestamp })
       .from(messages)
       .where(
         and(eq(messages.conversationId, conversationId), eq(messages.direction, 'outbound')),
       )
+      .orderBy(desc(messages.timestamp))
+      .limit(1)
     const lastOutboundTs = lastOut?.ts ?? new Date(0)
 
     const unansweredRows = await tx
