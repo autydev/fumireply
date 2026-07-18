@@ -55,7 +55,7 @@ specs/008-fix-ai-worker-timestamp/
 │   └── requirements.md  # spec 品質チェックリスト(全項目パス)
 ├── contracts/
 │   └── draft-failure-handling.md  # 境界クエリ / outer catch / リトライラダー契約
-└── tasks.md             # Phase 2 (/speckit.tasks — 未作成)
+└── tasks.md             # Phase 2 出力 (/speckit.tasks — 全 17 タスク完了済み)
 ```
 
 ### Source Code (repository root)

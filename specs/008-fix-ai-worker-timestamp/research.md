@@ -35,7 +35,7 @@ const lastOutboundTs = lastOut?.ts ?? new Date(0)
 **Rationale**:
 - 早期に `failed` を書いてしまうと、成功時の書き込みが `status IN ('pending','ready')` の行のみを対象とするため **SQS リトライが成功しても結果が反映されない**。終端受信まで書き込みを遅らせることでリトライ意味論を壊さない
 - 今回のような決定的バグでも 3 回目の受信で必ず終端状態が書かれ、pending 放置(クライアントのポーリングタイムアウト待ち)が構造的に解消される
-- swallow により正常系の DLQ 流入はなくなる。DLQ は本当の異常(catch 前のクラッシュ、Lambda timeout、終端書き込み失敗)専用となり、既存の `ai-worker-dlq-not-empty` アラームのシグナル純度が上がる
+- swallow により正常系の DLQ 流入はなくなる。DLQ は本当の異常(catch 前のクラッシュ、Lambda timeout、終端書き込み失敗)専用となり、既存の `fumireply-review-ai-worker-dlq-not-empty` アラームのシグナル純度が上がる
 - `batch_size = 1` のため部分バッチ失敗の考慮は不要。`processRecord` から receiveCount を渡すだけでよい
 
 **Alternatives considered**:
