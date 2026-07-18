@@ -8,9 +8,10 @@ type TonePreset = 'friendly' | 'professional' | 'concise' | null
 
 interface DraftSettingsEditorProps {
   conversationId: string
+  /** Initial value only — read at mount. Remount with key={conversationId} to reset. */
   tonePreset: TonePreset
+  /** Initial value only — read at mount. Remount with key={conversationId} to reset. */
   customPrompt: string | null
-  onUpdate: (fields: { tonePreset?: TonePreset; customPrompt?: string | null }) => void
 }
 
 const TONE_OPTIONS: { value: TonePreset; label: () => string }[] = [
@@ -25,32 +26,28 @@ export function DraftSettingsEditor({
   conversationId,
   tonePreset: initialTone,
   customPrompt: initialPrompt,
-  onUpdate,
 }: DraftSettingsEditorProps) {
+  // Local state is the sole source of truth after mount — server values must
+  // never overwrite it while the user is viewing this conversation (#72).
   const [tone, setTone] = useState<TonePreset>(initialTone)
   const [prompt, setPrompt] = useState(initialPrompt ?? '')
   const [promptSaveState, setPromptSaveState] = useState<AutoSaveState>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Sync if parent reloads
-  useEffect(() => { setTone(initialTone) }, [initialTone])
-  useEffect(() => { setPrompt(initialPrompt ?? '') }, [initialPrompt])
-
-  // Cancel pending debounce on unmount or conversation change
+  // Cancel pending debounce on unmount
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [conversationId])
+  }, [])
 
   const saveTone = useCallback(async (value: TonePreset) => {
     try {
       await updateConversationSettingsFn({ data: { conversationId, tonePreset: value } })
-      onUpdate({ tonePreset: value })
     } catch {
       // fail silently — user can retry
     }
-  }, [conversationId, onUpdate])
+  }, [conversationId])
 
   const handleToneClick = useCallback((value: TonePreset) => {
     const next = tone === value ? null : value
@@ -68,12 +65,11 @@ export function DraftSettingsEditor({
       try {
         await updateConversationSettingsFn({ data: { conversationId, customPrompt: value } })
         setPromptSaveState('saved')
-        onUpdate({ customPrompt: value || null })
       } catch {
         setPromptSaveState(null)
       }
     }, DEBOUNCE_MS)
-  }, [conversationId, onUpdate])
+  }, [conversationId])
 
   const remaining = CUSTOMER_PROMPT_MAX - prompt.length
 
