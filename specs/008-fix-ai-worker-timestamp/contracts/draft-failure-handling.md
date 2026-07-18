@@ -47,13 +47,14 @@ processDraftJob(input: {
 
 ### catch 契約
 
-`processDraftJob` 本体(tenant 解決〜結果書き込み)を try/catch で包む。既存の Anthropic 呼び出し周りの内側 catch(API エラー→コード変換)は不変で、outer catch は「それ以外の予期しない例外」(DB クエリ、SSM、プロンプト構築等)を受ける。
+tenant 解決(step 1)の**後**から結果書き込みまで(`generateDraft` として抽出)を try/catch で包む。tenant 解決自体は catch の外 — tenantId なしでは終端状態を書き込めないため、ここでの失敗は従来どおり SQS リトライ → DLQ に委ねる。既存の Anthropic 呼び出し周りの内側 catch(API エラー→コード変換)は不変で、outer catch は「それ以外の予期しない例外」(DB クエリ、SSM、プロンプト構築等)を受ける。
 
 | 条件 | 動作 |
 |------|------|
 | `receiveCount < MAX_RECEIVE_COUNT (3)` | `draft_job_unexpected_error` (willRetry=true) をログ → **rethrow**(SQS 再配信に委ねる。draft は書き込まない) |
 | `receiveCount >= 3` | `draft_job_unexpected_error` (willRetry=false) をログ → 終端状態を書き込み → **正常 return** |
 | 終端書き込み自体が throw | rethrow(DLQ 行き → 既存 `ai-worker-dlq-not-empty` アラーム) |
+| tenant 解決(catch 外)が throw | rethrow(従来どおり SQS リトライ → DLQ) |
 
 `MAX_RECEIVE_COUNT = 3` は `terraform/modules/queue/main.tf` の `maxReceiveCount` と一致させる定数としてコード内に定義し、コメントで対応関係を明記する。
 

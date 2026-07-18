@@ -27,7 +27,7 @@ const lastOutboundTs = lastOut?.ts ?? new Date(0)
 
 ## D2. 予期しない例外での pending 放置防止(outer try/catch)
 
-**Decision**: `processDraftJob` の本体全体を try/catch で包み、SQS レコードの `ApproximateReceiveCount` を引数で受け取って受信回数で挙動を分岐する:
+**Decision**: `processDraftJob` の本体(tenant 解決後〜結果書き込み。`generateDraft` として抽出)を try/catch で包み、SQS レコードの `ApproximateReceiveCount` を引数で受け取って受信回数で挙動を分岐する。tenant 解決自体は catch の外(tenantId なしでは終端状態を書けない — 失敗時は従来どおり SQS リトライ → DLQ):
 
 - **非最終受信(receiveCount < 3)**: 構造化ログを出して **rethrow** → Lambda Invoke Error → SQS が visibility timeout (90s) 後に再配信。一時的な DB エラー等の自動回復を温存
 - **最終受信(receiveCount >= 3 = maxReceiveCount)**: 失敗状態を書き込んで**正常終了**(swallow)。書き込み内容は既存仕様に従う — auto: `{ status: 'failed', error: 'internal_error' }` / regenerate: `{ status: 'ready', error: 'internal_error' }`(本文保持)。終端書き込み自体が失敗した場合は rethrow → DLQ 行き(既存 DLQ アラームが発火)

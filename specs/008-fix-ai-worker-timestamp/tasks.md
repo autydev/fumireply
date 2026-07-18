@@ -97,7 +97,7 @@
 
 ### Implementation for User Story 4
 
-- [ ] T014 [US4] Verify and finalize the DLQ redrive procedure in `specs/008-fix-ai-worker-timestamp/quickstart.md` against the final implementation(エラーコード `internal_error`・ログイベント名・キュー名が実装と一致すること。redrive 実施自体はデプロイ後の運用判断であり本タスクの対象外)
+- [X] T014 [US4] Verify and finalize the DLQ redrive procedure in `specs/008-fix-ai-worker-timestamp/quickstart.md` against the final implementation(エラーコード `internal_error`・ログイベント名・キュー名が実装と一致すること。redrive 実施自体はデプロイ後の運用判断であり本タスクの対象外)
 
 **Checkpoint**: 全 user story 完了
 
@@ -105,8 +105,8 @@
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T015 Run ai-worker typecheck/lint(`cd ai-worker && npx tsc --noEmit` + リポジトリの lint 手順)and full test suite; fix any fallout
-- [ ] T016 Cross-check spec/plan/contracts against the final implementation and sync docs to code where they diverge(コードが正 — feedback_sync_spec_to_impl)。data-model.md の状態遷移表・contract C1–C4 のコード断片が最終実装と一致することを確認
+- [X] T015 Run ai-worker typecheck/lint(`cd ai-worker && npx tsc --noEmit` + リポジトリの lint 手順)and full test suite; fix any fallout
+- [X] T016 Cross-check spec/plan/contracts against the final implementation and sync docs to code where they diverge(コードが正 — feedback_sync_spec_to_impl)。data-model.md の状態遷移表・contract C1–C4 のコード断片が最終実装と一致することを確認
 
 ---
 
