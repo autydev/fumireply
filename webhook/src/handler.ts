@@ -181,6 +181,7 @@ function sleep(ms: number): Promise<void> {
 // 使い切るか deadline (メディア処理全体の時間予算) に達したら s3Key: null で確定する。
 async function fetchAndStoreAttachment(
   plan: AttachmentPlan,
+  url: string,
   ctx: { tenantId: string; conversationId: string; mid: string },
   deadline: number,
 ): Promise<MessageAttachment> {
@@ -198,7 +199,7 @@ async function fetchAndStoreAttachment(
     }
     attemptsMade = attempt
 
-    const dl = await downloadAttachment(plan.url as string, {
+    const dl = await downloadAttachment(url, {
       timeoutMs: Math.min(MEDIA_FETCH_TIMEOUT_MS, remainingMs),
     })
 
@@ -305,6 +306,7 @@ async function resolveAttachments(
     results.push(
       await fetchAndStoreAttachment(
         plan,
+        plan.url,
         {
           tenantId: ctx.tenantId,
           conversationId: ctx.conversationId,
