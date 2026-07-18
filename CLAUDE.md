@@ -1,14 +1,15 @@
 <!-- SPECKIT START -->
-Active feature plan: [specs/006-message-echoes-ingest/plan.md](specs/006-message-echoes-ingest/plan.md)
+Active feature plan: [specs/009-media-attachments/plan.md](specs/009-media-attachments/plan.md)
 
 Related artifacts (same directory):
-- spec.md — feature specification (Meta `message_echoes` 経由で外部送信を取り込み、スレッドに `outbound` として表示。fumireply 自送信 echo は冪等更新、外部送信は新規 INSERT。 未返信バッチ判定 #004 の境界に自然反映)
-- research.md — design decisions (両側 UPSERT スキーム / `recipient.id` ベースの会話 upsert / echo は AI 下書きと副作用を発火しない / 構造化ログイベント名 / 非テキスト body=''/ 購読切替手順)
-- data-model.md — DB スキーマ変更ゼロ。`messages` の既存列と `metaMessageId` UNIQUE を再利用、状態遷移 4 パターンと不変条件を明記
-- contracts/echo-pipeline.md — Webhook 購読フィールド契約、echo handler の UPSERT 契約、send-reply の UNIQUE 違反 catch + attribute 補正契約、構造化ログイベント名
-- quickstart.md — env/IAM/SSM 追加なし。Meta App 管理画面で `message_echoes` 購読フィールド有効化 (人手 1 回) + CloudWatch Logs Insights クエリ例
+- spec.md — feature specification (受信画像・添付メディアを Webhook 受信時に即ダウンロードして S3 永続保存、`messages.attachments` JSONB に記録、スレッド UI で画像表示/種別ラベル/プレースホルダ。clarify 4 問確定: 保持無期限 (#78)、即時リトライのみ、レガシー body URL はデータ移行で除去、上限 25MB)
+- research.md — design decisions (同期ダウンロード / presigned GET URL 配信 / S3 キー `{tenantId}/{conversationId}/{mid}/{index}` / attachments JSONB 1 列 / classifyAttachments 一本化 / Lambda 1024MB・20s / フェイルセーフとデプロイ順序)
+- data-model.md — `messages.attachments jsonb` 1 列追加のみ。値パターン表・不変条件・マイグレーション 0004 (列追加 + レガシー body クリーンアップ)
+- contracts/media-pipeline.md — 種別判定表 / ダウンロード・保存契約 / DB 書き込み契約 / presigned URL 契約 / UI 表示契約 / Terraform・IAM 差分 / 構造化ログイベント名
+- quickstart.md — terraform apply → db:migrate → デプロイの順序、手動検証 7 項目、Logs Insights クエリ例、ロールバック手順
 
 Predecessors:
+- [specs/006-message-echoes-ingest/plan.md](specs/006-message-echoes-ingest/plan.md) — `message_echoes` で外部送信を取り込み。009 で echo 経路の添付も保存対象になり「非テキスト body=''」方針を更新。
 - [specs/005-draft-regenerate-oneoff/plan.md](specs/005-draft-regenerate-oneoff/plan.md) — AI 下書きのワンオフ再生成。echo 経路は ai_drafts と非干渉。
 - [specs/004-batch-draft-unanswered/plan.md](specs/004-batch-draft-unanswered/plan.md) — 会話スコープのアクティブ下書き 1 件モデル + 未返信バッチ。006 で外部送信が境界に正しく入る。
 - [specs/003-customer-context-and-settings/plan.md](specs/003-customer-context-and-settings/plan.md) — 永続 custom_prompt / DraftSettingsEditor / 5 段プロンプト合成。
