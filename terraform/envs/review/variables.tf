@@ -21,16 +21,20 @@ variable "alert_email" {
   type        = string
 }
 
+# NOTE: これらは実際にデプロイ済みの ACM 証明書 / CloudFront alias /
+# Route53 A レコードと一致していなければならない。ズレたまま apply すると
+# 証明書の再発行と DNS レコードの置き換えが走り、本番ドメインが停止する。
+# main.tf の public_app_origin (ハードコード) とも揃えること。
 variable "domain_name" {
-  description = "Primary CloudFront domain (e.g. review.malbek.co.jp)"
+  description = "Primary CloudFront domain"
   type        = string
-  default     = "review.malbek.co.jp"
+  default     = "review.fumireply.ecsuite.work"
 }
 
 variable "additional_domain_names" {
   description = "Additional SAN entries on the ACM certificate"
   type        = list(string)
-  default     = ["malbek.co.jp"]
+  default     = []
 }
 
 variable "route53_zone_id" {
