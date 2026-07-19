@@ -68,7 +68,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 const { handler } = await import('./handler')
 
-function makeSqsEvent(body: unknown): SQSEvent {
+function makeSqsEvent(body: unknown, receiveCount = 1): SQSEvent {
   return {
     Records: [
       {
@@ -76,7 +76,7 @@ function makeSqsEvent(body: unknown): SQSEvent {
         receiptHandle: 'h',
         body: JSON.stringify(body),
         attributes: {
-          ApproximateReceiveCount: '1',
+          ApproximateReceiveCount: String(receiveCount),
           SentTimestamp: '1',
           SenderId: 's',
           ApproximateFirstReceiveTimestamp: '1',
@@ -120,10 +120,12 @@ function makeAnthropicResponse(text = 'New draft text including ¥800.') {
 
 function buildReadTx({
   latestInboundId = MESSAGE_ID,
+  lastOutboundResult = [{ ts: null }] as Array<{ ts: Date | null }>,
   unansweredResult = [{ body: 'How much is OP-09?' }],
   historyResult = [{ direction: 'inbound', body: 'How much is OP-09?', messageType: 'text' }],
 }: {
   latestInboundId?: string | null
+  lastOutboundResult?: Array<{ ts: Date | null }>
   unansweredResult?: Array<{ body: string }>
   historyResult?: Array<{ direction: string; body: string; messageType: string }>
 } = {}) {
@@ -164,9 +166,14 @@ function buildReadTx({
         }
       }
       if (n === 3) {
+        // last outbound ts (008): from().where().orderBy().limit()
         return {
           from: vi.fn(() => ({
-            where: vi.fn(() => Promise.resolve([{ ts: null }])),
+            where: vi.fn(() => ({
+              orderBy: vi.fn(() => ({
+                limit: vi.fn(() => Promise.resolve(lastOutboundResult)),
+              })),
+            })),
           })),
         }
       }
@@ -242,6 +249,29 @@ describe('regenerate: coalesce bypass', () => {
     const setArg = setMock.mock.calls[0][0]
     expect(setArg.status).toBe('ready')
     expect(setArg.body).toContain('¥800')
+    expect(setArg.error).toBeNull()
+  })
+})
+
+describe('regenerate: 008 regression — conversation WITH outbound messages (#75)', () => {
+  it('succeeds when the conversation has an outbound message (boundary is a Date)', async () => {
+    const readTx = buildReadTx({
+      lastOutboundResult: [{ ts: new Date('2026-06-01T00:00:00Z') }],
+    })
+    const { mockTx: writeTx, setMock } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id, fn) => fn(readTx))
+      .mockImplementationOnce(async (_id, fn) => fn(writeTx))
+    mockDbAdminWhere
+      .mockResolvedValueOnce([{ tenantId: TENANT_ID }])
+      .mockResolvedValueOnce([{ id: MESSAGE_ID }])
+    mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
+
+    await handler(makeSqsEvent(regenJob()), {} as never, () => {})
+
+    expect(mockAnthropicCreate).toHaveBeenCalledOnce()
+    const setArg = setMock.mock.calls[0][0]
+    expect(setArg.status).toBe('ready')
     expect(setArg.error).toBeNull()
   })
 })
@@ -337,6 +367,27 @@ describe('regenerate: failure path keeps body', () => {
     expect(setArg).not.toHaveProperty('model')
     // updatedAt must be set so the webhook stale-pending guard releases.
     expect(setArg.updatedAt).toBeInstanceOf(Date)
+  })
+})
+
+describe('regenerate: 008 outer catch — final receive keeps body (INV-3)', () => {
+  it('writes status=ready + internal_error without touching body/model on receive 3', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { mockTx: writeTx, setMock } = buildWriteTx()
+    mockWithTenant
+      .mockRejectedValueOnce(new Error('read boom'))
+      .mockImplementationOnce(async (_id, fn) => fn(writeTx))
+
+    await handler(makeSqsEvent(regenJob(), 3), {} as never, () => {})
+
+    expect(mockAnthropicCreate).not.toHaveBeenCalled()
+    const setArg = setMock.mock.calls[0][0]
+    expect(setArg.status).toBe('ready')
+    expect(setArg.error).toBe('internal_error')
+    expect(setArg).not.toHaveProperty('body')
+    expect(setArg).not.toHaveProperty('model')
+    expect(setArg.updatedAt).toBeInstanceOf(Date)
+    errorSpy.mockRestore()
   })
 })
 

@@ -9,6 +9,7 @@ Related artifacts (same directory):
 - quickstart.md — terraform apply → db:migrate → デプロイの順序、手動検証 7 項目、Logs Insights クエリ例、ロールバック手順
 
 Predecessors:
+- [specs/008-fix-ai-worker-timestamp/plan.md](specs/008-fix-ai-worker-timestamp/plan.md) — ai-worker の `max(timestamp)` 型不一致クラッシュ修正。009 の attachments 追加は draft 生成境界クエリと非干渉。
 - [specs/006-message-echoes-ingest/plan.md](specs/006-message-echoes-ingest/plan.md) — `message_echoes` で外部送信を取り込み。009 で echo 経路の添付も保存対象になり「非テキスト body=''」方針を更新。
 - [specs/005-draft-regenerate-oneoff/plan.md](specs/005-draft-regenerate-oneoff/plan.md) — AI 下書きのワンオフ再生成。echo 経路は ai_drafts と非干渉。
 - [specs/004-batch-draft-unanswered/plan.md](specs/004-batch-draft-unanswered/plan.md) — 会話スコープのアクティブ下書き 1 件モデル + 未返信バッチ。006 で外部送信が境界に正しく入る。

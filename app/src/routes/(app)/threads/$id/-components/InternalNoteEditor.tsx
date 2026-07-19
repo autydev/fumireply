@@ -6,25 +6,29 @@ import { m } from '~/paraglide/messages'
 
 interface InternalNoteEditorProps {
   conversationId: string
+  /** Initial value only — read at mount. Remount with key={conversationId} to reset. */
   note: string | null
-  onUpdate: (note: string | null) => void
 }
 
 const DEBOUNCE_MS = 500
 
-export function InternalNoteEditor({ conversationId, note: initialNote, onUpdate }: InternalNoteEditorProps) {
+export function InternalNoteEditor({ conversationId, note: initialNote }: InternalNoteEditorProps) {
+  // Local state is the sole source of truth after mount — server values must
+  // never overwrite it while the user is viewing this conversation (#72).
   const [note, setNote] = useState(initialNote ?? '')
   const [saveState, setSaveState] = useState<AutoSaveState>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mountedRef = useRef(true)
 
-  useEffect(() => { setNote(initialNote ?? '') }, [initialNote])
-
-  // Cancel pending debounce on unmount or conversation change
+  // Cancel pending debounce on unmount; an already in-flight save still
+  // completes server-side, but must not set state afterwards (key remount).
   useEffect(() => {
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [conversationId])
+  }, [])
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
@@ -35,13 +39,14 @@ export function InternalNoteEditor({ conversationId, note: initialNote, onUpdate
       setSaveState('saving')
       try {
         await updateConversationSettingsFn({ data: { conversationId, note: value } })
+        if (!mountedRef.current) return
         setSaveState('saved')
-        onUpdate(value || null)
       } catch {
+        if (!mountedRef.current) return
         setSaveState(null)
       }
     }, DEBOUNCE_MS)
-  }, [conversationId, onUpdate])
+  }, [conversationId])
 
   const remaining = NOTE_MAX - note.length
 

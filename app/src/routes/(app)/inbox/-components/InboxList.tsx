@@ -44,9 +44,6 @@ export function InboxList({ conversations, selectedId, filter = 'all', onFilterC
       style={{
         background: 'var(--color-bg-raised)',
         borderRight: '1px solid var(--color-line)',
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
       }}
     >
       {/* Header */}

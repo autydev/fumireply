@@ -7,11 +7,6 @@ import { InternalNoteEditor } from './InternalNoteEditor'
 import { XIcon } from '~/components/ui/icons'
 import { m } from '~/paraglide/messages'
 
-type ConversationSettings = Pick<
-  ConversationDetail['conversation'],
-  'tone_preset' | 'custom_prompt' | 'note' | 'summary' | 'last_summarized_at'
->
-
 interface CustomerPanelProps {
   conversation: ConversationDetail['conversation']
   isOpen: boolean
@@ -32,7 +27,16 @@ export function useCustomerPanelOpen() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-    setIsOpen(window.matchMedia(DESKTOP_QUERY).matches)
+    const mql = window.matchMedia(DESKTOP_QUERY)
+    const apply = () => setIsOpen(mql.matches)
+    apply()
+    // Re-sync when the viewport crosses the breakpoint (device rotation,
+    // devtools emulation, window resize). Without this a desktop-opened panel
+    // becomes a full-screen overlay covering the thread on mobile, and a
+    // mobile-closed panel becomes unreachable on desktop (toggle is hidden
+    // ≥1280px). Crossing resets to that mode's default (#80).
+    mql.addEventListener('change', apply)
+    return () => mql.removeEventListener('change', apply)
   }, [])
 
   const toggle = useCallback(() => setIsOpen((prev) => !prev), [])
@@ -41,40 +45,6 @@ export function useCustomerPanelOpen() {
 }
 
 export function CustomerPanel({ conversation, isOpen, onClose }: CustomerPanelProps) {
-  const [settings, setSettings] = useState<ConversationSettings>({
-    tone_preset: conversation.tone_preset,
-    custom_prompt: conversation.custom_prompt,
-    note: conversation.note,
-    summary: conversation.summary,
-    last_summarized_at: conversation.last_summarized_at,
-  })
-
-  // Sync when conversation changes (e.g. router invalidation)
-  useEffect(() => {
-    setSettings({
-      tone_preset: conversation.tone_preset,
-      custom_prompt: conversation.custom_prompt,
-      note: conversation.note,
-      summary: conversation.summary,
-      last_summarized_at: conversation.last_summarized_at,
-    })
-  }, [conversation])
-
-  const handleDraftUpdate = useCallback(
-    (fields: { tonePreset?: typeof settings.tone_preset; customPrompt?: string | null }) => {
-      setSettings((prev) => ({
-        ...prev,
-        ...(fields.tonePreset !== undefined ? { tone_preset: fields.tonePreset } : {}),
-        ...(fields.customPrompt !== undefined ? { custom_prompt: fields.customPrompt } : {}),
-      }))
-    },
-    [],
-  )
-
-  const handleNoteUpdate = useCallback((note: string | null) => {
-    setSettings((prev) => ({ ...prev, note }))
-  }, [])
-
   return (
     <div
       className={`customer-panel${isOpen ? ' customer-panel--open' : ' customer-panel--hidden'}`}
@@ -118,23 +88,27 @@ export function CustomerPanel({ conversation, isOpen, onClose }: CustomerPanelPr
           customerPsid={conversation.customer_psid}
         />
         <div style={{ borderBottom: '1px solid var(--color-line)' }}>
+          {/* Read-only display: updated server-side by the summary job, so it
+              keeps following polled loader data — unlike the editors below. */}
           <AiPersonaSummary
-            summary={settings.summary}
-            lastSummarizedAt={settings.last_summarized_at}
+            summary={conversation.summary}
+            lastSummarizedAt={conversation.last_summarized_at}
           />
         </div>
         <div style={{ borderBottom: '1px solid var(--color-line)' }}>
+          {/* key: reset editor state only when switching conversations — polled
+              refetches must never overwrite in-progress input (#72). */}
           <DraftSettingsEditor
+            key={conversation.id}
             conversationId={conversation.id}
-            tonePreset={settings.tone_preset}
-            customPrompt={settings.custom_prompt}
-            onUpdate={handleDraftUpdate}
+            tonePreset={conversation.tone_preset}
+            customPrompt={conversation.custom_prompt}
           />
         </div>
         <InternalNoteEditor
+          key={conversation.id}
           conversationId={conversation.id}
-          note={settings.note}
-          onUpdate={handleNoteUpdate}
+          note={conversation.note}
         />
       </div>
     </div>

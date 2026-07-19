@@ -43,13 +43,13 @@ const { handler } = await import('./handler')
 
 // --- helpers ---
 
-function makeSqsEvent(body: unknown, count = 1): SQSEvent {
+function makeSqsEvent(body: unknown, count = 1, receiveCount = 1): SQSEvent {
   const makeRecord = (i: number) => ({
     messageId: `sqs-msg-${i}`,
     receiptHandle: `handle-${i}`,
     body: JSON.stringify(body),
     attributes: {
-      ApproximateReceiveCount: '1',
+      ApproximateReceiveCount: String(receiveCount),
       SentTimestamp: '1735689600000',
       SenderId: 'sender',
       ApproximateFirstReceiveTimestamp: '1735689600000',
@@ -101,7 +101,7 @@ function makeApiError(status: number, message = 'API error'): Error & { status: 
 // Query order inside processDraftJob's read tx:
 //   1. latest inbound text message (coalesce)
 //   2. conversation settings + page custom_prompt (leftJoin)
-//   3. last outbound timestamp (max aggregate)
+//   3. last outbound timestamp (008: typed column select + orderBy + limit 1)
 //   4. unanswered batch (inbound text after last outbound)
 //   5. context history (text after summary cursor)
 function buildReadTx({
@@ -133,7 +133,12 @@ function buildReadTx({
 } = {}) {
   let selectCallCount = 0
 
-  return {
+  // 008: spies for the boundary query chain so tests can assert the query is
+  // issued as a typed-column select with orderBy + limit(1) (not a raw max()).
+  const boundaryLimit = vi.fn(() => Promise.resolve(lastOutboundResult))
+  const boundaryOrderBy = vi.fn(() => ({ limit: boundaryLimit }))
+
+  const tx = {
     select: vi.fn(() => {
       selectCallCount++
       const n = selectCallCount
@@ -161,10 +166,10 @@ function buildReadTx({
           })),
         }
       } else if (n === 3) {
-        // last outbound ts: from().where()
+        // last outbound ts (008): from().where().orderBy().limit()
         return {
           from: vi.fn(() => ({
-            where: vi.fn(() => Promise.resolve(lastOutboundResult)),
+            where: vi.fn(() => ({ orderBy: boundaryOrderBy })),
           })),
         }
       } else if (n === 4) {
@@ -192,6 +197,8 @@ function buildReadTx({
       }
     }),
   }
+
+  return Object.assign(tx, { boundaryOrderBy, boundaryLimit })
 }
 
 // Build write transaction mock (update ai_drafts — generate result or dismiss)
@@ -303,6 +310,45 @@ describe('handler — normal batch draft', () => {
   })
 })
 
+describe('handler — 008 regression: conversation WITH outbound messages (#75)', () => {
+  // Before 008 the boundary query used a raw sql`max(timestamp)` fragment that
+  // returned a string at runtime, crashing PgTimestamp.mapToDriverValue in the
+  // following gt() comparison whenever the conversation had >= 1 outbound.
+  it('generates a ready draft when the conversation has an outbound message', async () => {
+    const readTx = buildReadTx({
+      lastOutboundResult: [{ ts: new Date('2026-06-01T00:00:00Z') }],
+    })
+    const { mockTx: writeTx, updateWhere } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
+    mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
+
+    await handler(makeSqsEvent(draftJob()), {} as never, () => {})
+
+    expect(mockAnthropicCreate).toHaveBeenCalledOnce()
+    expect(updateWhere).toHaveBeenCalledOnce()
+    const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
+    expect(setCall.status).toBe('ready')
+  })
+
+  it('issues the boundary query as a typed-column select with orderBy + limit(1)', async () => {
+    const readTx = buildReadTx({
+      lastOutboundResult: [{ ts: new Date('2026-06-01T00:00:00Z') }],
+    })
+    const { mockTx: writeTx } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
+    mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
+
+    await handler(makeSqsEvent(draftJob()), {} as never, () => {})
+
+    expect(readTx.boundaryOrderBy).toHaveBeenCalledOnce()
+    expect(readTx.boundaryLimit).toHaveBeenCalledWith(1)
+  })
+})
+
 describe('handler — coalesce (debounce)', () => {
   it('skips generation when a newer inbound message exists (superseded)', async () => {
     // Latest inbound is OTHER_MESSAGE_ID, but this job was triggered by MESSAGE_ID.
@@ -373,7 +419,7 @@ describe('handler — Anthropic API errors', () => {
     vi.useRealTimers()
   })
 
-  it('updates the active draft with server_error after 3 consecutive 503 failures', async () => {
+  it('updates the active draft with server_error after all attempts fail with 503', async () => {
     vi.useFakeTimers()
     const readTx = buildReadTx()
     const { mockTx: writeTx, updateWhere } = buildWriteTx()
@@ -386,8 +432,9 @@ describe('handler — Anthropic API errors', () => {
     await vi.runAllTimersAsync()
     await handlerPromise
 
-    // 4 attempts: 1 initial + 3 retries
-    expect(mockAnthropicCreate).toHaveBeenCalledTimes(4)
+    // 008: 3 attempts (1 initial + 2 retries) — the ladder must fit in the 60s
+    // Lambda timeout (worst case 3×15s + 1s + 3s = 49s).
+    expect(mockAnthropicCreate).toHaveBeenCalledTimes(3)
     expect(updateWhere).toHaveBeenCalledOnce()
     const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
     expect(setCall.status).toBe('failed')
@@ -411,6 +458,65 @@ describe('handler — Anthropic API errors', () => {
     const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
     expect(setCall.status).toBe('failed')
     expect(setCall.error).toBe('unexpected_response_type')
+  })
+})
+
+describe('handler — 008 outer catch (unexpected errors)', () => {
+  it('rethrows on non-final receive without writing the draft (willRetry=true)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockWithTenant.mockRejectedValueOnce(new Error('read boom'))
+
+    await expect(
+      handler(makeSqsEvent(draftJob(), 1, 1), {} as never, () => {}),
+    ).rejects.toThrow('read boom')
+
+    // Read tx only — no terminal-state write on a non-final receive.
+    expect(mockWithTenant).toHaveBeenCalledTimes(1)
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'draft_job_unexpected_error',
+        receiveCount: 1,
+        willRetry: true,
+      }),
+    )
+    errorSpy.mockRestore()
+  })
+
+  it('writes failed + internal_error and resolves on the final receive (auto)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { mockTx: writeTx, updateWhere } = buildWriteTx()
+    mockWithTenant
+      .mockRejectedValueOnce(new Error('read boom'))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
+
+    await handler(makeSqsEvent(draftJob(), 1, 3), {} as never, () => {})
+
+    expect(updateWhere).toHaveBeenCalledOnce()
+    const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
+    expect(setCall.status).toBe('failed')
+    expect(setCall.error).toBe('internal_error')
+    expect(setCall.updatedAt).toBeInstanceOf(Date)
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'draft_job_unexpected_error',
+        receiveCount: 3,
+        willRetry: false,
+      }),
+    )
+    errorSpy.mockRestore()
+  })
+
+  it('rethrows when the terminal write itself fails (record goes to the DLQ)', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // Both the read tx and the terminal-state write fail.
+    mockWithTenant
+      .mockRejectedValueOnce(new Error('db down'))
+      .mockRejectedValueOnce(new Error('db down'))
+
+    await expect(
+      handler(makeSqsEvent(draftJob(), 1, 3), {} as never, () => {}),
+    ).rejects.toThrow('db down')
+    errorSpy.mockRestore()
   })
 })
 

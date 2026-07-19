@@ -23,8 +23,33 @@ export const Route = createFileRoute('/(app)/threads/$id/')({
     const listData = await listConversationsFn()
     return { ...convData, conversations: listData.conversations }
   },
+  // The loader makes two sequential server-fn round trips, so navigation can
+  // sit on the previous screen long enough to read as a dead tap on mobile.
+  // Show pending feedback quickly instead of the router's 1000ms default (#80).
+  pendingMs: 200,
+  pendingMinMs: 300,
+  pendingComponent: ThreadPending,
   component: ThreadPage,
 })
+
+function ThreadPending() {
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        background: 'var(--color-bg)',
+        color: 'var(--color-ink-3)',
+        fontSize: 13,
+      }}
+    >
+      <span className="animate-pulse">{m.thread_loading()}</span>
+    </div>
+  )
+}
 
 function ThreadPage() {
   const { conversation, messages, latest_draft, conversations } = Route.useLoaderData()
