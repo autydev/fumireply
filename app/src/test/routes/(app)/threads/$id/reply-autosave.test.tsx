@@ -112,6 +112,25 @@ describe('ReplyForm auto-save (#83/#84)', () => {
     expect(vi.mocked(saveDraftBodyFn)).toHaveBeenCalledTimes(2)
   })
 
+  it('does NOT show 保存済み when the server reports saved:false (no ready draft to write)', async () => {
+    vi.mocked(saveDraftBodyFn).mockResolvedValue({ ok: true, saved: false })
+    await renderReplyForm({ body: 'AI draft', status: 'ready' })
+
+    const textarea = screen.getByRole('textbox', { name: '返信本文' })
+    fireEvent.change(textarea, { target: { value: 'Edited but nothing persisted' } })
+
+    await waitFor(
+      () => {
+        expect(vi.mocked(saveDraftBodyFn)).toHaveBeenCalled()
+      },
+      { timeout: 3000 },
+    )
+    // The save resolved but persisted nothing — the badge must not claim 保存済み.
+    await waitFor(() => {
+      expect(screen.queryByText('保存済み')).toBeNull()
+    })
+  })
+
   it('does not call saveDraftBodyFn when there is no active draft', async () => {
     await renderReplyForm(null)
 

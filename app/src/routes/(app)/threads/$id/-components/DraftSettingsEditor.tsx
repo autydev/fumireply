@@ -38,6 +38,9 @@ export function DraftSettingsEditor({
   // Latest values for the error-badge retry buttons (#84).
   const promptRef = useRef(prompt)
   const lastToneRef = useRef<TonePreset>(initialTone)
+  // Monotonic save ID for the prompt — only the latest save's completion updates
+  // the badge, so a slow in-flight save can't overwrite a newer one's state.
+  const promptSaveIdRef = useRef(0)
 
   // Cancel pending debounce on unmount; an already in-flight save still
   // completes server-side, but must not set state afterwards (key remount).
@@ -71,13 +74,14 @@ export function DraftSettingsEditor({
   }, [tone, saveTone])
 
   const savePrompt = useCallback(async () => {
+    const saveId = ++promptSaveIdRef.current
     setPromptSaveState('saving')
     try {
       await updateConversationSettingsFn({ data: { conversationId, customPrompt: promptRef.current } })
-      if (!mountedRef.current) return
+      if (!mountedRef.current || promptSaveIdRef.current !== saveId) return
       setPromptSaveState('saved')
     } catch {
-      if (!mountedRef.current) return
+      if (!mountedRef.current || promptSaveIdRef.current !== saveId) return
       setPromptSaveState('error')
     }
   }, [conversationId])

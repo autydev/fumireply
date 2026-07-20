@@ -21,6 +21,9 @@ export function InternalNoteEditor({ conversationId, note: initialNote }: Intern
   const mountedRef = useRef(true)
   // Latest value for the error-badge retry button (#84).
   const noteRef = useRef(note)
+  // Monotonic save ID — only the latest save's completion updates the badge, so
+  // a slow in-flight save can't overwrite a newer one's state.
+  const saveIdRef = useRef(0)
 
   // Cancel pending debounce on unmount; an already in-flight save still
   // completes server-side, but must not set state afterwards (key remount).
@@ -35,13 +38,14 @@ export function InternalNoteEditor({ conversationId, note: initialNote }: Intern
   // #84: shared by the debounce and the error-badge retry button — save failures
   // must surface instead of silently dropping the note.
   const saveNote = useCallback(async () => {
+    const saveId = ++saveIdRef.current
     setSaveState('saving')
     try {
       await updateConversationSettingsFn({ data: { conversationId, note: noteRef.current } })
-      if (!mountedRef.current) return
+      if (!mountedRef.current || saveIdRef.current !== saveId) return
       setSaveState('saved')
     } catch {
-      if (!mountedRef.current) return
+      if (!mountedRef.current || saveIdRef.current !== saveId) return
       setSaveState('error')
     }
   }, [conversationId])

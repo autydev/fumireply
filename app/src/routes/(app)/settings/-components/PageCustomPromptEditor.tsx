@@ -48,6 +48,9 @@ export function PageCustomPromptEditor({ connectedPageId, pageName, customPrompt
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const next = e.target.value
     setValue(next)
+    // Sync ref in the same event so an immediate retry sends the latest value
+    // (the useEffect below only flushes after render).
+    latestValueRef.current = next
     setSaveState('editing')
 
     if (debounceRef.current) clearTimeout(debounceRef.current)

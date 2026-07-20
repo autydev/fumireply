@@ -69,10 +69,17 @@ export function ReplyForm({
   useEffect(() => {
     if (!latestDraft) {
       if (draftStatus !== null) setDraftStatus(null)
+      // No active draft to save to — any leftover badge is moot (#84).
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      setSaveState(null)
       return
     }
     if (latestDraft.status !== 'ready') {
       if (latestDraft.status !== draftStatus) setDraftStatus(latestDraft.status)
+      // Draft left 'ready' (pending/failed) — the autosave target is gone, so
+      // drop the badge instead of leaving a stale/dead one behind (#84).
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      setSaveState(null)
       return
     }
     if (latestInboundMessageId === filledForInboundIdRef.current) return
@@ -80,6 +87,10 @@ export function ReplyForm({
     if (!bodyRef.current.trim()) {
       setBody(latestDraft.body)
     }
+    // A different draft is now active — drop any leftover save badge so it can't
+    // assert "保存済み" over a draft it never applied to (#84 badge staleness).
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    setSaveState(null)
     filledForInboundIdRef.current = latestInboundMessageId
   }, [latestDraft, latestInboundMessageId, draftStatus])
 
@@ -119,6 +130,11 @@ export function ReplyForm({
 
   const handleRegenerateClick = useCallback(async () => {
     if (isRegenerating) return
+    // Cancel any armed debounce save — once we regenerate, the server flips the
+    // row to pending and a late save of the pre-regenerate text could clobber the
+    // freshly generated draft (#84 cross-draft write).
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    setSaveState(null)
     regenStartBodyRef.current = bodyRef.current
     setIsRegenerating(true)
     setError(null)
@@ -156,10 +172,13 @@ export function ReplyForm({
     const saveId = ++saveIdRef.current
     setSaveState('saving')
     try {
-      await saveDraftBodyFn({
+      const result = await saveDraftBodyFn({
         data: { conversationId, body: bodyRef.current },
       })
-      if (mountedRef.current && saveIdRef.current === saveId) setSaveState('saved')
+      if (!mountedRef.current || saveIdRef.current !== saveId) return
+      // saved=false means the server had no active ready draft to write to
+      // (dismissed/regenerated elsewhere) — don't claim "saved" when nothing was.
+      setSaveState(result.saved ? 'saved' : null)
     } catch {
       if (mountedRef.current && saveIdRef.current === saveId) setSaveState('error')
     }
@@ -386,7 +405,9 @@ export function ReplyForm({
               </button>
             </div>
 
-            {/* Auto-save pill — real persistence (#83); error state offers retry (#84) */}
+            {/* Auto-save pill — real persistence (#83); error state offers retry
+                (#84). Only rendered while the draft is 'ready' (the only time a
+                save can target it); leaving 'ready' clears saveState below. */}
             <AutoSaveBadge state={saveState} onRetry={() => void performSave()} />
           </div>
         )}
