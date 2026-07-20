@@ -56,6 +56,7 @@ function makeMessage(
     timestamp: NOW_ISO,
     send_status: null,
     send_error: null,
+    attachments: [],
     ai_draft: null,
     ...overrides,
   }

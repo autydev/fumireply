@@ -131,3 +131,15 @@ variable "summary_pipeline_enabled" {
   type        = string
   default     = "true"
 }
+
+variable "media_bucket_name" {
+  description = "Name of the media attachments S3 bucket (injected as MEDIA_BUCKET_NAME env var)"
+  type        = string
+  default     = ""
+}
+
+variable "media_bucket_arn" {
+  description = "ARN of the media attachments S3 bucket (for s3:GetObject IAM). Leave empty to skip."
+  type        = string
+  default     = ""
+}

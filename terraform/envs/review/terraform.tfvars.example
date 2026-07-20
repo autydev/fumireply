@@ -1,0 +1,16 @@
+# このファイルをコピーして terraform.tfvars を作る (terraform.tfvars は .gitignore 対象)。
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# デフォルト値を持たない変数のみをここで供給する。値は既にデプロイ済みの
+# リソースと一致していること — ズレたまま apply すると SNS 購読の作り直しや
+# DNS レコードの置き換えが走る。
+
+# CloudWatch アラームの通知先 (SNS email 購読)。
+# 既存の購読先は SNS コンソールの fumireply-review-alerts トピックで確認できる。
+alert_email = "you@example.com"
+
+# domain_name を所有する Route53 Hosted Zone ID。
+#   aws route53 list-hosted-zones-by-name --dns-name <domain> \
+#     --query "HostedZones[0].Id" --output text
+route53_zone_id = "ZXXXXXXXXXXXXXXXXXXXX"

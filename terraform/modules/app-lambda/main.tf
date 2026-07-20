@@ -87,6 +87,16 @@ data "aws_iam_policy_document" "app_lambda_policy" {
       resources = [var.draft_queue_arn]
     }
   }
+
+  # 009: 保存済み添付メディアの presigned GET URL 発行に必要な読み取り権限 (Get のみ)
+  dynamic "statement" {
+    for_each = var.media_bucket_arn != "" ? [1] : []
+    content {
+      sid       = "S3GetMediaObject"
+      actions   = ["s3:GetObject"]
+      resources = ["${var.media_bucket_arn}/*"]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "app_lambda" {
@@ -152,6 +162,9 @@ resource "aws_lambda_function" "app" {
       # Draft regenerate pipeline (005-draft-regenerate-oneoff)
       # app から ai_draft キューに publish するために必要。webhook と同じキュー URL。
       SQS_QUEUE_URL = var.draft_queue_url
+
+      # Media attachments (009-media-attachments) — presigned GET URL 発行用
+      MEDIA_BUCKET_NAME = var.media_bucket_name
     }
   }
 

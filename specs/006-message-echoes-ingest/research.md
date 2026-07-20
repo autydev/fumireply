@@ -217,6 +217,11 @@ Q1 に従い:
 - `messageType='text'`: `body = msg.text`
 - それ以外 (`sticker` / `image` / `unknown`): `body = ''`、`messageType` のみ実タイプに設定
 
+> **(009 で更新)**: 本節の「echo は添付を保存しない / inbound image は body に URL」という前提は
+> specs/009-media-attachments で刷新された。判定は `classifyAttachments` に一本化され、
+> inbound / echo とも body に URL を入れず、添付メディアは S3 保存 + `messages.attachments` JSONB
+> 記録となった (`determineEchoMessageType` は廃止)。以下は 006 時点の記録として残す。
+
 inbound 経路の `determineMessageType` (`handler.ts:101-110`) を **echo 経路でも流用** する。inbound 経路は `image` の場合 `body = att.payload?.url ?? ''` を採用しているが、echo 経路はあえてこれと揃えず `body=''` で統一する。
 
 ### Rationale

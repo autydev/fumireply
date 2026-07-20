@@ -72,6 +72,36 @@ resource "aws_s3_object" "placeholder" {
 }
 
 ###############################################################################
+# Media attachments bucket (009-media-attachments)
+#
+# 顧客が Messenger で送った添付メディアの永続保存先。キーは
+# {tenantId}/{conversationId}/{sanitized_mid}/{index} でテナント分離。
+# 保持は無期限 (ライフサイクル/削除ポリシーの検討は issue #78)。
+###############################################################################
+
+resource "aws_s3_bucket" "media" {
+  bucket = "${var.name_prefix}-media"
+}
+
+resource "aws_s3_bucket_public_access_block" "media" {
+  bucket                  = aws_s3_bucket.media.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "media" {
+  bucket = aws_s3_bucket.media.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+###############################################################################
 # Secrets / SSM
 ###############################################################################
 
@@ -184,6 +214,10 @@ module "app_lambda" {
   # webhook と同じ ai_draft キュー (module.queue) を共有して publish する。
   draft_queue_url = module.queue.queue_url
   draft_queue_arn = module.queue.queue_arn
+
+  # Media attachments (009-media-attachments) — presigned GET URL 発行用
+  media_bucket_name = aws_s3_bucket.media.id
+  media_bucket_arn  = aws_s3_bucket.media.arn
 }
 
 ###############################################################################
@@ -206,6 +240,10 @@ module "webhook_lambda" {
   # Summary pipeline (003-customer-context-and-settings)
   summary_queue_url = aws_sqs_queue.ai_summary.url
   summary_queue_arn = aws_sqs_queue.ai_summary.arn
+
+  # Media attachments (009-media-attachments) — 受信時ダウンロードの保存先
+  media_bucket_name = aws_s3_bucket.media.id
+  media_bucket_arn  = aws_s3_bucket.media.arn
 }
 
 ###############################################################################
@@ -338,6 +376,10 @@ output "static_s3_bucket_name" {
 
 output "lambda_artifacts_bucket" {
   value = aws_s3_bucket.lambda_artifacts.id
+}
+
+output "media_bucket_name" {
+  value = aws_s3_bucket.media.id
 }
 
 output "ai_draft_queue_url" {

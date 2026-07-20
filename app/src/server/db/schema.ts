@@ -5,6 +5,7 @@ import {
   customType,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -13,6 +14,16 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core'
+
+// 009: messages.attachments の 1 要素。s3Key が null のときは「取得不可」
+// (ダウンロード失敗/サイズ超過) または保存対象外 (sticker/unknown) を表す。
+export interface MessageAttachment {
+  index: number
+  type: 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'unknown'
+  s3Key: string | null
+  contentType?: string
+  sizeBytes?: number
+}
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType() {
@@ -118,6 +129,9 @@ export const messages = pgTable(
     sendStatus: varchar('send_status', { length: 20 }),
     sendError: text('send_error'),
     sentByAuthUid: uuid('sent_by_auth_uid'),
+    // 009: 添付情報 (NULL = 添付なし or 本機能以前のレガシー行)。
+    // 添付ゼロ件のときは [] ではなく NULL に統一する (data-model.md)。
+    attachments: jsonb('attachments').$type<MessageAttachment[] | null>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

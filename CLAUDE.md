@@ -1,16 +1,17 @@
 <!-- SPECKIT START -->
-Active feature plan: [specs/008-fix-ai-worker-timestamp/plan.md](specs/008-fix-ai-worker-timestamp/plan.md)
+Active feature plan: [specs/009-media-attachments/plan.md](specs/009-media-attachments/plan.md)
 
 Related artifacts (same directory):
-- spec.md — feature specification (issue #75: ai-worker が `max(timestamp)` の型不一致 TypeError でクラッシュし、outbound ありの会話で AI 下書き生成/再生成が必ず失敗するバグの修正。P1 根本修正 / P2 pending 放置防止 / P3 timeout 整合 / P4 DLQ 後始末)
-- research.md — design decisions (D1 型付きカラム select + orderBy+limit / D2 outer try/catch を ApproximateReceiveCount で分岐、最終受信のみ終端状態を書く / D3 リトライラダー短縮 15s×3+4s=49s < Lambda 60s、terraform 変更なし / D4 DLQ redrive の安全性分析 / D5 回帰テスト戦略)
-- data-model.md — DB スキーマ変更ゼロ。ai_drafts 状態遷移に internal_error 経路 3 パターンを追加、不変条件 4 つ
-- contracts/draft-failure-handling.md — 境界クエリ BEFORE/AFTER、processDraftJob の receiveCount 契約、リトライラダー定数、構造化ログ (draft_job_unexpected_error)、クライアント互換性
-- quickstart.md — env/IAM/SSM/terraform 追加なし。CloudWatch Logs Insights 検証クエリ + DLQ redrive 運用手順
+- spec.md — feature specification (受信画像・添付メディアを Webhook 受信時に即ダウンロードして S3 永続保存、`messages.attachments` JSONB に記録、スレッド UI で画像表示/種別ラベル/プレースホルダ。clarify 4 問確定: 保持無期限 (#78)、即時リトライのみ、レガシー body URL はデータ移行で除去、上限 25MB)
+- research.md — design decisions (同期ダウンロード / presigned GET URL 配信 / S3 キー `{tenantId}/{conversationId}/{mid}/{index}` / attachments JSONB 1 列 / classifyAttachments 一本化 / Lambda 1024MB・20s / フェイルセーフとデプロイ順序)
+- data-model.md — `messages.attachments jsonb` 1 列追加のみ。値パターン表・不変条件・マイグレーション 0004 (列追加 + レガシー body クリーンアップ)
+- contracts/media-pipeline.md — 種別判定表 / ダウンロード・保存契約 / DB 書き込み契約 / presigned URL 契約 / UI 表示契約 / Terraform・IAM 差分 / 構造化ログイベント名
+- quickstart.md — terraform apply → db:migrate → デプロイの順序、手動検証 7 項目、Logs Insights クエリ例、ロールバック手順
 
 Predecessors:
-- [specs/006-message-echoes-ingest/plan.md](specs/006-message-echoes-ingest/plan.md) — Meta `message_echoes` 経由で外部送信を outbound として取り込み。返信済み会話が増え本バグの発生率を押し上げた。
-- [specs/005-draft-regenerate-oneoff/plan.md](specs/005-draft-regenerate-oneoff/plan.md) — AI 下書きのワンオフ再生成。失敗時 status='ready'+error の挙動を 008 の internal_error 経路でも踏襲。
+- [specs/008-fix-ai-worker-timestamp/plan.md](specs/008-fix-ai-worker-timestamp/plan.md) — ai-worker の `max(timestamp)` 型不一致クラッシュ修正。009 の attachments 追加は draft 生成境界クエリと非干渉。
+- [specs/006-message-echoes-ingest/plan.md](specs/006-message-echoes-ingest/plan.md) — `message_echoes` で外部送信を取り込み。009 で echo 経路の添付も保存対象になり「非テキスト body=''」方針を更新。
+- [specs/005-draft-regenerate-oneoff/plan.md](specs/005-draft-regenerate-oneoff/plan.md) — AI 下書きのワンオフ再生成。echo 経路は ai_drafts と非干渉。
 - [specs/004-batch-draft-unanswered/plan.md](specs/004-batch-draft-unanswered/plan.md) — 会話スコープのアクティブ下書き 1 件モデル + 未返信バッチ。006 で外部送信が境界に正しく入る。
 - [specs/003-customer-context-and-settings/plan.md](specs/003-customer-context-and-settings/plan.md) — 永続 custom_prompt / DraftSettingsEditor / 5 段プロンプト合成。
 - [specs/002-app-review-submission/plan.md](specs/002-app-review-submission/plan.md) — Connect Page UI + Paraglide JS i18n。
