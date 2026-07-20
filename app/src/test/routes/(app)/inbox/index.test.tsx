@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { renderRoute } from '~/test/file-route-utils'
 import type { ConversationSummary } from '~/routes/(app)/inbox/-lib/list-conversations.fn'
 
@@ -69,9 +69,12 @@ describe('InboxList', () => {
     await waitFor(() => {
       // Alice has 5 unread messages — badge must be visible
       expect(screen.getByText('5')).toBeInTheDocument()
-      // Bob has 0 unread — no badge rendered
+      // Bob has 0 unread — no badge rendered.
+      // Exact-match query rather than toHaveTextContent: the latter substring-matches
+      // the whole row, so it also hits digits in the relative timestamp — '0' matched
+      // "80日前" once the fixture date aged 80 days.
       const items = screen.getAllByRole('listitem')
-      expect(items[1]).not.toHaveTextContent('0')
+      expect(within(items[1]).queryByText('0')).not.toBeInTheDocument()
     })
   })
 
