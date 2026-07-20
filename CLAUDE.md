@@ -1,15 +1,16 @@
 <!-- SPECKIT START -->
-Active feature plan: [specs/009-media-attachments/plan.md](specs/009-media-attachments/plan.md)
+Active feature plan: [specs/010-outbound-media/plan.md](specs/010-outbound-media/plan.md)
 
 Related artifacts (same directory):
-- spec.md — feature specification (受信画像・添付メディアを Webhook 受信時に即ダウンロードして S3 永続保存、`messages.attachments` JSONB に記録、スレッド UI で画像表示/種別ラベル/プレースホルダ。clarify 4 問確定: 保持無期限 (#78)、即時リトライのみ、レガシー body URL はデータ移行で除去、上限 25MB)
-- research.md — design decisions (同期ダウンロード / presigned GET URL 配信 / S3 キー `{tenantId}/{conversationId}/{mid}/{index}` / attachments JSONB 1 列 / classifyAttachments 一本化 / Lambda 1024MB・20s / フェイルセーフとデプロイ順序)
-- data-model.md — `messages.attachments jsonb` 1 列追加のみ。値パターン表・不変条件・マイグレーション 0004 (列追加 + レガシー body クリーンアップ)
-- contracts/media-pipeline.md — 種別判定表 / ダウンロード・保存契約 / DB 書き込み契約 / presigned URL 契約 / UI 表示契約 / Terraform・IAM 差分 / 構造化ログイベント名
-- quickstart.md — terraform apply → db:migrate → デプロイの順序、手動検証 7 項目、Logs Insights クエリ例、ロールバック手順
+- spec.md — feature specification (issue #82: オペレーターが返信フォームから画像 (jpeg/png/gif/webp、1 送信 1 枚、25MB) を顧客の Messenger に送信。テキスト+画像は 2 通逐次送信。送信時に attachments を自前記録し outbound バブルに表示)
+- research.md — design decisions (D1 ブラウザ→S3 直接 presigned PUT / D2 outbound キー `{tenantId}/{conversationId}/outbound/{uuid}/0` / D3 Send API payload.url に presigned GET / D4 2 通逐次 + 全体時間予算 22s で pending 放置防止 / D5 25MB・webp は実機検証 / D7 echo 整合は既存機構)
+- data-model.md — DB スキーマ変更ゼロ。outbound の attachments 値パターン、Pre-upload は S3 のみ (テーブルなし)、不変条件 5 つ
+- contracts/outbound-media.md — 定数 / createUploadUrlFn / sendReplyFn 拡張 (parts・後方互換) / Meta 画像ペイロード / UI 状態機械 / ログ 3 イベント / IAM PutObject + S3 CORS 差分
+- quickstart.md — terraform (IAM+CORS) → app のデプロイ順序、手動検証 8 項目 (webp 可否含む)、Logs Insights クエリ、孤児オブジェクト確認
 
 Predecessors:
-- [specs/008-fix-ai-worker-timestamp/plan.md](specs/008-fix-ai-worker-timestamp/plan.md) — ai-worker の `max(timestamp)` 型不一致クラッシュ修正。009 の attachments 追加は draft 生成境界クエリと非干渉。
+- [specs/009-media-attachments/plan.md](specs/009-media-attachments/plan.md) — 受信側メディアの S3 永続保存 + スレッド表示。attachments JSONB・presign 配信・表示コンポーネント・media バケットを 010 が再利用。
+- [specs/008-fix-ai-worker-timestamp/plan.md](specs/008-fix-ai-worker-timestamp/plan.md) — ai-worker の `max(timestamp)` 型不一致クラッシュ修正。時間予算で pending 放置を防ぐ思想を 010 D4 が踏襲。
 - [specs/006-message-echoes-ingest/plan.md](specs/006-message-echoes-ingest/plan.md) — `message_echoes` で外部送信を取り込み。009 で echo 経路の添付も保存対象になり「非テキスト body=''」方針を更新。
 - [specs/005-draft-regenerate-oneoff/plan.md](specs/005-draft-regenerate-oneoff/plan.md) — AI 下書きのワンオフ再生成。echo 経路は ai_drafts と非干渉。
 - [specs/004-batch-draft-unanswered/plan.md](specs/004-batch-draft-unanswered/plan.md) — 会話スコープのアクティブ下書き 1 件モデル + 未返信バッチ。006 で外部送信が境界に正しく入る。
