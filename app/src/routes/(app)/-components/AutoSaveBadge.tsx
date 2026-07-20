@@ -1,13 +1,35 @@
 import { m } from '~/paraglide/messages'
 
-export type AutoSaveState = 'editing' | 'saving' | 'saved' | null
+export type AutoSaveState = 'editing' | 'saving' | 'saved' | 'error' | null
 
 interface AutoSaveBadgeProps {
   state: AutoSaveState
+  /** Renders a retry button next to the error label. Only used when state is 'error'. */
+  onRetry?: () => void
 }
 
-export function AutoSaveBadge({ state }: AutoSaveBadgeProps) {
+export function AutoSaveBadge({ state, onRetry }: AutoSaveBadgeProps) {
   if (!state) return null
+
+  if (state === 'error') {
+    return (
+      <span
+        role="alert"
+        className="text-xs font-medium text-[var(--color-rose-ink)]"
+      >
+        {m.autosave_error()}
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="ml-1.5 cursor-pointer border-0 bg-transparent p-0 text-xs font-semibold text-[var(--color-rose-ink)] underline"
+          >
+            {m.autosave_retry()}
+          </button>
+        )}
+      </span>
+    )
+  }
 
   const label =
     state === 'editing'

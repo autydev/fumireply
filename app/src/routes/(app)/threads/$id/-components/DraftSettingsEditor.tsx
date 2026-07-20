@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { AutoSaveBadge, type AutoSaveState } from '~/routes/(app)/-components/AutoSaveBadge'
+import { useCallback, useRef, useState } from 'react'
+import { AutoSaveBadge } from '~/routes/(app)/-components/AutoSaveBadge'
+import { useAutoSave } from '~/routes/(app)/-components/useAutoSave'
 import { CUSTOMER_PROMPT_MAX } from '~/lib/settings/char-limits'
 import { updateConversationSettingsFn } from '../-lib/update-conversation-settings.fn'
 import { m } from '~/paraglide/messages'
@@ -20,8 +21,6 @@ const TONE_OPTIONS: { value: TonePreset; label: () => string }[] = [
   { value: 'concise', label: m.cp_tone_concise },
 ]
 
-const DEBOUNCE_MS = 500
-
 export function DraftSettingsEditor({
   conversationId,
   tonePreset: initialTone,
@@ -31,51 +30,31 @@ export function DraftSettingsEditor({
   // never overwrite it while the user is viewing this conversation (#72).
   const [tone, setTone] = useState<TonePreset>(initialTone)
   const [prompt, setPrompt] = useState(initialPrompt ?? '')
-  const [promptSaveState, setPromptSaveState] = useState<AutoSaveState>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const mountedRef = useRef(true)
+  // Latest values for the saves / error-badge retries (#84).
+  const promptRef = useRef(prompt)
+  const lastToneRef = useRef<TonePreset>(initialTone)
 
-  // Cancel pending debounce on unmount; an already in-flight save still
-  // completes server-side, but must not set state afterwards (key remount).
-  useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [])
-
-  const saveTone = useCallback(async (value: TonePreset) => {
-    try {
-      await updateConversationSettingsFn({ data: { conversationId, tonePreset: value } })
-    } catch {
-      // fail silently — user can retry
-    }
-  }, [conversationId])
+  // Tone saves immediately (a click, not typing) → flush with no debounce.
+  const toneSave = useAutoSave({
+    save: () => updateConversationSettingsFn({ data: { conversationId, tonePreset: lastToneRef.current } }),
+  })
+  const promptSave = useAutoSave({
+    save: () => updateConversationSettingsFn({ data: { conversationId, customPrompt: promptRef.current } }),
+  })
 
   const handleToneClick = useCallback((value: TonePreset) => {
     const next = tone === value ? null : value
     setTone(next)
-    void saveTone(next)
-  }, [tone, saveTone])
+    lastToneRef.current = next
+    toneSave.flush()
+  }, [tone, toneSave])
 
   const handlePromptChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
     setPrompt(value)
-    setPromptSaveState('editing')
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(async () => {
-      setPromptSaveState('saving')
-      try {
-        await updateConversationSettingsFn({ data: { conversationId, customPrompt: value } })
-        if (!mountedRef.current) return
-        setPromptSaveState('saved')
-      } catch {
-        if (!mountedRef.current) return
-        setPromptSaveState(null)
-      }
-    }, DEBOUNCE_MS)
-  }, [conversationId])
+    promptRef.current = value
+    promptSave.schedule()
+  }, [promptSave])
 
   const remaining = CUSTOMER_PROMPT_MAX - prompt.length
 
@@ -96,8 +75,18 @@ export function DraftSettingsEditor({
 
       {/* Tone selector */}
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 12, color: 'var(--color-ink-2)', marginBottom: 6 }}>
-          {m.cp_tone_label()}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 6,
+          }}
+        >
+          <div style={{ fontSize: 12, color: 'var(--color-ink-2)' }}>
+            {m.cp_tone_label()}
+          </div>
+          <AutoSaveBadge state={toneSave.state} onRetry={toneSave.flush} />
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           {TONE_OPTIONS.map(({ value, label }) => {
@@ -142,7 +131,7 @@ export function DraftSettingsEditor({
           <label style={{ fontSize: 12, color: 'var(--color-ink-2)' }}>
             {m.cp_custom_prompt_label()}
           </label>
-          <AutoSaveBadge state={promptSaveState} />
+          <AutoSaveBadge state={promptSave.state} onRetry={promptSave.flush} />
         </div>
         <textarea
           value={prompt}

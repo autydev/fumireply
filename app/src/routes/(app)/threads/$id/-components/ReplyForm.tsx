@@ -5,8 +5,11 @@ import { useRouter } from '@tanstack/react-router'
 import { sendReplyFn } from '../-lib/send-reply.fn'
 import { dismissDraftFn } from '../-lib/dismiss-draft.fn'
 import { regenerateDraftFn } from '../-lib/regenerate-draft.fn'
+import { saveDraftBodyFn } from '../-lib/save-draft-body.fn'
 import { DraftBanner } from './DraftBanner'
 import { RegeneratePanel } from './RegeneratePanel'
+import { AutoSaveBadge } from '~/routes/(app)/-components/AutoSaveBadge'
+import { useAutoSave } from '~/routes/(app)/-components/useAutoSave'
 import type { ConversationDetail } from '../-lib/get-conversation.fn'
 import { SparkleIcon, SendIcon, XIcon, ThumbUpIcon, ThumbDownIcon, AlertTriIcon } from '~/components/ui/icons'
 import { m } from '~/paraglide/messages'
@@ -18,8 +21,6 @@ type Props = {
   latestDraft: ConversationDetail['latest_draft']
   latestInboundMessageId: string | null
 }
-
-type AutoSaveState = 'editing' | 'saving' | 'saved'
 
 export function ReplyForm({
   conversationId,
@@ -34,7 +35,6 @@ export function ReplyForm({
   const [draftStatus, setDraftStatus] = useState(latestDraft?.status ?? null)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [saveState, setSaveState] = useState<AutoSaveState>('saved')
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
   // 005: one-off regenerate state.
   const [instruction, setInstruction] = useState('')
@@ -43,9 +43,29 @@ export function ReplyForm({
   // success vs. failure by comparing the eventual `ready` body — though the
   // primary failure signal is the `error` column returned by getDraftStatusFn.
   const regenStartBodyRef = useRef<string>('')
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const saveInnerTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const bodyRef = useRef(body)
+  const draftStatusRef = useRef(draftStatus)
+
+  // #83: persist edits to the active ready draft so a reload restores them.
+  // save returns saved:false when the server has no ready draft to write to
+  // (dismissed/regenerated elsewhere) → the hook clears the badge instead of
+  // claiming 保存済み. Guarded by draftStatusRef so a retry while the draft is no
+  // longer ready is a no-op rather than a bogus write.
+  const {
+    state: saveState,
+    schedule: scheduleSave,
+    flush: flushSave,
+    reset: resetSave,
+  } = useAutoSave({
+    save: async () => {
+      if (draftStatusRef.current !== 'ready') return false
+      const result = await saveDraftBodyFn({
+        data: { conversationId, body: bodyRef.current },
+      })
+      return result.saved
+    },
+    debounceMs: 600,
+  })
   // Tracks the inbound message id whose draft we've already filled into the
   // textarea, so polling re-fetches don't repeatedly overwrite or re-show it
   // (especially after the user sends a reply).
@@ -57,14 +77,23 @@ export function ReplyForm({
     bodyRef.current = body
   }, [body])
 
+  useEffect(() => {
+    draftStatusRef.current = draftStatus
+  }, [draftStatus])
+
   // Sync latestDraft prop into local state when polling fetches a new value.
   useEffect(() => {
     if (!latestDraft) {
       if (draftStatus !== null) setDraftStatus(null)
+      // No active draft to save to — any leftover badge is moot (#84).
+      resetSave()
       return
     }
     if (latestDraft.status !== 'ready') {
       if (latestDraft.status !== draftStatus) setDraftStatus(latestDraft.status)
+      // Draft left 'ready' (pending/failed) — the autosave target is gone, so
+      // drop the badge instead of leaving a stale/dead one behind (#84).
+      resetSave()
       return
     }
     if (latestInboundMessageId === filledForInboundIdRef.current) return
@@ -72,8 +101,11 @@ export function ReplyForm({
     if (!bodyRef.current.trim()) {
       setBody(latestDraft.body)
     }
+    // A different draft is now active — drop any leftover save badge so it can't
+    // assert "保存済み" over a draft it never applied to (#84 badge staleness).
+    resetSave()
     filledForInboundIdRef.current = latestInboundMessageId
-  }, [latestDraft, latestInboundMessageId, draftStatus])
+  }, [latestDraft, latestInboundMessageId, draftStatus, resetSave])
 
   const isWindowClosed = !conversation.within_24h_window
   const hoursRemaining = conversation.hours_remaining_in_window
@@ -84,11 +116,12 @@ export function ReplyForm({
   const handleDraftReady = useCallback((draftBody: string) => {
     setBody(draftBody)
     setDraftStatus('ready')
+    resetSave()
     // 005: regenerate success → clear instruction, re-enable button.
     setInstruction('')
     setIsRegenerating(false)
     regenStartBodyRef.current = ''
-  }, [])
+  }, [resetSave])
 
   // 005: handle regenerate failure / timeout from DraftBanner.
   const handleRegenerateError = useCallback(
@@ -110,6 +143,10 @@ export function ReplyForm({
 
   const handleRegenerateClick = useCallback(async () => {
     if (isRegenerating) return
+    // Cancel any armed/in-flight debounce save — once we regenerate, the server
+    // flips the row to pending and a late save of the pre-regenerate text could
+    // clobber the freshly generated draft (#84 cross-draft write).
+    resetSave()
     regenStartBodyRef.current = bodyRef.current
     setIsRegenerating(true)
     setError(null)
@@ -137,25 +174,15 @@ export function ReplyForm({
       setIsRegenerating(false)
       setError(m.reply_draft_regenerate_enqueue_failed())
     }
-  }, [conversationId, instruction, isRegenerating])
+  }, [conversationId, instruction, isRegenerating, resetSave])
 
   const handleBodyChange = (val: string) => {
     setBody(val)
-    setSaveState('editing')
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    if (saveInnerTimer.current) clearTimeout(saveInnerTimer.current)
-    saveTimer.current = setTimeout(() => {
-      setSaveState('saving')
-      saveInnerTimer.current = setTimeout(() => setSaveState('saved'), 450)
-    }, 600)
+    // Nothing to persist without an active draft — the badge only renders inside
+    // the ready-draft header anyway.
+    if (draftStatusRef.current !== 'ready') return
+    scheduleSave()
   }
-
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current)
-      if (saveInnerTimer.current) clearTimeout(saveInnerTimer.current)
-    }
-  }, [])
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
@@ -167,10 +194,10 @@ export function ReplyForm({
     try {
       const result = await sendReplyFn({ data: { conversationId, body } })
       if (result.ok) {
+        resetSave()
         setBody('')
         setDraftStatus(null)
         setFeedback(null)
-        setSaveState('saved')
         await router.invalidate()
       } else {
         const errorMessages: Record<string, string> = {
@@ -357,17 +384,10 @@ export function ReplyForm({
               </button>
             </div>
 
-            {/* Auto-save pill */}
-            {saveState === 'saving' && (
-              <span style={{ fontSize: 11, color: 'var(--color-ink-3)', fontFamily: 'var(--font-mono)' }}>
-                {m.reply_saving()}
-              </span>
-            )}
-            {saveState === 'saved' && body !== (latestDraft?.body ?? '') && (
-              <span style={{ fontSize: 11, color: 'var(--color-green-ink)', fontFamily: 'var(--font-mono)' }}>
-                {m.reply_draft_saved()}
-              </span>
-            )}
+            {/* Auto-save pill — real persistence (#83); error state offers retry
+                (#84). Only rendered while the draft is 'ready' (the only time a
+                save can target it); leaving 'ready' clears saveState below. */}
+            <AutoSaveBadge state={saveState} onRetry={flushSave} />
           </div>
         )}
 
@@ -438,6 +458,7 @@ export function ReplyForm({
           {hasDraft && (
             <button
               onClick={() => {
+                resetSave()
                 setBody('')
                 setDraftStatus(null)
                 filledForInboundIdRef.current = latestInboundMessageId

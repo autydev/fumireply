@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useRef, useState } from 'react'
 import { AutoSaveBadge } from '../../-components/AutoSaveBadge'
-import type { AutoSaveState } from '../../-components/AutoSaveBadge'
+import { useAutoSave } from '../../-components/useAutoSave'
 import { updatePagePromptFn } from '../-lib/update-page-prompt.fn'
 import { PAGE_PROMPT_MAX } from '~/lib/settings/char-limits'
 import { m } from '~/paraglide/messages'
@@ -13,41 +13,18 @@ interface PageCustomPromptEditorProps {
 
 export function PageCustomPromptEditor({ connectedPageId, pageName, customPrompt }: PageCustomPromptEditorProps) {
   const [value, setValue] = useState(customPrompt ?? '')
-  const [saveState, setSaveState] = useState<AutoSaveState>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Latest value for the debounced save / error-badge retry (#84).
   const latestValueRef = useRef(value)
-  // Monotonically increasing save ID — only the latest save's completion updates state
-  const saveIdRef = useRef(0)
-  const isMountedRef = useRef(true)
 
-  useEffect(() => {
-    isMountedRef.current = true
-    return () => {
-      isMountedRef.current = false
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [])
-
-  useEffect(() => {
-    latestValueRef.current = value
-  }, [value])
+  const { state: saveState, schedule, flush } = useAutoSave({
+    save: () => updatePagePromptFn({ data: { connectedPageId, customPrompt: latestValueRef.current } }),
+  })
 
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const next = e.target.value
     setValue(next)
-    setSaveState('editing')
-
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(async () => {
-      const currentSaveId = ++saveIdRef.current
-      if (isMountedRef.current) setSaveState('saving')
-      try {
-        await updatePagePromptFn({ data: { connectedPageId, customPrompt: latestValueRef.current } })
-        if (isMountedRef.current && saveIdRef.current === currentSaveId) setSaveState('saved')
-      } catch {
-        if (isMountedRef.current && saveIdRef.current === currentSaveId) setSaveState(null)
-      }
-    }, 500)
+    latestValueRef.current = next
+    schedule()
   }
 
   const remaining = PAGE_PROMPT_MAX - value.length
@@ -66,7 +43,7 @@ export function PageCustomPromptEditor({ connectedPageId, pageName, customPrompt
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontWeight: 600, fontSize: 14 }}>{pageName}</span>
-        <AutoSaveBadge state={saveState} />
+        <AutoSaveBadge state={saveState} onRetry={flush} />
       </div>
 
       <label
