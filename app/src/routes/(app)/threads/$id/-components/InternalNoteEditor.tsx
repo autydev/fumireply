@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { AutoSaveBadge, type AutoSaveState } from '~/routes/(app)/-components/AutoSaveBadge'
+import { useCallback, useRef, useState } from 'react'
+import { AutoSaveBadge } from '~/routes/(app)/-components/AutoSaveBadge'
+import { useAutoSave } from '~/routes/(app)/-components/useAutoSave'
 import { NOTE_MAX } from '~/lib/settings/char-limits'
 import { updateConversationSettingsFn } from '../-lib/update-conversation-settings.fn'
 import { m } from '~/paraglide/messages'
@@ -10,56 +11,23 @@ interface InternalNoteEditorProps {
   note: string | null
 }
 
-const DEBOUNCE_MS = 500
-
 export function InternalNoteEditor({ conversationId, note: initialNote }: InternalNoteEditorProps) {
   // Local state is the sole source of truth after mount — server values must
   // never overwrite it while the user is viewing this conversation (#72).
   const [note, setNote] = useState(initialNote ?? '')
-  const [saveState, setSaveState] = useState<AutoSaveState>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const mountedRef = useRef(true)
-  // Latest value for the error-badge retry button (#84).
+  // Latest value for the debounced save / error-badge retry (#84).
   const noteRef = useRef(note)
-  // Monotonic save ID — only the latest save's completion updates the badge, so
-  // a slow in-flight save can't overwrite a newer one's state.
-  const saveIdRef = useRef(0)
 
-  // Cancel pending debounce on unmount; an already in-flight save still
-  // completes server-side, but must not set state afterwards (key remount).
-  useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [])
-
-  // #84: shared by the debounce and the error-badge retry button — save failures
-  // must surface instead of silently dropping the note.
-  const saveNote = useCallback(async () => {
-    const saveId = ++saveIdRef.current
-    setSaveState('saving')
-    try {
-      await updateConversationSettingsFn({ data: { conversationId, note: noteRef.current } })
-      if (!mountedRef.current || saveIdRef.current !== saveId) return
-      setSaveState('saved')
-    } catch {
-      if (!mountedRef.current || saveIdRef.current !== saveId) return
-      setSaveState('error')
-    }
-  }, [conversationId])
+  const { state: saveState, schedule, flush } = useAutoSave({
+    save: () => updateConversationSettingsFn({ data: { conversationId, note: noteRef.current } }),
+  })
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
     setNote(value)
     noteRef.current = value
-    setSaveState('editing')
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      void saveNote()
-    }, DEBOUNCE_MS)
-  }, [saveNote])
+    schedule()
+  }, [schedule])
 
   const remaining = NOTE_MAX - note.length
 
@@ -89,7 +57,7 @@ export function InternalNoteEditor({ conversationId, note: initialNote }: Intern
           <label style={{ fontSize: 12, color: 'var(--color-ink-2)' }}>
             {m.cp_note_label()}
           </label>
-          <AutoSaveBadge state={saveState} onRetry={() => void saveNote()} />
+          <AutoSaveBadge state={saveState} onRetry={flush} />
         </div>
         <textarea
           value={note}
