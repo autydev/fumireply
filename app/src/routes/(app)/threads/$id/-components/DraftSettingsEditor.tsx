@@ -30,10 +30,14 @@ export function DraftSettingsEditor({
   // Local state is the sole source of truth after mount — server values must
   // never overwrite it while the user is viewing this conversation (#72).
   const [tone, setTone] = useState<TonePreset>(initialTone)
+  const [toneSaveState, setToneSaveState] = useState<AutoSaveState>(null)
   const [prompt, setPrompt] = useState(initialPrompt ?? '')
   const [promptSaveState, setPromptSaveState] = useState<AutoSaveState>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mountedRef = useRef(true)
+  // Latest values for the error-badge retry buttons (#84).
+  const promptRef = useRef(prompt)
+  const lastToneRef = useRef<TonePreset>(initialTone)
 
   // Cancel pending debounce on unmount; an already in-flight save still
   // completes server-side, but must not set state afterwards (key remount).
@@ -45,11 +49,18 @@ export function DraftSettingsEditor({
     }
   }, [])
 
+  // #84: tone save failures must surface — the operator otherwise keeps seeing
+  // the selected chip while the AI drafts with the old tone.
   const saveTone = useCallback(async (value: TonePreset) => {
+    lastToneRef.current = value
+    setToneSaveState('saving')
     try {
       await updateConversationSettingsFn({ data: { conversationId, tonePreset: value } })
+      if (!mountedRef.current || lastToneRef.current !== value) return
+      setToneSaveState('saved')
     } catch {
-      // fail silently — user can retry
+      if (!mountedRef.current || lastToneRef.current !== value) return
+      setToneSaveState('error')
     }
   }, [conversationId])
 
@@ -59,23 +70,28 @@ export function DraftSettingsEditor({
     void saveTone(next)
   }, [tone, saveTone])
 
+  const savePrompt = useCallback(async () => {
+    setPromptSaveState('saving')
+    try {
+      await updateConversationSettingsFn({ data: { conversationId, customPrompt: promptRef.current } })
+      if (!mountedRef.current) return
+      setPromptSaveState('saved')
+    } catch {
+      if (!mountedRef.current) return
+      setPromptSaveState('error')
+    }
+  }, [conversationId])
+
   const handlePromptChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
     setPrompt(value)
+    promptRef.current = value
     setPromptSaveState('editing')
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(async () => {
-      setPromptSaveState('saving')
-      try {
-        await updateConversationSettingsFn({ data: { conversationId, customPrompt: value } })
-        if (!mountedRef.current) return
-        setPromptSaveState('saved')
-      } catch {
-        if (!mountedRef.current) return
-        setPromptSaveState(null)
-      }
+    debounceRef.current = setTimeout(() => {
+      void savePrompt()
     }, DEBOUNCE_MS)
-  }, [conversationId])
+  }, [savePrompt])
 
   const remaining = CUSTOMER_PROMPT_MAX - prompt.length
 
@@ -96,8 +112,21 @@ export function DraftSettingsEditor({
 
       {/* Tone selector */}
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 12, color: 'var(--color-ink-2)', marginBottom: 6 }}>
-          {m.cp_tone_label()}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 6,
+          }}
+        >
+          <div style={{ fontSize: 12, color: 'var(--color-ink-2)' }}>
+            {m.cp_tone_label()}
+          </div>
+          <AutoSaveBadge
+            state={toneSaveState}
+            onRetry={() => void saveTone(lastToneRef.current)}
+          />
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           {TONE_OPTIONS.map(({ value, label }) => {
@@ -142,7 +171,7 @@ export function DraftSettingsEditor({
           <label style={{ fontSize: 12, color: 'var(--color-ink-2)' }}>
             {m.cp_custom_prompt_label()}
           </label>
-          <AutoSaveBadge state={promptSaveState} />
+          <AutoSaveBadge state={promptSaveState} onRetry={() => void savePrompt()} />
         </div>
         <textarea
           value={prompt}

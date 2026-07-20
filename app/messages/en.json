@@ -113,6 +113,8 @@
   "autosave_editing": "Editing…",
   "autosave_saving": "Saving…",
   "autosave_saved": "Saved",
+  "autosave_error": "Save failed",
+  "autosave_retry": "Retry",
   "cp_persona_updated_at": "Last updated: {at}",
   "reply_draft_regenerate_button": "Regenerate",
   "reply_draft_regenerate_instruction_placeholder": "One-off instruction (e.g., OP-09 is ¥800, use this)",

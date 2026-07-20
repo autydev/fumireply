@@ -19,6 +19,8 @@ export function InternalNoteEditor({ conversationId, note: initialNote }: Intern
   const [saveState, setSaveState] = useState<AutoSaveState>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mountedRef = useRef(true)
+  // Latest value for the error-badge retry button (#84).
+  const noteRef = useRef(note)
 
   // Cancel pending debounce on unmount; an already in-flight save still
   // completes server-side, but must not set state afterwards (key remount).
@@ -30,23 +32,30 @@ export function InternalNoteEditor({ conversationId, note: initialNote }: Intern
     }
   }, [])
 
+  // #84: shared by the debounce and the error-badge retry button — save failures
+  // must surface instead of silently dropping the note.
+  const saveNote = useCallback(async () => {
+    setSaveState('saving')
+    try {
+      await updateConversationSettingsFn({ data: { conversationId, note: noteRef.current } })
+      if (!mountedRef.current) return
+      setSaveState('saved')
+    } catch {
+      if (!mountedRef.current) return
+      setSaveState('error')
+    }
+  }, [conversationId])
+
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
     setNote(value)
+    noteRef.current = value
     setSaveState('editing')
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(async () => {
-      setSaveState('saving')
-      try {
-        await updateConversationSettingsFn({ data: { conversationId, note: value } })
-        if (!mountedRef.current) return
-        setSaveState('saved')
-      } catch {
-        if (!mountedRef.current) return
-        setSaveState(null)
-      }
+    debounceRef.current = setTimeout(() => {
+      void saveNote()
     }, DEBOUNCE_MS)
-  }, [conversationId])
+  }, [saveNote])
 
   const remaining = NOTE_MAX - note.length
 
@@ -76,7 +85,7 @@ export function InternalNoteEditor({ conversationId, note: initialNote }: Intern
           <label style={{ fontSize: 12, color: 'var(--color-ink-2)' }}>
             {m.cp_note_label()}
           </label>
-          <AutoSaveBadge state={saveState} />
+          <AutoSaveBadge state={saveState} onRetry={() => void saveNote()} />
         </div>
         <textarea
           value={note}

@@ -32,21 +32,27 @@ export function PageCustomPromptEditor({ connectedPageId, pageName, customPrompt
     latestValueRef.current = value
   }, [value])
 
+  // #84: shared by the debounce and the error-badge retry button. Failures must
+  // surface — a silently dropped save leaves the AI running on a stale policy.
+  async function performSave() {
+    const currentSaveId = ++saveIdRef.current
+    if (isMountedRef.current) setSaveState('saving')
+    try {
+      await updatePagePromptFn({ data: { connectedPageId, customPrompt: latestValueRef.current } })
+      if (isMountedRef.current && saveIdRef.current === currentSaveId) setSaveState('saved')
+    } catch {
+      if (isMountedRef.current && saveIdRef.current === currentSaveId) setSaveState('error')
+    }
+  }
+
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const next = e.target.value
     setValue(next)
     setSaveState('editing')
 
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(async () => {
-      const currentSaveId = ++saveIdRef.current
-      if (isMountedRef.current) setSaveState('saving')
-      try {
-        await updatePagePromptFn({ data: { connectedPageId, customPrompt: latestValueRef.current } })
-        if (isMountedRef.current && saveIdRef.current === currentSaveId) setSaveState('saved')
-      } catch {
-        if (isMountedRef.current && saveIdRef.current === currentSaveId) setSaveState(null)
-      }
+    debounceRef.current = setTimeout(() => {
+      void performSave()
     }, 500)
   }
 
@@ -66,7 +72,7 @@ export function PageCustomPromptEditor({ connectedPageId, pageName, customPrompt
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontWeight: 600, fontSize: 14 }}>{pageName}</span>
-        <AutoSaveBadge state={saveState} />
+        <AutoSaveBadge state={saveState} onRetry={() => void performSave()} />
       </div>
 
       <label

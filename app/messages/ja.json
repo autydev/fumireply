@@ -113,6 +113,8 @@
   "autosave_editing": "編集中…",
   "autosave_saving": "保存中…",
   "autosave_saved": "保存済み",
+  "autosave_error": "保存に失敗しました",
+  "autosave_retry": "再試行",
   "cp_persona_updated_at": "最終更新: {at}",
   "reply_draft_regenerate_button": "再生成",
   "reply_draft_regenerate_instruction_placeholder": "この回だけの追加指示（例：OP-09 は ¥800、これで案内）",
