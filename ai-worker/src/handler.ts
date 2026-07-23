@@ -212,7 +212,7 @@ async function generateDraft(input: {
   tenantId: string
   isRegenerate: boolean
 }): Promise<void> {
-  const { conversationId, triggerMessageId, instruction, tenantId, isRegenerate } = input
+  const { conversationId, instruction, tenantId, isRegenerate } = input
 
   // 005: log the regenerate entry once we've resolved the tenant. instruction
   // body itself is NOT logged — only its length — to avoid leaking operator text.
@@ -224,8 +224,8 @@ async function generateDraft(input: {
     })
   }
 
-  // 2. Read coalesce state + settings + unanswered batch + context in one RLS tx
-  type Outcome = 'generate' | 'superseded' | 'no_unanswered'
+  // 2. Read latest-inbound + settings + unanswered batch + context in one RLS tx
+  type Outcome = 'generate' | 'no_unanswered'
   // Cast keeps the union type so reassignments inside the tx callback below are
   // not narrowed away by control-flow analysis.
   let outcome: Outcome = 'no_unanswered' as Outcome
@@ -240,8 +240,12 @@ async function generateDraft(input: {
   let latestInboundIdAtStart: string | null = null
 
   await withTenant(tenantId, async (tx) => {
-    // Coalesce: only the job triggered by the latest inbound text message generates.
-    // Earlier jobs in a burst skip — the last one produces the final batch draft.
+    // Coalesce: a job always generates for the CURRENT latest unanswered batch,
+    // not for whatever message it was triggered by. The batch below reads every
+    // unanswered inbound since the last outbound, so an earlier job that fires
+    // after a newer message simply produces a draft covering the newer message
+    // too ("adopt the newest"). The webhook's stale-pending guard prevents
+    // redundant duplicate jobs, so this normally runs once per burst.
     const [latestInbound] = await tx
       .select({ id: messages.id })
       .from(messages)
@@ -265,13 +269,6 @@ async function generateDraft(input: {
       }
     } else {
       latestInboundIdAtStart = latestInbound.id
-    }
-
-    // 005: regenerate jobs bypass coalesce — the operator's explicit intent must
-    // always run, even if a newer inbound arrived after the regenerate was queued.
-    if (!isRegenerate && triggerMessageId && latestInbound && latestInbound.id !== triggerMessageId) {
-      outcome = 'superseded'
-      return
     }
 
     // Conversation settings + page custom_prompt
@@ -370,11 +367,6 @@ async function generateDraft(input: {
     history = historyDesc.reverse()
     outcome = 'generate'
   })
-
-  if (outcome === 'superseded') {
-    console.info({ event: 'draft_superseded', conversationId, triggerMessageId })
-    return
-  }
 
   if (outcome === 'no_unanswered') {
     await dismissActiveDraft(tenantId, conversationId)

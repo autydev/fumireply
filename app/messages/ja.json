@@ -120,5 +120,7 @@
   "reply_draft_regenerate_chars_remaining": "残り {count} 文字",
   "reply_draft_regenerate_timeout": "再生成がタイムアウトしました。もう一度お試しください。",
   "reply_draft_regenerate_failed": "再生成に失敗しました: {message}",
-  "reply_draft_regenerate_enqueue_failed": "再生成リクエストの送信に失敗しました"
+  "reply_draft_regenerate_enqueue_failed": "再生成リクエストの送信に失敗しました",
+  "reply_draft_generate_failed": "下書きの生成に失敗しました。再生成をお試しください。",
+  "reply_draft_generate_timeout": "下書きの生成がタイムアウトしました。再生成をお試しください。"
 }
