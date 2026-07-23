@@ -128,14 +128,16 @@ export async function handleSendReply(
       .set({ lastMessageAt: new Date() })
       .where(eq(conversations.id, data.conversationId))
 
-    // Consume the active draft: sending a reply answers the pending batch.
+    // Consume the active draft: sending a reply answers the pending batch. Also
+    // clears a lingering 'failed' draft so its retry error stops surfacing once
+    // the operator has replied manually.
     await tx
       .update(aiDrafts)
       .set({ status: 'dismissed', updatedAt: new Date() })
       .where(
         and(
           eq(aiDrafts.conversationId, data.conversationId),
-          inArray(aiDrafts.status, ['pending', 'ready']),
+          inArray(aiDrafts.status, ['pending', 'ready', 'failed']),
         ),
       )
 

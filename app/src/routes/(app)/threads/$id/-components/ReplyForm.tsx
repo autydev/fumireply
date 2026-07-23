@@ -39,6 +39,10 @@ export function ReplyForm({
   // 005: one-off regenerate state.
   const [instruction, setInstruction] = useState('')
   const [isRegenerating, setIsRegenerating] = useState(false)
+  // Mirror of isRegenerating readable inside DraftBanner's onError callback
+  // (which has stable deps and would otherwise close over a stale value). Lets
+  // us tell an operator-initiated regenerate timeout from an auto-batch one.
+  const isRegeneratingRef = useRef(false)
   // Snapshot of the body at the moment regenerate was triggered. Used to detect
   // success vs. failure by comparing the eventual `ready` body — though the
   // primary failure signal is the `error` column returned by getDraftStatusFn.
@@ -80,6 +84,19 @@ export function ReplyForm({
   const showPolicyWarning =
     hoursRemaining !== null && hoursRemaining <= 6 && hoursRemaining > 0
   const hasDraft = draftStatus === 'ready'
+  // A generation that failed (auto-batch terminal failure or auto timeout).
+  // Surfaces the error message + keeps the regenerate button available so the
+  // operator can retry.
+  const hasFailed = draftStatus === 'failed'
+
+  // Surface a server-side failed draft on load / poll refresh (the auto-batch
+  // draft job hit a terminal error). Keyed on status so it does not clobber the
+  // error the operator just cleared by clicking regenerate.
+  useEffect(() => {
+    if (latestDraft?.status === 'failed') {
+      setError(m.reply_draft_generate_failed())
+    }
+  }, [latestDraft?.status])
 
   const handleDraftReady = useCallback((draftBody: string) => {
     setBody(draftBody)
@@ -87,23 +104,32 @@ export function ReplyForm({
     // 005: regenerate success → clear instruction, re-enable button.
     setInstruction('')
     setIsRegenerating(false)
+    isRegeneratingRef.current = false
     regenStartBodyRef.current = ''
   }, [])
 
   // 005: handle regenerate failure / timeout from DraftBanner.
   const handleRegenerateError = useCallback(
     (reason: 'timeout' | 'regenerate_failed', message?: string) => {
+      const wasRegenerating = isRegeneratingRef.current
       setIsRegenerating(false)
+      isRegeneratingRef.current = false
       if (reason === 'timeout') {
-        setError(m.reply_draft_regenerate_timeout())
+        if (wasRegenerating) {
+          // 005: regen timeout keeps the previous body visible (worker leaves
+          // status='ready' + body unchanged). Keep instruction so the operator
+          // can retry without retyping.
+          setError(m.reply_draft_regenerate_timeout())
+          setDraftStatus('ready')
+        } else {
+          // Auto-batch generation timed out — expose the failure + retry button.
+          setError(m.reply_draft_generate_timeout())
+          setDraftStatus('failed')
+        }
       } else {
         setError(m.reply_draft_regenerate_failed({ message: message ?? '' }))
+        setDraftStatus('ready')
       }
-      // Restore the previous body if the textarea was empty — the worker writes
-      // status='ready' on regen failure with body unchanged, so the next loader
-      // refresh will repopulate it. Keep instruction populated so the operator
-      // can retry without retyping.
-      setDraftStatus('ready')
     },
     [],
   )
@@ -112,6 +138,7 @@ export function ReplyForm({
     if (isRegenerating) return
     regenStartBodyRef.current = bodyRef.current
     setIsRegenerating(true)
+    isRegeneratingRef.current = true
     setError(null)
     try {
       const result = await regenerateDraftFn({
@@ -125,16 +152,18 @@ export function ReplyForm({
         setDraftStatus('pending')
       } else {
         setIsRegenerating(false)
+        isRegeneratingRef.current = false
         if (result.error === 'enqueue_failed') {
           setError(m.reply_draft_regenerate_enqueue_failed())
         } else {
-          // no_active_draft — should not normally happen because the button is
-          // only visible when draft is ready. Fail soft.
+          // no_active_draft — the draft was resolved (sent/dismissed) between
+          // load and click. Fail soft.
           setError(m.reply_error_generic())
         }
       }
     } catch {
       setIsRegenerating(false)
+      isRegeneratingRef.current = false
       setError(m.reply_draft_regenerate_enqueue_failed())
     }
   }, [conversationId, instruction, isRegenerating])
@@ -414,10 +443,11 @@ export function ReplyForm({
           </div>
         )}
 
-        {/* 005: one-off regenerate panel (only when draft is ready) */}
+        {/* 005: one-off regenerate panel. Visible when a draft is ready OR when
+            generation failed (retry button). */}
         <div style={{ padding: '0 14px 6px' }}>
           <RegeneratePanel
-            isVisible={hasDraft}
+            isVisible={hasDraft || hasFailed}
             isRegenerating={isRegenerating}
             instruction={instruction}
             onInstructionChange={setInstruction}
@@ -435,11 +465,12 @@ export function ReplyForm({
             borderTop: '1px solid var(--color-line)',
           }}
         >
-          {hasDraft && (
+          {(hasDraft || hasFailed) && (
             <button
               onClick={() => {
                 setBody('')
                 setDraftStatus(null)
+                setError(null)
                 filledForInboundIdRef.current = latestInboundMessageId
                 void dismissDraftFn({ data: { conversationId } }).then(() =>
                   router.invalidate(),

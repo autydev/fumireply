@@ -120,5 +120,7 @@
   "reply_draft_regenerate_chars_remaining": "{count} characters remaining",
   "reply_draft_regenerate_timeout": "Regeneration timed out. Please try again.",
   "reply_draft_regenerate_failed": "Regeneration failed: {message}",
-  "reply_draft_regenerate_enqueue_failed": "Could not submit regeneration request"
+  "reply_draft_regenerate_enqueue_failed": "Could not submit regeneration request",
+  "reply_draft_generate_failed": "Draft generation failed. Please try regenerating.",
+  "reply_draft_generate_timeout": "Draft generation timed out. Please try regenerating."
 }

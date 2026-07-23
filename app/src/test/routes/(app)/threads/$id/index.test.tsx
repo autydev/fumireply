@@ -211,7 +211,7 @@ describe('Thread page', () => {
     )
 
     const detail = makeDetail({
-      latest_draft: { body: 'AI suggested reply text', status: 'ready' },
+      latest_draft: { body: 'AI suggested reply text', status: 'ready', error: null },
     })
 
     renderRoute({
@@ -231,6 +231,38 @@ describe('Thread page', () => {
       const textarea = screen.getByRole('textbox')
       expect(textarea).toHaveValue('AI suggested reply text')
     })
+  })
+
+  it('shows an error and a regenerate button when latest_draft status is failed', async () => {
+    const { ReplyForm } = await import(
+      '~/routes/(app)/threads/$id/-components/ReplyForm'
+    )
+    const { m } = await import('~/paraglide/messages')
+
+    const detail = makeDetail({
+      latest_draft: { body: '', status: 'failed', error: 'server_error' },
+    })
+
+    renderRoute({
+      path: '/threads/$id',
+      component: () => (
+        <ReplyForm
+          conversationId={CONV_ID}
+          conversation={detail.conversation}
+          latestDraft={detail.latest_draft}
+          latestInboundMessageId="msg-1"
+        />
+      ),
+      initialEntries: [`/threads/${CONV_ID}`],
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText(m.reply_draft_generate_failed())).toBeInTheDocument()
+    })
+    // The regenerate/retry button is available even though no draft is ready.
+    expect(
+      screen.getByRole('button', { name: m.reply_draft_regenerate_button() }),
+    ).toBeInTheDocument()
   })
 
   it('shows DraftBanner when latest_draft status is pending', async () => {
