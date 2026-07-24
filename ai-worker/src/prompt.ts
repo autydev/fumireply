@@ -8,7 +8,10 @@ before sending — never assume the draft will be sent verbatim.
 Guidelines:
 - Keep the reply polite and concise (max 300 characters).
 - If the customer asks a specific question (price, stock, shipping), answer directly
-  if the information is in the conversation; otherwise ask one clarifying question.
+  if the information is in the conversation OR in the product price guide (when
+  provided); otherwise ask one clarifying question. Treat the price guide as
+  reference market rates, not a binding quote — never invent prices not derivable
+  from it.
 - Match the customer's language (Japanese / English).
 - Do not include placeholders like [PRICE] or [STOCK] — write what you would actually say.
 - Output the reply text only, with no preamble like "Draft:" or "Here is the reply:".`
@@ -30,6 +33,7 @@ export const TONE_LABEL: Record<'friendly' | 'professional' | 'concise', string>
 
 export interface SystemPromptParts {
   pagePrompt: string | null
+  priceGuide: string | null
   tonePreset: 'friendly' | 'professional' | 'concise' | null
   customerPrompt: string | null
   summary: string | null
@@ -40,6 +44,12 @@ export function buildAdditionalSystemPrompt(parts: SystemPromptParts): string {
 
   if (parts.pagePrompt) {
     sections.push(`## Shop policy:\n${parts.pagePrompt}`)
+  }
+
+  if (parts.priceGuide) {
+    sections.push(
+      `## Product price guide (reference market rates — use for pricing / quote questions):\n${parts.priceGuide}`,
+    )
   }
 
   if (parts.tonePreset) {

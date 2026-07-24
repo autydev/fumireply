@@ -11,6 +11,7 @@ describe('buildAdditionalSystemPrompt', () => {
     expect(
       buildAdditionalSystemPrompt({
         pagePrompt: null,
+        priceGuide: null,
         tonePreset: null,
         customerPrompt: null,
         summary: null,
@@ -21,6 +22,7 @@ describe('buildAdditionalSystemPrompt', () => {
   it('includes shop policy section when pagePrompt is set', () => {
     const result = buildAdditionalSystemPrompt({
       pagePrompt: 'No returns after 30 days.',
+      priceGuide: null,
       tonePreset: null,
       customerPrompt: null,
       summary: null,
@@ -29,10 +31,23 @@ describe('buildAdditionalSystemPrompt', () => {
     expect(result).toContain('No returns after 30 days.')
   })
 
+  it('includes price guide section when priceGuide is set', () => {
+    const result = buildAdditionalSystemPrompt({
+      pagePrompt: null,
+      priceGuide: 'Charizard VMAX: ¥3,000–4,000. Pikachu promo: ¥500.',
+      tonePreset: null,
+      customerPrompt: null,
+      summary: null,
+    })
+    expect(result).toContain('## Product price guide')
+    expect(result).toContain('Charizard VMAX: ¥3,000–4,000. Pikachu promo: ¥500.')
+  })
+
   it('includes tone section with TONE_LABEL when tonePreset is set', () => {
     for (const preset of ['friendly', 'professional', 'concise'] as const) {
       const result = buildAdditionalSystemPrompt({
         pagePrompt: null,
+        priceGuide: null,
         tonePreset: preset,
         customerPrompt: null,
         summary: null,
@@ -45,6 +60,7 @@ describe('buildAdditionalSystemPrompt', () => {
   it('includes customer instruction section when customerPrompt is set', () => {
     const result = buildAdditionalSystemPrompt({
       pagePrompt: null,
+      priceGuide: null,
       tonePreset: null,
       customerPrompt: 'No emojis.',
       summary: null,
@@ -56,6 +72,7 @@ describe('buildAdditionalSystemPrompt', () => {
   it('includes conversation summary section when summary is set', () => {
     const result = buildAdditionalSystemPrompt({
       pagePrompt: null,
+      priceGuide: null,
       tonePreset: null,
       customerPrompt: null,
       summary: 'Customer asked about Charizard prices.',
@@ -64,18 +81,21 @@ describe('buildAdditionalSystemPrompt', () => {
     expect(result).toContain('Customer asked about Charizard prices.')
   })
 
-  it('composes sections in Page → Tone → Customer → Summary order when all present', () => {
+  it('composes sections in Page → Price → Tone → Customer → Summary order when all present', () => {
     const result = buildAdditionalSystemPrompt({
       pagePrompt: 'Policy text',
+      priceGuide: 'Price text',
       tonePreset: 'concise',
       customerPrompt: 'Custom instruction',
       summary: 'Summary text',
     })
     const policyIdx = result.indexOf('## Shop policy:')
+    const priceIdx = result.indexOf('## Product price guide')
     const toneIdx = result.indexOf('## Customer-specific tone:')
     const customerIdx = result.indexOf('## Customer-specific instructions:')
     const summaryIdx = result.indexOf('## Conversation summary:')
-    expect(policyIdx).toBeLessThan(toneIdx)
+    expect(policyIdx).toBeLessThan(priceIdx)
+    expect(priceIdx).toBeLessThan(toneIdx)
     expect(toneIdx).toBeLessThan(customerIdx)
     expect(customerIdx).toBeLessThan(summaryIdx)
   })

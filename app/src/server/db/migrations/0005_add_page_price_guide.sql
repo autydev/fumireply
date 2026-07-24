@@ -1,0 +1,2 @@
+ALTER TABLE "connected_pages" ADD COLUMN "price_guide" text;--> statement-breakpoint
+ALTER TABLE "connected_pages" ADD CONSTRAINT "connected_pages_price_guide_length" CHECK ("connected_pages"."price_guide" IS NULL OR char_length("connected_pages"."price_guide") <= 4000);
