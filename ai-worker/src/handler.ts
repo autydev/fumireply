@@ -232,6 +232,7 @@ async function generateDraft(input: {
   let history: HistoryItem[] = []
   let unanswered: Array<{ body: string }> = []
   let pagePrompt: string | null = null
+  let priceGuide: string | null = null
   let tonePreset: string | null = null
   let customerPrompt: string | null = null
   let summary: string | null = null
@@ -271,13 +272,14 @@ async function generateDraft(input: {
       latestInboundIdAtStart = latestInbound.id
     }
 
-    // Conversation settings + page custom_prompt
+    // Conversation settings + page custom_prompt + page price_guide
     let convoSettings: {
       summary: string | null
       lastSummarizedAt: Date | null
       tonePreset: string | null
       customPrompt: string | null
       pageCustomPrompt: string | null
+      pagePriceGuide: string | null
     } | null = null
 
     try {
@@ -288,6 +290,7 @@ async function generateDraft(input: {
           tonePreset: conversations.tonePreset,
           customPrompt: conversations.customPrompt,
           pageCustomPrompt: connectedPages.customPrompt,
+          pagePriceGuide: connectedPages.priceGuide,
         })
         .from(conversations)
         .leftJoin(connectedPages, eq(conversations.pageId, connectedPages.id))
@@ -305,6 +308,7 @@ async function generateDraft(input: {
     }
 
     pagePrompt = convoSettings?.pageCustomPrompt ?? null
+    priceGuide = convoSettings?.pagePriceGuide ?? null
     tonePreset = convoSettings?.tonePreset ?? null
     customerPrompt = convoSettings?.customPrompt ?? null
     summary = convoSettings?.summary ?? null
@@ -377,6 +381,7 @@ async function generateDraft(input: {
   // 3. Build system prompt blocks (unchanged from 003)
   const additionalText = buildAdditionalSystemPrompt({
     pagePrompt,
+    priceGuide,
     tonePreset: tonePreset as 'friendly' | 'professional' | 'concise' | null,
     customerPrompt,
     summary,
@@ -398,6 +403,7 @@ async function generateDraft(input: {
   systemBlocks.push({ type: 'text', text: LANGUAGE_DIRECTIVE })
 
   const _pp = pagePrompt as string | null
+  const _pg = priceGuide as string | null
   const _cp = customerPrompt as string | null
   const _sm = summary as string | null
   console.info({
@@ -405,6 +411,7 @@ async function generateDraft(input: {
     tenantId,
     conversationId,
     page_prompt_present: _pp != null && _pp.trim() !== '',
+    price_guide_present: _pg != null && _pg.trim() !== '',
     tone_present: tonePreset !== null,
     customer_prompt_present: _cp != null && _cp.trim() !== '',
     summary_present: _sm != null && _sm.trim() !== '',

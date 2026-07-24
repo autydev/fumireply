@@ -9,6 +9,7 @@ export type ConnectedPageSetting = {
   isActive: boolean
   connectedAt: string
   customPrompt: string | null
+  priceGuide: string | null
 }
 
 export type ListSettingsResult = {
@@ -26,6 +27,7 @@ export async function handleListSettings(tenantId: string): Promise<ListSettings
           isActive: connectedPages.isActive,
           connectedAt: connectedPages.connectedAt,
           customPrompt: connectedPages.customPrompt,
+          priceGuide: connectedPages.priceGuide,
         })
         .from(connectedPages)
         .orderBy(desc(connectedPages.connectedAt))
@@ -41,6 +43,7 @@ export async function handleListSettings(tenantId: string): Promise<ListSettings
         isActive: p.isActive,
         connectedAt: p.connectedAt.toISOString(),
         customPrompt: p.customPrompt,
+        priceGuide: p.priceGuide,
       })),
     }
   } catch (error) {
