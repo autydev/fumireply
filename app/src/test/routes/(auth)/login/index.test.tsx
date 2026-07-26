@@ -81,7 +81,7 @@ describe('performLogin handler', () => {
     expect(mockSetCookie).toHaveBeenCalledWith(
       'sb-access-token',
       'at-abc',
-      expect.objectContaining({ httpOnly: true, maxAge: 3600 }),
+      expect.objectContaining({ httpOnly: true, maxAge: 2592000 }),
     )
     expect(mockSetCookie).toHaveBeenCalledWith(
       'sb-refresh-token',
