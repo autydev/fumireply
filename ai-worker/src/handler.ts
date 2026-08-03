@@ -420,7 +420,9 @@ async function generateDraft(input: {
   })
 
   // 4. Call Anthropic OUTSIDE any DB transaction — no connection held during API latency
-  const userPrompt = buildUserPrompt(history, unanswered)
+  // 005 follow-up: pass the operator instruction so it is also re-echoed as the
+  // final directive of the user turn (not just the system block).
+  const userPrompt = buildUserPrompt(history, unanswered, instruction)
   const apiKey = await getSsmParameter(ANTHROPIC_API_KEY_SSM)
   const anthropic = new Anthropic({ apiKey, timeout: ANTHROPIC_TIMEOUT_MS, maxRetries: 0 })
 
@@ -511,7 +513,21 @@ async function generateDraft(input: {
   // job, self-enqueue a normal auto-batch so the final draft still reflects the
   // latest customer message. Skip if regen failed (operator will retry) or no
   // newer inbound exists.
-  if (isRegenerate && update.status === 'ready' && 'body' in update) {
+  //
+  // 005 follow-up fix: when the operator supplied a one-off instruction, do NOT
+  // self-enqueue. That auto-batch job carries no instruction, so it would
+  // silently overwrite the draft the operator just deliberately shaped — the
+  // exact "my instruction had no effect" symptom. The instruction is one-off and
+  // never persisted, so it cannot be propagated to the follow-up; the operator
+  // regenerates again if they want the newer message covered.
+  const hadInstruction = !!instruction && instruction.trim() !== ''
+  if (isRegenerate && hadInstruction && update.status === 'ready' && 'body' in update) {
+    console.info({
+      event: 'draft_regenerate_followup_skipped_instruction',
+      conversationId,
+    })
+  }
+  if (isRegenerate && !hadInstruction && update.status === 'ready' && 'body' in update) {
     try {
       const [latestNow] = await dbAdmin
         .select({ id: messages.id })

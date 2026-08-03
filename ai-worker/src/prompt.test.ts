@@ -3,6 +3,7 @@ import {
   buildAdditionalSystemPrompt,
   buildOperatorInstructionBlock,
   buildSummaryPrompt,
+  buildUserPrompt,
   TONE_LABEL,
 } from './prompt'
 
@@ -152,6 +153,41 @@ describe('buildOperatorInstructionBlock (005)', () => {
     const over1000 = 'a'.repeat(1500)
     const block2 = buildOperatorInstructionBlock(over1000)
     expect(block2).toContain(over1000)
+  })
+})
+
+describe('buildUserPrompt (005 follow-up: instruction re-echo)', () => {
+  const history = [
+    { direction: 'inbound', body: 'How much is the OP-09 set?', messageType: 'text' },
+  ]
+  const unanswered = [{ body: 'How much is the OP-09 set?' }]
+
+  it('does NOT append an operator block when no instruction is given', () => {
+    const result = buildUserPrompt(history, unanswered)
+    expect(result).not.toContain('## Operator instruction for this draft (overrides')
+  })
+
+  it('does NOT append an operator block for a whitespace-only instruction', () => {
+    const result = buildUserPrompt(history, unanswered, '   \n\t ')
+    expect(result).not.toContain('## Operator instruction')
+  })
+
+  it('appends the operator instruction as the FINAL block of the user turn', () => {
+    const result = buildUserPrompt(history, unanswered, 'say we will follow up later')
+    expect(result).toContain('## Operator instruction for this draft (overrides the request above)')
+    expect(result).toContain('say we will follow up later')
+    // Must be the last thing the model reads — after the unanswered directive.
+    const opIdx = result.indexOf('## Operator instruction for this draft (overrides')
+    const unansweredIdx = result.indexOf('## Unanswered customer messages')
+    expect(unansweredIdx).toBeGreaterThanOrEqual(0)
+    expect(opIdx).toBeGreaterThan(unansweredIdx)
+    expect(result.trimEnd().endsWith('say we will follow up later')).toBe(true)
+  })
+
+  it('trims the instruction before echoing', () => {
+    const result = buildUserPrompt(history, unanswered, '  do X  ')
+    expect(result).toContain('\ndo X')
+    expect(result).not.toContain('  do X  ')
   })
 })
 
