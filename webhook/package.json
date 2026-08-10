@@ -11,9 +11,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1090.0",
-    "@aws-sdk/client-sqs": "^3.1090.0",
-    "@aws-sdk/client-ssm": "^3.1090.0",
+    "@aws-sdk/client-s3": "^3.1101.0",
+    "@aws-sdk/client-sqs": "^3.1101.0",
+    "@aws-sdk/client-ssm": "^3.1101.0",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9",
     "zod": "^4.4.3"
