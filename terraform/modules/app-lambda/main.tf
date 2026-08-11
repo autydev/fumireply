@@ -89,11 +89,13 @@ data "aws_iam_policy_document" "app_lambda_policy" {
   }
 
   # 009: 保存済み添付メディアの presigned GET URL 発行に必要な読み取り権限 (Get のみ)
+  # 010: 送信側メディアの presigned PUT URL 発行に PutObject を追加。HeadObject は
+  #      既存 s3:GetObject でカバー (ListBucket は付けない)。
   dynamic "statement" {
     for_each = var.media_bucket_arn != "" ? [1] : []
     content {
       sid       = "S3GetMediaObject"
-      actions   = ["s3:GetObject"]
+      actions   = ["s3:GetObject", "s3:PutObject"]
       resources = ["${var.media_bucket_arn}/*"]
     }
   }

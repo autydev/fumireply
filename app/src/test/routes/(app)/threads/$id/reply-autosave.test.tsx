@@ -55,6 +55,7 @@ async function renderReplyForm(latestDraft: ConversationDetail['latest_draft']) 
         conversation={makeConversation()}
         latestDraft={latestDraft}
         latestInboundMessageId="msg-1"
+        mediaUploadEnabled={false}
       />
     ),
     initialEntries: [`/threads/${CONV_ID}`],

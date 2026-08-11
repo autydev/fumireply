@@ -37,6 +37,15 @@ variable "additional_domain_names" {
   default     = []
 }
 
+# 010: media バケットへの presigned PUT を許可するブラウザ origin。
+# 本番 origin (https://<domain_name>) は自動で含める。開発用 origin
+# (例 http://localhost:3000) を足したいときに列挙する。
+variable "media_cors_dev_origins" {
+  description = "Extra browser origins allowed to PUT to the media bucket (dev/staging)"
+  type        = list(string)
+  default     = []
+}
+
 variable "route53_zone_id" {
   description = "Route53 hosted zone ID that owns domain_name"
   type        = string

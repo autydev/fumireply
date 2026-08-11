@@ -21,7 +21,13 @@ beforeAll(() => {
   vi.stubEnv('SUPABASE_URL', 'https://test.supabase.co')
   vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'test-key')
   vi.stubEnv('SUPABASE_SECRET_KEY', 'test-secret')
+  vi.stubEnv('META_APP_ID', 'test-app-id')
+  vi.stubEnv('META_APP_SECRET_SSM_KEY', '/test/meta/secret')
+  vi.stubEnv('WEBHOOK_VERIFY_TOKEN_SSM_KEY', '/test/webhook/token')
+  vi.stubEnv('ANTHROPIC_API_KEY_SSM_KEY', '/test/anthropic/key')
   vi.stubEnv('AWS_REGION', 'ap-northeast-1')
+  // 010: mediaUploadEnabled フラグ検証用。設定済み → true になること
+  vi.stubEnv('MEDIA_BUCKET_NAME', 'test-media-bucket')
 })
 afterAll(() => {
   vi.unstubAllEnvs()
@@ -73,6 +79,7 @@ describe('ConversationDetail — summary fields (T051)', () => {
       },
       messages: [],
       latest_draft: null,
+      mediaUploadEnabled: false,
     } satisfies ConversationDetail
 
     expect(detail.conversation.summary).toBe('Customer asked about Charizard.')
@@ -96,6 +103,7 @@ describe('ConversationDetail — summary fields (T051)', () => {
       },
       messages: [],
       latest_draft: null,
+      mediaUploadEnabled: false,
     } satisfies ConversationDetail
 
     expect(detail.conversation.summary).toBeNull()
@@ -290,6 +298,12 @@ describe('handleGetConversation — attachments (009 T018/T027)', () => {
       expect(Object.keys(att).sort()).toEqual(['index', 'type', 'url'])
     }
     expect(mockGetAttachmentUrl).toHaveBeenCalledTimes(1)
+  })
+
+  it('010: MEDIA_BUCKET_NAME 設定済みなら mediaUploadEnabled=true (additive フラグ)', async () => {
+    const tx = makeGetConversationTx([[CONV_ROW], [], []])
+    const result = await handleGetConversation(tx, TENANT_ID, CONV_ID)
+    expect(result.mediaUploadEnabled).toBe(true)
   })
 
   it('returns [] for legacy rows (attachments NULL) and keeps message_type-driven rendering possible', async () => {
