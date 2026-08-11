@@ -425,6 +425,37 @@ describe('handleSendReply — attachment', () => {
     if (!result.ok) expect(result.error).toBe('outside_window')
   })
 
+  // T024: 画像送信失敗時に outbound_attachment_send_failed が reason 付き event JSON で出る
+  it('T024: image 送信失敗で outbound_attachment_send_failed (reason=meta_error) を warn ログ', async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ContentType: 'image/jpeg', ContentLength: 300 })
+    server.use(
+      http.post(META_MESSAGES_URL, () => HttpResponse.json({ error: { code: 100 } }, { status: 400 })),
+    )
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const tx = buildMockTx({})
+    const { handleSendReply } = await import('./send-reply.server')
+    const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
+      conversationId: CONVERSATION_ID,
+      body: '',
+      attachment: { s3Key: VALID_KEY },
+    })
+
+    expect(result.ok).toBe(false)
+    const log = warnSpy.mock.calls.find(
+      (c) => (c[0] as { event?: string })?.event === 'outbound_attachment_send_failed',
+    )
+    expect(log).toBeDefined()
+    expect(log![0]).toMatchObject({
+      event: 'outbound_attachment_send_failed',
+      tenantId: TENANT_ID,
+      conversationId: CONVERSATION_ID,
+      s3Key: VALID_KEY,
+      reason: 'meta_error',
+    })
+    warnSpy.mockRestore()
+  })
+
   it('echo claim が image パーツでも働く (mid UNIQUE 衝突)', async () => {
     s3Mock.on(HeadObjectCommand).resolves({ ContentType: 'image/png', ContentLength: 500 })
     server.use(

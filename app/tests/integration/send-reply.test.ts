@@ -72,8 +72,18 @@ function buildTx(opts: {
   lastInboundAt?: Date | null
   pageExists?: boolean
   insertId?: string
+  /** 006/010: 1 つ目の messages.update() (mid 書き戻し) で UNIQUE 違反を投げる */
+  midWriteThrowsUnique?: boolean
+  /** attribute 補正で claimed 行が返す ID */
+  claimedRowId?: string
 }): TenantTx {
-  const { lastInboundAt = LAST_INBOUND_AT, pageExists = true, insertId = MSG_ID } = opts
+  const {
+    lastInboundAt = LAST_INBOUND_AT,
+    pageExists = true,
+    insertId = MSG_ID,
+    midWriteThrowsUnique = false,
+    claimedRowId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+  } = opts
 
   const convRow  = { id: CONV_ID, customerPsid: PSID, lastInboundAt }
   const pageRow  = { pageAccessTokenEncrypted: Buffer.from('enc') }
@@ -102,14 +112,37 @@ function buildTx(opts: {
   insertChain.values = vi.fn().mockReturnValue(insertChain)
   insertChain.returning = vi.fn().mockResolvedValue([insertedRow])
 
-  const updateChain: Record<string, unknown> = {}
-  updateChain.set = vi.fn().mockReturnValue(updateChain)
-  updateChain.where = vi.fn().mockResolvedValue(undefined)
+  // 006/010: update() は呼び出し順で切り替える。1 回目 (mid 書き戻し) だけ UNIQUE を投げ、
+  // 補正パスの 2 回目は where().returning() で claimed 行を返す。
+  let updateCallCount = 0
+  const makeUpdateChain = () => {
+    const idx = ++updateCallCount
+    const chain: Record<string, unknown> = {}
+    chain.set = vi.fn().mockReturnValue(chain)
+    if (idx === 1 && midWriteThrowsUnique) {
+      chain.where = vi.fn().mockReturnValue(
+        Promise.reject({
+          code: '23505',
+          constraint_name: 'messages_meta_message_id_unique',
+          message: 'duplicate key value violates unique constraint',
+        }),
+      )
+    } else {
+      chain.where = vi.fn().mockReturnValue({
+        then: (resolve: (v: undefined) => void) => resolve(undefined),
+        returning: vi.fn().mockResolvedValue([{ id: claimedRowId }]),
+      })
+    }
+    return chain
+  }
+
+  const deleteChain: Record<string, unknown> = { where: vi.fn().mockResolvedValue(undefined) }
 
   return {
     select: vi.fn().mockImplementation(makeSelectChain),
     insert: vi.fn().mockReturnValue(insertChain),
-    update: vi.fn().mockReturnValue(updateChain),
+    delete: vi.fn().mockReturnValue(deleteChain),
+    update: vi.fn().mockImplementation(makeUpdateChain),
   } as unknown as TenantTx
 }
 
@@ -248,6 +281,34 @@ describe('send-reply integration — text + image parts', () => {
       body: '',
       attachments: [{ index: 0, type: 'image', s3Key: VALID_KEY, contentType: 'image/jpeg', sizeBytes: 2048 }],
     })
+  })
+
+  // T023 (FR-012): fumireply が送信した画像行の echo が先着 → mid UNIQUE 衝突 →
+  // tentative 行を DELETE して echo 行を claim。行が二重化しないことを確認。
+  // (echo upsert 側が attachments を消さない不変は webhook handler.test.ts T022 で担保)
+  it('T023: image 送信で echo 先着 → tentative 行 DELETE + echo 行 claim (二重化しない)', async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ContentType: 'image/jpeg', ContentLength: 700 })
+    server.use(
+      http.post(META_SEND_URL, () => HttpResponse.json({ message_id: 'mid_echo_img', recipient_id: PSID })),
+    )
+    const ECHO_ROW = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    const mockTx = buildTx({ midWriteThrowsUnique: true, claimedRowId: ECHO_ROW })
+    const result = await handleSendReply(mockTx, TENANT_ID, USER_ID, {
+      conversationId: CONV_ID,
+      body: '',
+      attachment: { s3Key: VALID_KEY },
+    })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.message.id).toBe(ECHO_ROW)
+    // tentative 行を DELETE した
+    expect((mockTx.delete as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBeGreaterThan(0)
+    expect(
+      infoSpy.mock.calls.some((c) => (c[0] as { event?: string })?.event === 'echo_send_attribution_recovered'),
+    ).toBe(true)
+    infoSpy.mockRestore()
   })
 
   it('text 成功 + image 失敗: ok=false / parts で個別成否 / text パーツは成功のまま', async () => {

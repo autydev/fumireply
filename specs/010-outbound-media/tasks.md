@@ -151,13 +151,13 @@ description: "Tasks for 010 — 送信側メディア添付 (オペレーター�
 <!-- unit: U6.1 | deps: U3.2 | scope: test | tasks: T023-T024 | files: 2 | automation: auto -->
 **Unit U6.1 (Regression + logging PR)**: echo 整合と構造化ログの回帰。LOC 概算 ~tests。
 
-- [ ] T023 [P] Add echo-consistency regression test (`app/tests/integration/send-reply.test.ts` or `webhook-receive.test.ts`): fumireply 送信した画像行が echo の mid upsert で二重化せず・`attachments` が消えないこと (FR-012)。echo が先着し claim される経路も 1 ケース (research D7)。webhook 側 DL 失敗時にプレースホルダ化する例外 (低-3) は許容としてコメントで明示。
-- [ ] T024 [P] Verify structured logs per contracts §8: `outbound_upload_url_issued` / `outbound_attachment_send_failed` (reason: `meta_error|timeout|budget_exceeded|head_validation_failed`) / `outbound_attachment_key_rejected` が既存 `event=` JSON 規約で出ること。quickstart の Logs Insights クエリで集計できる形か確認。
+- [x] T023 [P] Add echo-consistency regression test (`app/tests/integration/send-reply.test.ts` or `webhook-receive.test.ts`): fumireply 送信した画像行が echo の mid upsert で二重化せず・`attachments` が消えないこと (FR-012)。echo が先着し claim される経路も 1 ケース (research D7)。webhook 側 DL 失敗時にプレースホルダ化する例外 (低-3) は許容としてコメントで明示。
+- [x] T024 [P] Verify structured logs per contracts §8: `outbound_upload_url_issued` / `outbound_attachment_send_failed` (reason: `meta_error|timeout|budget_exceeded|head_validation_failed`) / `outbound_attachment_key_rejected` が既存 `event=` JSON 規約で出ること。quickstart の Logs Insights クエリで集計できる形か確認。
 
 <!-- unit: U6.2 | deps: U3.4,U4.2,U5.1 | scope: test | tasks: T025 | files: 1 | automation: best-effort -->
 **Unit U6.2 (E2E smoke PR)**: Playwright スモーク (ハーネスは現状 skip、best-effort)。LOC 概算 ~50。
 
-- [ ] T025 [P] Add Playwright smoke to `app/tests/e2e/` per plan Testing: 実行環境に `MEDIA_BUCKET_NAME` があるとき添付ボタンが表示される / 対応外ファイル選択で client 検証エラーが出る (S3 不要)。現状 `tests/e2e/` は seed+login CI 未整備で `describe.skip` のため best-effort とし、ハーネス整備は別作業として明記。
+- [x] T025 [P] Add Playwright smoke to `app/tests/e2e/` per plan Testing: 実行環境に `MEDIA_BUCKET_NAME` があるとき添付ボタンが表示される / 対応外ファイル選択で client 検証エラーが出る (S3 不要)。現状 `tests/e2e/` は seed+login CI 未整備で `describe.skip` のため best-effort とし、ハーネス整備は別作業として明記。
 
 <!-- unit: U6.3 | deps: all | scope: docs | tasks: T026-T027 | files: 0 | automation: manual -->
 **Unit U6.3 (Manual verification)**: デプロイ後の手動検証。コード変更なし。
