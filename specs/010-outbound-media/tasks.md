@@ -34,7 +34,7 @@ description: "Tasks for 010 — 送信側メディア添付 (オペレーター�
 <!-- unit: U1.1 | deps: none | scope: setup | tasks: T001 | files: 0 | automation: auto -->
 **Unit U1.1 (Preflight)**: 依存・スキーマの現状確認のみ。コード変更なし。
 
-- [ ] T001 前提確認: `app/package.json` に `@aws-sdk/client-s3` / `@aws-sdk/s3-request-presigner` が存在すること、`app/src/server/db/schema.ts` の `messages.attachments jsonb` と `MessageAttachment` 型 (009) が存在すること、`app/src/server/env.ts` に `MEDIA_BUCKET_NAME` があることを確認する。いずれも欠けていれば 009 のマージ漏れなので先に解消する (新規追加はしない)。
+- [x] T001 前提確認: `app/package.json` に `@aws-sdk/client-s3` / `@aws-sdk/s3-request-presigner` が存在すること、`app/src/server/db/schema.ts` の `messages.attachments jsonb` と `MessageAttachment` 型 (009) が存在すること、`app/src/server/env.ts` に `MEDIA_BUCKET_NAME` があることを確認する。いずれも欠けていれば 009 のマージ漏れなので先に解消する (新規追加はしない)。
 
 ---
 
@@ -47,20 +47,20 @@ description: "Tasks for 010 — 送信側メディア添付 (オペレーター�
 <!-- unit: U2.1 | deps: U1.1 | scope: backend | tasks: T002-T003 | files: 2 | automation: auto -->
 **Unit U2.1 (Upload Utility PR)**: `media-upload.ts` を unit テスト付きで新設。LOC 概算 ~90 + tests ~90。
 
-- [ ] T002 Create `app/src/server/services/media-upload.ts` per contracts/outbound-media.md §1〜§4: 定数 `ALLOWED_IMAGE_TYPES` / `MAX_ATTACHMENT_BYTES=26_214_400` / `UPLOAD_URL_EXPIRES_IN=300` / `SEND_TOTAL_BUDGET_MS=25_000` / `SEND_MIN_ATTEMPT_MS=1_500`。`buildOutboundKey(tenantId, conversationId)` → `{tenantId}/{conversationId}/outbound/{crypto.randomUUID()}/0`。`isValidOutboundKey(key, tenantId, conversationId)` → 正規表現 `^{tenantId}/{conversationId}/outbound/[0-9a-f-]{36}/0$` 判定。`presignUploadUrl({ bucket, key, contentType, sizeBytes })` → `PutObjectCommand` に **`ContentType` と `ContentLength: sizeBytes` を含めて署名** (research D1) し `getSignedUrl(expiresIn: UPLOAD_URL_EXPIRES_IN)`。`verifyUploadedObject({ bucket, key })` → `HeadObjectCommand` で `{ contentType, contentLength }` を返し、存在しなければ `null`。`S3Client` は `media-url.ts` と同じ lazy singleton / region 方針。
-- [ ] T003 [P] Create `app/src/server/services/media-upload.test.ts`: `aws-sdk-client-mock` で S3 をモック。ケース — `buildOutboundKey` がプレフィックス + UUID + `/0` 形式を返す / `isValidOutboundKey` が自会話キーを通し他テナント・他会話・`outbound` 以外・UUID 不正・index≠0 を弾く / `presignUploadUrl` が署名済み URL に `ContentType`・`ContentLength` を含む (署名ヘッダ or クエリを検証) / `verifyUploadedObject` が Head の値を返す・NoSuchKey で `null`。
+- [x] T002 Create `app/src/server/services/media-upload.ts` per contracts/outbound-media.md §1〜§4: 定数 `ALLOWED_IMAGE_TYPES` / `MAX_ATTACHMENT_BYTES=26_214_400` / `UPLOAD_URL_EXPIRES_IN=300` / `SEND_TOTAL_BUDGET_MS=25_000` / `SEND_MIN_ATTEMPT_MS=1_500`。`buildOutboundKey(tenantId, conversationId)` → `{tenantId}/{conversationId}/outbound/{crypto.randomUUID()}/0`。`isValidOutboundKey(key, tenantId, conversationId)` → 正規表現 `^{tenantId}/{conversationId}/outbound/[0-9a-f-]{36}/0$` 判定。`presignUploadUrl({ bucket, key, contentType, sizeBytes })` → `PutObjectCommand` に **`ContentType` と `ContentLength: sizeBytes` を含めて署名** (research D1) し `getSignedUrl(expiresIn: UPLOAD_URL_EXPIRES_IN)`。`verifyUploadedObject({ bucket, key })` → `HeadObjectCommand` で `{ contentType, contentLength }` を返し、存在しなければ `null`。`S3Client` は `media-url.ts` と同じ lazy singleton / region 方針。
+- [x] T003 [P] Create `app/src/server/services/media-upload.test.ts`: `aws-sdk-client-mock` で S3 をモック。ケース — `buildOutboundKey` がプレフィックス + UUID + `/0` 形式を返す / `isValidOutboundKey` が自会話キーを通し他テナント・他会話・`outbound` 以外・UUID 不正・index≠0 を弾く / `presignUploadUrl` が署名済み URL に `ContentType`・`ContentLength` を含む (署名ヘッダ or クエリを検証) / `verifyUploadedObject` が Head の値を返す・NoSuchKey で `null`。
 
 <!-- unit: U2.2 | deps: U1.1 | scope: backend | tasks: T004a-T004b | files: 2 | automation: auto -->
 **Unit U2.2 (Messenger Image + Deadline PR)**: `messenger.ts` に画像バリアントと deadline 切り詰めを追加。テキスト送信は完全後方互換。LOC 概算 ~35 + tests。
 
-- [ ] T004a Extend `app/src/server/services/messenger.ts` per contracts §5: `sendMessengerReply` の `message` 部を判別 union 化 (`{ text }` | `{ imageUrl }`) するか `sendMessengerImage` を追加し、画像は `message:{ attachment:{ type:'image', payload:{ url, is_reusable:false } } }` を送る。optional `deadlineMs?: number` を追加 — 各試行前に `remaining = deadlineMs - Date.now()`、`remaining < SEND_MIN_ATTEMPT_MS` なら残り試行を打ち切り `{ ok:false, error:'timeout' }`、そうでなければ fetch timeout を `AbortSignal.timeout(min(TIMEOUT_MS, remaining))` にクランプ。`deadlineMs` 省略時は現行と完全同一挙動。エンドポイント・エラーマッピング・`message_id` 取得は共通。
-- [ ] T004b [P] Extend `app/src/server/services/messenger.test.ts`: 画像ペイロード形状 (`attachment.type='image'`, `payload.url`) / deadline 残余で fetch timeout がクランプされる / `remaining < SEND_MIN_ATTEMPT_MS` で Meta を呼ばず `timeout` を返す / `deadlineMs` 省略時は既存テストどおり。既存テストが無変更で通ること。
+- [x] T004a Extend `app/src/server/services/messenger.ts` per contracts §5: `sendMessengerReply` の `message` 部を判別 union 化 (`{ text }` | `{ imageUrl }`) するか `sendMessengerImage` を追加し、画像は `message:{ attachment:{ type:'image', payload:{ url, is_reusable:false } } }` を送る。optional `deadlineMs?: number` を追加 — 各試行前に `remaining = deadlineMs - Date.now()`、`remaining < SEND_MIN_ATTEMPT_MS` なら残り試行を打ち切り `{ ok:false, error:'timeout' }`、そうでなければ fetch timeout を `AbortSignal.timeout(min(TIMEOUT_MS, remaining))` にクランプ。`deadlineMs` 省略時は現行と完全同一挙動。エンドポイント・エラーマッピング・`message_id` 取得は共通。
+- [x] T004b [P] Extend `app/src/server/services/messenger.test.ts`: 画像ペイロード形状 (`attachment.type='image'`, `payload.url`) / deadline 残余で fetch timeout がクランプされる / `remaining < SEND_MIN_ATTEMPT_MS` で Meta を呼ばず `timeout` を返す / `deadlineMs` 省略時は既存テストどおり。既存テストが無変更で通ること。
 
 <!-- unit: U2.3 | deps: U1.1 | scope: infra | tasks: T005-T006 | files: 3 | automation: manual-apply -->
 **Unit U2.3 (Terraform PR)**: app-lambda IAM に `s3:PutObject` 追加 + media バケット CORS。`terraform plan` を PR に貼り apply は人手 (quickstart §1)。LOC 概算 ~40。
 
-- [ ] T005 Update `terraform/modules/app-lambda/main.tf` per contracts §9: 既存 IAM statement `S3GetMediaObject` の `actions` に `s3:PutObject` を追加 (対象は `"${var.media_bucket_arn}/*"`、`ListBucket` は付けない)。HeadObject は既存 `s3:GetObject` でカバー。変数・env・memory・timeout は変更なし。
-- [ ] T006 [P] Add `aws_s3_bucket_cors_configuration.media` to `terraform/envs/review/main.tf` per contracts §9: `cors_rule` = `allowed_methods=["PUT"]`, `allowed_origins=["https://${var.domain_name}"]`, `allowed_headers=["content-type"]`, `max_age_seconds=3600`。開発用 origin を足せるよう変数化を検討 (任意)。
+- [x] T005 Update `terraform/modules/app-lambda/main.tf` per contracts §9: 既存 IAM statement `S3GetMediaObject` の `actions` に `s3:PutObject` を追加 (対象は `"${var.media_bucket_arn}/*"`、`ListBucket` は付けない)。HeadObject は既存 `s3:GetObject` でカバー。変数・env・memory・timeout は変更なし。
+- [x] T006 [P] Add `aws_s3_bucket_cors_configuration.media` to `terraform/envs/review/main.tf` per contracts §9: `cors_rule` = `allowed_methods=["PUT"]`, `allowed_origins=["https://${var.domain_name}"]`, `allowed_headers=["content-type"]`, `max_age_seconds=3600`。開発用 origin を足せるよう変数化を検討 (任意)。
 
 **Checkpoint**: Foundation ready — US1 に着手可能。US2/US3 は US1 の parts ループ・UI を土台にするため US1 完了後。
 
@@ -75,27 +75,27 @@ description: "Tasks for 010 — 送信側メディア添付 (オペレーター�
 <!-- unit: U3.1 | deps: U2.1 | scope: backend | tasks: T007-T008 | files: 3 | automation: auto -->
 **Unit U3.1 (Upload URL fn PR)**: 事前アップロード URL 発行の server fn を新設。LOC 概算 ~70 + tests。
 
-- [ ] T007 Create `app/src/routes/(app)/threads/$id/-lib/create-upload-url.server.ts` + `create-upload-url.fn.ts` per contracts §2: Input zod `{ conversationId: uuid, contentType: enum(ALLOWED_IMAGE_TYPES), sizeBytes: int 1..MAX_ATTACHMENT_BYTES }`。`authMiddleware` + `withTenant` で会話帰属を検証 (無ければ `not_found`)、24h ウィンドウ検証 (`lastInboundAt`、期外 `outside_window`)、`MEDIA_BUCKET_NAME` 未設定なら `not_configured`。`buildOutboundKey` でキー採番 → `presignUploadUrl` で PUT URL 発行。`outbound_upload_url_issued` を info ログ。Output `{ ok:true, s3Key, uploadUrl } | { ok:false, error }`。純ロジックは `.server.ts`、fn は委譲。
-- [ ] T008 [P] [US1] Create `app/src/routes/(app)/threads/$id/-lib/create-upload-url.fn.test.ts`: allowlist 外 contentType / sizeBytes 超過・0 / 会話が別テナント → not_found / ウィンドウ外 → outside_window / MEDIA_BUCKET_NAME 未設定 → not_configured / 正常系でキー形式 + presign 呼び出し。`media-upload` はモック or 実関数 + S3 mock。
+- [x] T007 Create `app/src/routes/(app)/threads/$id/-lib/create-upload-url.server.ts` + `create-upload-url.fn.ts` per contracts §2: Input zod `{ conversationId: uuid, contentType: enum(ALLOWED_IMAGE_TYPES), sizeBytes: int 1..MAX_ATTACHMENT_BYTES }`。`authMiddleware` + `withTenant` で会話帰属を検証 (無ければ `not_found`)、24h ウィンドウ検証 (`lastInboundAt`、期外 `outside_window`)、`MEDIA_BUCKET_NAME` 未設定なら `not_configured`。`buildOutboundKey` でキー採番 → `presignUploadUrl` で PUT URL 発行。`outbound_upload_url_issued` を info ログ。Output `{ ok:true, s3Key, uploadUrl } | { ok:false, error }`。純ロジックは `.server.ts`、fn は委譲。
+- [x] T008 [P] [US1] Create `app/src/routes/(app)/threads/$id/-lib/create-upload-url.fn.test.ts`: allowlist 外 contentType / sizeBytes 超過・0 / 会話が別テナント → not_found / ウィンドウ外 → outside_window / MEDIA_BUCKET_NAME 未設定 → not_configured / 正常系でキー形式 + presign 呼び出し。`media-upload` はモック or 実関数 + S3 mock。
 
 <!-- unit: U3.2 | deps: U2.1,U2.2,U3.1 | scope: backend | tasks: T009-T011 | files: 3 | automation: auto -->
 **Unit U3.2 (Send image PR)**: `sendReplyFn` を attachment 対応に拡張 + parts 処理ヘルパーを新設 (画像単独送信を成立させる)。LOC 概算 ~130 + tests。
 
-- [ ] T009 [US1] Extend Input + 共有ヘルパー: `send-reply.fn.ts` の zod を `{ conversationId, body: string(trim), attachment?: { s3Key } }` にし `body` か `attachment` の一方必須 (`refine`)。パーツ 1 件を処理する共有ヘルパー `processSendPart(tx, ctx, deadlineMs, part)` を抽出 — pending INSERT (image パーツは `messageType:'image'`, `body:''`, `attachments:[{index:0,type:'image',s3Key,contentType,sizeBytes}]`) → `sendMessengerReply(..., deadlineMs)` → TX2 (sent+metaMessageId / failed+sendError、`timeout`→`meta_error` 写像、mid unique 衝突の echo claim 回復)。**本番は `fn.ts` インライン・`server.ts` はテスト用の別実装**なので両方に反映 (contracts M-1 注記)。
-- [ ] T010 [US1] Wire attachment path in `send-reply.fn.ts` per contracts §4: attachment ありのとき — `isValidOutboundKey` 検証 (不一致 → `validation_failed` + `outbound_attachment_key_rejected` warn)、`verifyUploadedObject` (存在/ContentType allowlist/サイズ ≤ MAX、外れは `validation_failed`)、`MEDIA_BUCKET_NAME` 未設定は `validation_failed`。`deadlineMs = Date.now() + SEND_TOTAL_BUDGET_MS` を確定し、parts = `[image]` (US1 は body 空前提) を `processSendPart` で処理。成功時に `lastMessageAt` 更新 / draft dismiss / `maybeEnqueueSummaryJob` を 1 回。presigned GET は `getAttachmentUrl(s3Key)`。`send-reply.server.ts` (テスト用) にも同等反映。**attachment 省略時は入出力・DB とも従来と完全一致** (contracts §10)。
-- [ ] T011 [P] [US1] Extend `send-reply.fn.test.ts` (+ `send-reply.server.ts` の unit): 画像単独送信で `messageType='image'`/`body=''`/`attachments` が入る・Meta に画像ペイロード・`sent`+metaMessageId / 不正 s3Key で `validation_failed` + key_rejected ログ / Head 検証失敗で `validation_failed` / echo claim がパーツで働く / **attachment 省略時に既存アサート (`result.message.*`) が無変更で通る**。
+- [x] T009 [US1] Extend Input + 共有ヘルパー: `send-reply.fn.ts` の zod を `{ conversationId, body: string(trim), attachment?: { s3Key } }` にし `body` か `attachment` の一方必須 (`refine`)。パーツ 1 件を処理する共有ヘルパー `processSendPart(tx, ctx, deadlineMs, part)` を抽出 — pending INSERT (image パーツは `messageType:'image'`, `body:''`, `attachments:[{index:0,type:'image',s3Key,contentType,sizeBytes}]`) → `sendMessengerReply(..., deadlineMs)` → TX2 (sent+metaMessageId / failed+sendError、`timeout`→`meta_error` 写像、mid unique 衝突の echo claim 回復)。**本番は `fn.ts` インライン・`server.ts` はテスト用の別実装**なので両方に反映 (contracts M-1 注記)。
+- [x] T010 [US1] Wire attachment path in `send-reply.fn.ts` per contracts §4: attachment ありのとき — `isValidOutboundKey` 検証 (不一致 → `validation_failed` + `outbound_attachment_key_rejected` warn)、`verifyUploadedObject` (存在/ContentType allowlist/サイズ ≤ MAX、外れは `validation_failed`)、`MEDIA_BUCKET_NAME` 未設定は `validation_failed`。`deadlineMs = Date.now() + SEND_TOTAL_BUDGET_MS` を確定し、parts = `[image]` (US1 は body 空前提) を `processSendPart` で処理。成功時に `lastMessageAt` 更新 / draft dismiss / `maybeEnqueueSummaryJob` を 1 回。presigned GET は `getAttachmentUrl(s3Key)`。`send-reply.server.ts` (テスト用) にも同等反映。**attachment 省略時は入出力・DB とも従来と完全一致** (contracts §10)。
+- [x] T011 [P] [US1] Extend `send-reply.fn.test.ts` (+ `send-reply.server.ts` の unit): 画像単独送信で `messageType='image'`/`body=''`/`attachments` が入る・Meta に画像ペイロード・`sent`+metaMessageId / 不正 s3Key で `validation_failed` + key_rejected ログ / Head 検証失敗で `validation_failed` / echo claim がパーツで働く / **attachment 省略時に既存アサート (`result.message.*`) が無変更で通る**。
 
 <!-- unit: U3.3 | deps: U2.1 | scope: backend | tasks: T012 | files: 1 | automation: auto -->
 **Unit U3.3 (mediaUploadEnabled flag PR)**: 表示 fn にフラグを additive 追加。LOC 概算 ~5 + テスト調整。
 
-- [ ] T012 [US1] Add `mediaUploadEnabled: Boolean(env.MEDIA_BUCKET_NAME)` to the `getConversationFn` response in `app/src/routes/(app)/threads/$id/-lib/get-conversation.fn.ts` (contracts §6, research D6)。`ConversationDetail` 型に additive で追加し既存フィールドは不変。`app/tests/integration/conversation-fns.test.ts` にフラグ検証を 1 ケース追加。
+- [x] T012 [US1] Add `mediaUploadEnabled: Boolean(env.MEDIA_BUCKET_NAME)` to the `getConversationFn` response in `app/src/routes/(app)/threads/$id/-lib/get-conversation.fn.ts` (contracts §6, research D6)。`ConversationDetail` 型に additive で追加し既存フィールドは不変。`app/tests/integration/conversation-fns.test.ts` にフラグ検証を 1 ケース追加。
 
 <!-- unit: U3.4 | deps: U3.1,U3.2,U3.3 | scope: frontend | tasks: T013-T015 | files: 3 | automation: auto -->
 **Unit U3.4 (ReplyForm image send PR)**: 返信フォームに添付 → アップロード → 画像送信を実装。LOC 概算 ~120 + i18n。
 
-- [ ] T013 [US1] Add attachment UI to `app/src/routes/(app)/threads/$id/-components/ReplyForm.tsx` per contracts §7: `mediaUploadEnabled && !isWindowClosed` のとき 📎 ボタン (`<input type="file" accept="image/*">`) を表示。選択で `createUploadUrlFn` → S3 直接 `PUT` (`fetch`, `content-type` ヘッダ)。状態機械 `idle→picked→uploading→ready`、`URL.createObjectURL` プレビュー + 取り消し (revoke 忘れず)。`props` に `mediaUploadEnabled` を通す (`index.tsx` の受け渡し追加)。
-- [ ] T014 [US1] Relax send guards + wire image send in `ReplyForm.tsx` per contracts §7 (レビュー M-3): `handleSubmit` early-return (現 `:162`)・送信ボタン `disabled`/`aria-disabled` (`:477-478`)・`background`/`cursor` (`:488-489`) を `!body.trim() && !attachment` に緩める。送信時 `sendReplyFn({ conversationId, body, attachment: { s3Key } })` を呼び、成功で body/添付をクリアし `router.invalidate()`。
-- [ ] T015 [P] [US1] Add i18n keys to `app/messages/ja.json` + `app/messages/en.json`: `thread_attach_image` / `thread_attach_remove` / `thread_attach_invalid_type` / `thread_attach_too_large` / `thread_attach_upload_failed` / `thread_attach_partial_failure` (contracts §7、命名は既存 `reply_error_*` 規約に合わせる)。`npm run paraglide:compile` が通ること。
+- [x] T013 [US1] Add attachment UI to `app/src/routes/(app)/threads/$id/-components/ReplyForm.tsx` per contracts §7: `mediaUploadEnabled && !isWindowClosed` のとき 📎 ボタン (`<input type="file" accept="image/*">`) を表示。選択で `createUploadUrlFn` → S3 直接 `PUT` (`fetch`, `content-type` ヘッダ)。状態機械 `idle→picked→uploading→ready`、`URL.createObjectURL` プレビュー + 取り消し (revoke 忘れず)。`props` に `mediaUploadEnabled` を通す (`index.tsx` の受け渡し追加)。
+- [x] T014 [US1] Relax send guards + wire image send in `ReplyForm.tsx` per contracts §7 (レビュー M-3): `handleSubmit` early-return (現 `:162`)・送信ボタン `disabled`/`aria-disabled` (`:477-478`)・`background`/`cursor` (`:488-489`) を `!body.trim() && !attachment` に緩める。送信時 `sendReplyFn({ conversationId, body, attachment: { s3Key } })` を呼び、成功で body/添付をクリアし `router.invalidate()`。
+- [x] T015 [P] [US1] Add i18n keys to `app/messages/ja.json` + `app/messages/en.json`: `thread_attach_image` / `thread_attach_remove` / `thread_attach_invalid_type` / `thread_attach_too_large` / `thread_attach_upload_failed` / `thread_attach_partial_failure` (contracts §7、命名は既存 `reply_error_*` 規約に合わせる)。`npm run paraglide:compile` が通ること。
 
 **Checkpoint**: 画像単独送信が end-to-end で動作 (MVP)。顧客に届き、自社スレッドにも表示される。
 
@@ -110,13 +110,13 @@ description: "Tasks for 010 — 送信側メディア添付 (オペレーター�
 <!-- unit: U4.1 | deps: U3.2 | scope: backend | tasks: T016-T017 | files: 3 | automation: auto -->
 **Unit U4.1 (Parts loop PR)**: `sendReplyFn` を 2 パーツ逐次 + 共有 deadline に一般化。LOC 概算 ~50 + tests。
 
-- [ ] T016 [US2] Generalize `send-reply.fn.ts` (+ `server.ts`) to sequential parts per contracts §4 / research D4: parts = `body ? [text, image] : [image]`。**共有 `deadlineMs` を両パーツの `sendMessengerReply` に渡す** (2 通合計を `SEND_TOTAL_BUDGET_MS` に収める)。text パーツの sent/failed 確定後に image パーツを開始 (順序保証)。1 通目失敗でも 2 通目は独立試行 (予算共有のトレードオフは D4)。`lastMessageAt`/draft dismiss/`maybeEnqueueSummaryJob` はいずれかのパーツ成功後に 1 回 (レビュー N-2)。Output に `parts: PartResult[]` を additive 付与、`message` は最後に成功したパーツ (contracts M-2)。
-- [ ] T017 [P] [US2] Add parts tests to `send-reply.fn.test.ts` + `app/tests/integration/send-reply.test.ts`: テキスト+画像で 2 行 INSERT (text→image の timestamp 順) / text 成功 + image 失敗で `parts` が個別成否・`ok:false`・`message` は text 行 / 共有 deadline で 1 通目が予算を食うと 2 通目が試行なしで `meta_error` / summary trigger は 1 回だけ / 統合テストで attachments JSONB 形状。
+- [x] T016 [US2] Generalize `send-reply.fn.ts` (+ `server.ts`) to sequential parts per contracts §4 / research D4: parts = `body ? [text, image] : [image]`。**共有 `deadlineMs` を両パーツの `sendMessengerReply` に渡す** (2 通合計を `SEND_TOTAL_BUDGET_MS` に収める)。text パーツの sent/failed 確定後に image パーツを開始 (順序保証)。1 通目失敗でも 2 通目は独立試行 (予算共有のトレードオフは D4)。`lastMessageAt`/draft dismiss/`maybeEnqueueSummaryJob` はいずれかのパーツ成功後に 1 回 (レビュー N-2)。Output に `parts: PartResult[]` を additive 付与、`message` は最後に成功したパーツ (contracts M-2)。
+- [x] T017 [P] [US2] Add parts tests to `send-reply.fn.test.ts` + `app/tests/integration/send-reply.test.ts`: テキスト+画像で 2 行 INSERT (text→image の timestamp 順) / text 成功 + image 失敗で `parts` が個別成否・`ok:false`・`message` は text 行 / 共有 deadline で 1 通目が予算を食うと 2 通目が試行なしで `meta_error` / summary trigger は 1 回だけ / 統合テストで attachments JSONB 形状。
 
 <!-- unit: U4.2 | deps: U4.1,U3.4 | scope: frontend | tasks: T018 | files: 1 | automation: auto -->
 **Unit U4.2 (Combined send UI PR)**: 返信フォームでテキスト+画像同時送信と部分失敗表示。LOC 概算 ~40。
 
-- [ ] T018 [US2] Update `ReplyForm.tsx` per contracts §7: テキストと添付が両方あるとき両方を保持して送信し、レスポンスの `parts` を見て部分失敗を表示 (`thread_attach_partial_failure` — 「テキストは送信済み、画像は失敗」)。成功パーツはクリア、失敗パーツは再送可能な状態を保つ (再送の詳細は US3 T021)。
+- [x] T018 [US2] Update `ReplyForm.tsx` per contracts §7: テキストと添付が両方あるとき両方を保持して送信し、レスポンスの `parts` を見て部分失敗を表示 (`thread_attach_partial_failure` — 「テキストは送信済み、画像は失敗」)。成功パーツはクリア、失敗パーツは再送可能な状態を保つ (再送の詳細は US3 T021)。
 
 **Checkpoint**: テキスト+画像の 2 通送信が動作。US1・US2 が独立に機能する。
 
@@ -131,14 +131,14 @@ description: "Tasks for 010 — 送信側メディア添付 (オペレーター�
 <!-- unit: U5.1 | deps: U3.4 | scope: frontend | tasks: T019-T021 | files: 2 | automation: auto -->
 **Unit U5.1 (Client validation + error mapping PR)**: 選択時検証・エラー表示・再発行/再送。LOC 概算 ~60。
 
-- [ ] T019 [US3] Add client-side validation to `ReplyForm.tsx` per contracts §7: 選択時に `ALLOWED_IMAGE_TYPES` / `MAX_ATTACHMENT_BYTES` を検証し、外れは `thread_attach_invalid_type` / `thread_attach_too_large` を即表示してアップロードに進まない (`media-upload.ts` の定数を client からも参照)。
-- [ ] T020 [US3] Wire error-code → i18n mapping in `ReplyForm.tsx` per contracts §7 の対応表: `createUploadUrlFn` の `outside_window`→`reply_error_outside_window` 流用 / `not_found`・`not_configured`・`validation_failed`・S3 PUT 403 → `thread_attach_upload_failed` / `sendReplyFn` のエラーは既存 `reply_error_*` マッピング流用。generic フォールバックも用意。
-- [ ] T021 [US3] Implement upload-URL re-issue + failed-part re-send in `ReplyForm.tsx` per contracts §3/§7 (レビュー 低-4/低-5): アップロード失敗時は古い URL/キーを捨て `createUploadUrlFn` を呼び直して再試行。part 部分失敗の再送は **失敗パーツのみ** — text 成功 + image 失敗なら body を空にして attachment だけで `sendReplyFn` を呼ぶ (テキスト二重送信防止)。成功済みテキストは入力欄からクリア。
+- [x] T019 [US3] Add client-side validation to `ReplyForm.tsx` per contracts §7: 選択時に `ALLOWED_IMAGE_TYPES` / `MAX_ATTACHMENT_BYTES` を検証し、外れは `thread_attach_invalid_type` / `thread_attach_too_large` を即表示してアップロードに進まない (`media-upload.ts` の定数を client からも参照)。
+- [x] T020 [US3] Wire error-code → i18n mapping in `ReplyForm.tsx` per contracts §7 の対応表: `createUploadUrlFn` の `outside_window`→`reply_error_outside_window` 流用 / `not_found`・`not_configured`・`validation_failed`・S3 PUT 403 → `thread_attach_upload_failed` / `sendReplyFn` のエラーは既存 `reply_error_*` マッピング流用。generic フォールバックも用意。
+- [x] T021 [US3] Implement upload-URL re-issue + failed-part re-send in `ReplyForm.tsx` per contracts §3/§7 (レビュー 低-4/低-5): アップロード失敗時は古い URL/キーを捨て `createUploadUrlFn` を呼び直して再試行。part 部分失敗の再送は **失敗パーツのみ** — text 成功 + image 失敗なら body を空にして attachment だけで `sendReplyFn` を呼ぶ (テキスト二重送信防止)。成功済みテキストは入力欄からクリア。
 
 <!-- unit: U5.2 | deps: U3.2 | scope: backend | tasks: T022 | files: 2 | automation: auto -->
 **Unit U5.2 (Server guard regression PR)**: サーバー側の拒否経路をテストで固定。LOC 概算 ~tests。
 
-- [ ] T022 [US3] Add server-side rejection tests to `create-upload-url.fn.test.ts` + `send-reply.fn.test.ts`: フォームを開いたまま期限切れ (ウィンドウ ドリフト) → `createUploadUrlFn` と `sendReplyFn` (TX1) の双方で `outside_window` / client 検証を迂回した過大 sizeBytes・allowlist 外 contentType をサーバーが拒否 / 他テナント・他会話の s3Key 持ち込みを `sendReplyFn` が拒否し `outbound_attachment_key_rejected` を出す (FR-010)。
+- [x] T022 [US3] Add server-side rejection tests to `create-upload-url.fn.test.ts` + `send-reply.fn.test.ts`: フォームを開いたまま期限切れ (ウィンドウ ドリフト) → `createUploadUrlFn` と `sendReplyFn` (TX1) の双方で `outside_window` / client 検証を迂回した過大 sizeBytes・allowlist 外 contentType をサーバーが拒否 / 他テナント・他会話の s3Key 持ち込みを `sendReplyFn` が拒否し `outbound_attachment_key_rejected` を出す (FR-010)。
 
 **Checkpoint**: 全 US が独立に機能。検証・失敗表示・再送が揃う。
 

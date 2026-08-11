@@ -7,8 +7,12 @@ process.env.SUPABASE_SECRET_KEY = 'test-secret'
 process.env.META_APP_SECRET_SSM_KEY = '/test/meta/secret'
 process.env.WEBHOOK_VERIFY_TOKEN_SSM_KEY = '/test/webhook/token'
 process.env.ANTHROPIC_API_KEY_SSM_KEY = '/test/anthropic/key'
+process.env.META_APP_ID = 'test-app-id'
 process.env.AWS_REGION = 'ap-northeast-1'
+process.env.MEDIA_BUCKET_NAME = 'test-media-bucket'
 
+import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { mockClient } from 'aws-sdk-client-mock'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -22,11 +26,14 @@ vi.mock('~/server/db/client', () => ({
 
 const META_MESSAGES_URL = 'https://graph.facebook.com/v19.0/me/messages'
 
+const s3Mock = mockClient(S3Client)
+
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))
 afterEach(() => {
   server.resetHandlers()
   vi.clearAllMocks()
+  s3Mock.reset()
 })
 afterAll(() => server.close())
 
@@ -262,4 +269,186 @@ describe('handleSendReply', () => {
     },
     10_000, // allow time for 3 retry backoff cycles
   )
+})
+
+// 010: attachment パス (US1 画像単独送信)
+describe('handleSendReply — attachment', () => {
+  const VALID_KEY = `${TENANT_ID}/${CONVERSATION_ID}/outbound/11111111-1111-4111-8111-111111111111/0`
+
+  beforeAll(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(NOW)
+  })
+  afterAll(() => vi.restoreAllMocks())
+
+  function captureInsertValues(tx: TenantTx): Record<string, unknown>[] {
+    const valuesFn = (tx as unknown as { values: { mock: { calls: unknown[][] } } }).values
+    return valuesFn.mock.calls.map((c) => c[0] as Record<string, unknown>)
+  }
+
+  it('画像単独送信: messageType=image / body="" / attachments を INSERT し image ペイロードで送信', async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ContentType: 'image/jpeg', ContentLength: 1234 })
+    let sentBody: unknown
+    server.use(
+      http.post(META_MESSAGES_URL, async ({ request }) => {
+        sentBody = await request.json()
+        return HttpResponse.json({ recipient_id: 'psid-123', message_id: 'm_img_1' })
+      }),
+    )
+
+    const tx = buildMockTx({})
+    const { handleSendReply } = await import('./send-reply.server')
+    const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
+      conversationId: CONVERSATION_ID,
+      body: '',
+      attachment: { s3Key: VALID_KEY },
+    })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.parts).toEqual([{ kind: 'image', ok: true, error: undefined }])
+      expect(result.message.send_status).toBe('sent')
+    }
+    // INSERT された行が image メタを持つ
+    const inserts = captureInsertValues(tx)
+    const imageInsert = inserts.find((v) => v.messageType === 'image')
+    expect(imageInsert).toBeDefined()
+    expect(imageInsert!.body).toBe('')
+    expect(imageInsert!.attachments).toEqual([
+      { index: 0, type: 'image', s3Key: VALID_KEY, contentType: 'image/jpeg', sizeBytes: 1234 },
+    ])
+    // Meta へ画像 attachment ペイロード
+    expect(sentBody).toMatchObject({ message: { attachment: { type: 'image' } } })
+  })
+
+  it('不正な s3Key (他会話) は送信前に validation_failed + key_rejected ログ', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const otherConvKey = `${TENANT_ID}/00000000-0000-0000-0000-0000000000ee/outbound/11111111-1111-4111-8111-111111111111/0`
+
+    const tx = buildMockTx({})
+    const { handleSendReply } = await import('./send-reply.server')
+    const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
+      conversationId: CONVERSATION_ID,
+      body: '',
+      attachment: { s3Key: otherConvKey },
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('validation_failed')
+    const rejected = warnSpy.mock.calls.find(
+      (c) => (c[0] as { event?: string })?.event === 'outbound_attachment_key_rejected',
+    )
+    expect(rejected).toBeDefined()
+    // 送信前に弾くので Meta も INSERT も走らない
+    expect(captureInsertValues(tx)).toHaveLength(0)
+    warnSpy.mockRestore()
+  })
+
+  it('HeadObject が存在しない (アップロード未完了) → validation_failed', async () => {
+    s3Mock.on(HeadObjectCommand).rejects(Object.assign(new Error('Not Found'), { name: 'NotFound' }))
+
+    const tx = buildMockTx({})
+    const { handleSendReply } = await import('./send-reply.server')
+    const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
+      conversationId: CONVERSATION_ID,
+      body: '',
+      attachment: { s3Key: VALID_KEY },
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('validation_failed')
+    expect(captureInsertValues(tx)).toHaveLength(0)
+  })
+
+  it('HeadObject の型が allowlist 外 → validation_failed', async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ContentType: 'application/pdf', ContentLength: 100 })
+
+    const tx = buildMockTx({})
+    const { handleSendReply } = await import('./send-reply.server')
+    const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
+      conversationId: CONVERSATION_ID,
+      body: '',
+      attachment: { s3Key: VALID_KEY },
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('validation_failed')
+  })
+
+  // T022: サーバー側の拒否経路の回帰
+  it('T022: 他テナントの s3Key 持ち込みを拒否し key_rejected を出す (FR-010)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const otherTenantKey = `00000000-0000-0000-0000-0000000000ff/${CONVERSATION_ID}/outbound/11111111-1111-4111-8111-111111111111/0`
+
+    const tx = buildMockTx({})
+    const { handleSendReply } = await import('./send-reply.server')
+    const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
+      conversationId: CONVERSATION_ID,
+      body: '',
+      attachment: { s3Key: otherTenantKey },
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('validation_failed')
+    expect(
+      warnSpy.mock.calls.some((c) => (c[0] as { event?: string })?.event === 'outbound_attachment_key_rejected'),
+    ).toBe(true)
+    warnSpy.mockRestore()
+  })
+
+  it('T022: client 検証を迂回した過大サイズ (Head ContentLength > MAX) をサーバーが拒否', async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ContentType: 'image/jpeg', ContentLength: 26_214_400 + 1 })
+
+    const tx = buildMockTx({})
+    const { handleSendReply } = await import('./send-reply.server')
+    const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
+      conversationId: CONVERSATION_ID,
+      body: '',
+      attachment: { s3Key: VALID_KEY },
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('validation_failed')
+  })
+
+  it('T022: フォームを開いたまま期限切れ (attachment 付き) → outside_window', async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ContentType: 'image/jpeg', ContentLength: 100 })
+    const OLD = new Date('2026-04-29T00:00:00Z') // 48h ago
+    const tx = buildMockTx({ lastInboundAt: OLD })
+    const { handleSendReply } = await import('./send-reply.server')
+    const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
+      conversationId: CONVERSATION_ID,
+      body: 'still here',
+      attachment: { s3Key: VALID_KEY },
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('outside_window')
+  })
+
+  it('echo claim が image パーツでも働く (mid UNIQUE 衝突)', async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ContentType: 'image/png', ContentLength: 500 })
+    server.use(
+      http.post(META_MESSAGES_URL, () =>
+        HttpResponse.json({ recipient_id: 'psid-123', message_id: 'm_img_echo' }),
+      ),
+    )
+    const ECHO_ROW_ID = '00000000-0000-0000-0000-0000000000ec'
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    const tx = buildMockTx({ midWriteThrowsUnique: true, claimedRowId: ECHO_ROW_ID })
+    const { handleSendReply } = await import('./send-reply.server')
+    const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
+      conversationId: CONVERSATION_ID,
+      body: '',
+      attachment: { s3Key: VALID_KEY },
+    })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.message.id).toBe(ECHO_ROW_ID)
+    const attrLog = infoSpy.mock.calls.find(
+      (c) => (c[0] as { event?: string })?.event === 'echo_send_attribution_recovered',
+    )
+    expect(attrLog).toBeDefined()
+    infoSpy.mockRestore()
+  })
 })

@@ -3,12 +3,14 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { sendReplyFn } from '../-lib/send-reply.fn'
+import { createUploadUrlFn } from '../-lib/create-upload-url.fn'
 import { dismissDraftFn } from '../-lib/dismiss-draft.fn'
 import { regenerateDraftFn } from '../-lib/regenerate-draft.fn'
 import { DraftBanner } from './DraftBanner'
 import { RegeneratePanel } from './RegeneratePanel'
 import type { ConversationDetail } from '../-lib/get-conversation.fn'
-import { SparkleIcon, SendIcon, XIcon, ThumbUpIcon, ThumbDownIcon, AlertTriIcon } from '~/components/ui/icons'
+import { SparkleIcon, SendIcon, XIcon, ImageIcon, ThumbUpIcon, ThumbDownIcon, AlertTriIcon } from '~/components/ui/icons'
+import { ALLOWED_IMAGE_TYPES, MAX_ATTACHMENT_BYTES, isAllowedImageType } from '~/lib/media-constants'
 import { m } from '~/paraglide/messages'
 import { buildTranslateUrl } from '~/lib/translate-url'
 
@@ -17,15 +19,26 @@ type Props = {
   conversation: ConversationDetail['conversation']
   latestDraft: ConversationDetail['latest_draft']
   latestInboundMessageId: string | null
+  mediaUploadEnabled: boolean
 }
 
 type AutoSaveState = 'editing' | 'saving' | 'saved'
+
+// 010: 添付の状態機械。idle → picked (client 検証済み) → uploading → ready。
+type UploadState = 'idle' | 'picked' | 'uploading' | 'ready'
+type Attachment = {
+  file: File
+  previewUrl: string
+  contentType: (typeof ALLOWED_IMAGE_TYPES)[number]
+  s3Key: string | null // ready のときのみ非 null
+}
 
 export function ReplyForm({
   conversationId,
   conversation,
   latestDraft,
   latestInboundMessageId,
+  mediaUploadEnabled,
 }: Props) {
   const router = useRouter()
   const [body, setBody] = useState(
@@ -34,6 +47,10 @@ export function ReplyForm({
   const [draftStatus, setDraftStatus] = useState(latestDraft?.status ?? null)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 010: 添付 (画像) 状態
+  const [attachment, setAttachment] = useState<Attachment | null>(null)
+  const [uploadState, setUploadState] = useState<UploadState>('idle')
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [saveState, setSaveState] = useState<AutoSaveState>('saved')
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
   // 005: one-off regenerate state.
@@ -80,6 +97,11 @@ export function ReplyForm({
   const showPolicyWarning =
     hoursRemaining !== null && hoursRemaining <= 6 && hoursRemaining > 0
   const hasDraft = draftStatus === 'ready'
+  // 010: 送信可否。テキストも添付も無いときだけ不可 (§7 の M-3 緩和)。
+  const hasReadyAttachment = attachment?.s3Key != null && uploadState === 'ready'
+  const showAttachButton = mediaUploadEnabled && !isWindowClosed
+  const sendDisabled =
+    isWindowClosed || sending || uploadState === 'uploading' || (!body.trim() && !hasReadyAttachment)
 
   const handleDraftReady = useCallback((draftBody: string) => {
     setBody(draftBody)
@@ -157,29 +179,133 @@ export function ReplyForm({
     }
   }, [])
 
+  // 010: 添付をクリアしてプレビュー URL を revoke する。
+  const clearAttachment = useCallback(() => {
+    setAttachment((prev) => {
+      if (prev) URL.revokeObjectURL(prev.previewUrl)
+      return null
+    })
+    setUploadState('idle')
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }, [])
+
+  // アンマウント時にプレビュー URL を revoke (リーク防止)。previewUrl が変わったら
+  // 前の URL を解放する。
+  const prevPreviewUrlRef = useRef<string | null>(null)
+  useEffect(() => {
+    const current = attachment?.previewUrl ?? null
+    const prev = prevPreviewUrlRef.current
+    if (prev && prev !== current) URL.revokeObjectURL(prev)
+    prevPreviewUrlRef.current = current
+    return () => {
+      if (current) URL.revokeObjectURL(current)
+    }
+  }, [attachment?.previewUrl])
+
+  // 010: ファイル選択 → client 検証 → S3 直接アップロード。
+  const handlePickFile = useCallback(
+    async (file: File) => {
+      setError(null)
+      // client 検証 (正はサーバー — §7)。外れは即エラーでアップロードに進まない。
+      if (!isAllowedImageType(file.type)) {
+        setError(m.thread_attach_invalid_type())
+        return
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES || file.size === 0) {
+        setError(m.thread_attach_too_large())
+        return
+      }
+
+      const previewUrl = URL.createObjectURL(file)
+      const contentType = file.type as (typeof ALLOWED_IMAGE_TYPES)[number]
+      setAttachment({ file, previewUrl, contentType, s3Key: null })
+      setUploadState('uploading')
+
+      try {
+        const issued = await createUploadUrlFn({
+          data: { conversationId, contentType, sizeBytes: file.size },
+        })
+        if (!issued.ok) {
+          const messages: Record<string, string> = {
+            outside_window: m.reply_error_outside_window(),
+          }
+          setError(messages[issued.error] ?? m.thread_attach_upload_failed())
+          URL.revokeObjectURL(previewUrl)
+          setAttachment(null)
+          setUploadState('idle')
+          return
+        }
+
+        const putRes = await fetch(issued.uploadUrl, {
+          method: 'PUT',
+          headers: { 'content-type': contentType },
+          body: file,
+        })
+        if (!putRes.ok) {
+          setError(m.thread_attach_upload_failed())
+          URL.revokeObjectURL(previewUrl)
+          setAttachment(null)
+          setUploadState('idle')
+          return
+        }
+
+        setAttachment({ file, previewUrl, contentType, s3Key: issued.s3Key })
+        setUploadState('ready')
+      } catch {
+        setError(m.thread_attach_upload_failed())
+        URL.revokeObjectURL(previewUrl)
+        setAttachment(null)
+        setUploadState('idle')
+      }
+    },
+    [conversationId],
+  )
+
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
-    if (isWindowClosed || sending || !body.trim()) return
+    const hasReadyAttachment = attachment?.s3Key != null && uploadState === 'ready'
+    if (isWindowClosed || sending || uploadState === 'uploading') return
+    if (!body.trim() && !hasReadyAttachment) return
 
     setSending(true)
     setError(null)
 
     try {
-      const result = await sendReplyFn({ data: { conversationId, body } })
+      const result = await sendReplyFn({
+        data: {
+          conversationId,
+          body,
+          ...(hasReadyAttachment ? { attachment: { s3Key: attachment!.s3Key! } } : {}),
+        },
+      })
       if (result.ok) {
         setBody('')
         setDraftStatus(null)
         setFeedback(null)
         setSaveState('saved')
+        clearAttachment()
         await router.invalidate()
       } else {
-        const errorMessages: Record<string, string> = {
-          outside_window: m.reply_error_outside_window(),
-          token_expired: m.reply_error_token_expired(),
-          meta_error: m.reply_error_meta_failed(),
-          validation_failed: m.reply_error_validation_failed(),
+        // 010: 部分失敗 (テキストは届いたが画像が失敗)。テキストは二重送信を防ぐため
+        // 入力欄をクリアし、添付は ready のまま残して「画像だけ再送」できるようにする (§7 低-5)。
+        const textSent = result.parts?.some((p) => p.kind === 'text' && p.ok) ?? false
+        const imageFailed = result.parts?.some((p) => p.kind === 'image' && !p.ok) ?? false
+        if (textSent && imageFailed) {
+          setBody('')
+          setDraftStatus(null)
+          setSaveState('saved')
+          setError(m.thread_attach_partial_failure())
+          // 送信済みテキストのバブルを反映 (添付ローカル状態は key 固定で保持される)
+          await router.invalidate()
+        } else {
+          const errorMessages: Record<string, string> = {
+            outside_window: m.reply_error_outside_window(),
+            token_expired: m.reply_error_token_expired(),
+            meta_error: m.reply_error_meta_failed(),
+            validation_failed: m.reply_error_validation_failed(),
+          }
+          setError(errorMessages[result.error] ?? m.reply_error_generic())
         }
-        setError(errorMessages[result.error] ?? m.reply_error_generic())
       }
     } catch {
       setError(m.reply_error_send_failed())
@@ -396,6 +522,73 @@ export function ReplyForm({
           />
         </div>
 
+        {/* 010: 添付プレビュー (画像サムネイル + 取り消し) */}
+        {attachment && (
+          <div style={{ padding: '0 14px 8px' }}>
+            <div
+              style={{
+                position: 'relative',
+                display: 'inline-block',
+                borderRadius: 8,
+                overflow: 'hidden',
+                border: '1px solid var(--color-line)',
+              }}
+            >
+              <img
+                src={attachment.previewUrl}
+                alt=""
+                style={{
+                  display: 'block',
+                  maxWidth: 160,
+                  maxHeight: 120,
+                  objectFit: 'cover',
+                  opacity: uploadState === 'uploading' ? 0.5 : 1,
+                }}
+              />
+              {uploadState === 'uploading' && (
+                <span
+                  className="animate-pulse"
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 11,
+                    color: 'white',
+                    background: 'oklch(0 0 0 / 0.35)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  …
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={clearAttachment}
+                aria-label={m.thread_attach_remove()}
+                style={{
+                  position: 'absolute',
+                  top: 4,
+                  right: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  border: 'none',
+                  color: 'white',
+                  background: 'oklch(0 0 0 / 0.55)',
+                  cursor: 'pointer',
+                }}
+              >
+                <XIcon size={11} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Error message */}
         {error && (
           <div
@@ -466,6 +659,43 @@ export function ReplyForm({
           )}
 
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+            {/* 010: 画像添付ボタン (media 有効 & 窓が開いているとき) */}
+            {showAttachButton && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) void handlePickFile(file)
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={sending || uploadState === 'uploading' || attachment !== null}
+                  aria-label={m.thread_attach_image()}
+                  title={m.thread_attach_image()}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '6px 8px',
+                    borderRadius: 7,
+                    color: 'var(--color-ink-3)',
+                    background: 'transparent',
+                    border: '1px solid var(--color-line)',
+                    cursor: sending || uploadState === 'uploading' || attachment !== null ? 'not-allowed' : 'pointer',
+                    opacity: sending || uploadState === 'uploading' || attachment !== null ? 0.5 : 1,
+                    transition: 'all 120ms',
+                  }}
+                >
+                  <ImageIcon size={14} />
+                </button>
+              </>
+            )}
             {!isWindowClosed && (
               <span style={{ fontSize: 11, color: 'var(--color-ink-4)', fontFamily: 'var(--font-mono)' }}>
                 ⌘↵
@@ -474,8 +704,8 @@ export function ReplyForm({
             <button
               type="button"
               onClick={() => void handleSubmit()}
-              disabled={isWindowClosed || sending || !body.trim()}
-              aria-disabled={isWindowClosed || sending || !body.trim()}
+              disabled={sendDisabled}
+              aria-disabled={sendDisabled}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -485,8 +715,8 @@ export function ReplyForm({
                 fontSize: 13,
                 fontWeight: 600,
                 color: 'white',
-                background: isWindowClosed || !body.trim() ? 'var(--color-ink-4)' : 'var(--color-primary)',
-                cursor: isWindowClosed || sending || !body.trim() ? 'not-allowed' : 'pointer',
+                background: sendDisabled ? 'var(--color-ink-4)' : 'var(--color-primary)',
+                cursor: sendDisabled ? 'not-allowed' : 'pointer',
                 opacity: sending ? 0.7 : 1,
                 transition: 'background 120ms, opacity 120ms',
               }}

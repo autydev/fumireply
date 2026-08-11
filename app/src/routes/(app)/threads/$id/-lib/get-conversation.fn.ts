@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { authMiddleware } from '~/server/middleware/auth-middleware'
 import { aiDrafts, conversations, messages } from '~/server/db/schema'
 import { withTenant, type TenantTx } from '~/server/db/with-tenant'
+import { env } from '~/server/env'
 import { getAttachmentUrl } from '~/server/services/media-url'
 
 const inputSchema = z.object({ id: z.string().uuid() })
@@ -74,6 +75,8 @@ export type ConversationDetail = {
     body: string
     status: 'pending' | 'ready' | 'failed'
   } | null
+  // 010: media バケットが設定済みなら送信側の画像添付 UI を出す。additive。
+  mediaUploadEnabled: boolean
 }
 
 export const getConversationFn = createServerFn({ method: 'POST' })
@@ -219,5 +222,6 @@ export async function handleGetConversation(
     },
     messages: mappedMessages,
     latest_draft: latestDraft,
+    mediaUploadEnabled: Boolean(env.MEDIA_BUCKET_NAME),
   } satisfies ConversationDetail
 }

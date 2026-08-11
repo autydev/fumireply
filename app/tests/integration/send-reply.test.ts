@@ -2,9 +2,13 @@
 // Integration: send-reply full user story — auth → listConversations → getConversation → sendReply
 // Tests the complete sendReply business logic with shared mock DB state and MSW Meta API
 
+import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { mockClient } from 'aws-sdk-client-mock'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+
+const s3Mock = mockClient(S3Client)
 
 vi.mock('~/server/db/client', () => ({ db: {}, dbAdmin: {} }))
 vi.mock('~/server/services/crypto', () => ({
@@ -36,15 +40,18 @@ beforeAll(() => {
   vi.stubEnv('SUPABASE_URL', 'https://test.supabase.co')
   vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'test-key')
   vi.stubEnv('SUPABASE_SECRET_KEY', 'test-secret')
+  vi.stubEnv('META_APP_ID', 'test-app-id')
   vi.stubEnv('META_APP_SECRET_SSM_KEY', '/test/meta/secret')
   vi.stubEnv('WEBHOOK_VERIFY_TOKEN_SSM_KEY', '/test/webhook/token')
   vi.stubEnv('ANTHROPIC_API_KEY_SSM_KEY', '/test/anthropic/key')
   vi.stubEnv('AWS_REGION', 'ap-northeast-1')
+  vi.stubEnv('MEDIA_BUCKET_NAME', 'test-media-bucket')
   server.listen({ onUnhandledRequest: 'warn' })
 })
 afterEach(() => {
   server.resetHandlers()
   vi.clearAllMocks()
+  s3Mock.reset()
 })
 afterAll(() => {
   server.close()
@@ -195,5 +202,81 @@ describe('send-reply integration — handleSendReply', () => {
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toBe('outside_window')
+  })
+})
+
+// 010 US2: text + image の 2 パーツ逐次送信
+describe('send-reply integration — text + image parts', () => {
+  const VALID_KEY = `${TENANT_ID}/${CONV_ID}/outbound/11111111-1111-4111-8111-111111111111/0`
+
+  function capturedInserts(tx: TenantTx): Record<string, unknown>[] {
+    // insert() は常に同じ insertChain を返すため values の呼び出しを読める
+    const chain = (tx.insert as unknown as () => { values: { mock: { calls: unknown[][] } } })()
+    return chain.values.mock.calls.map((c) => c[0] as Record<string, unknown>)
+  }
+
+  it('text+image both succeed: 2 行 INSERT (text→image) + parts 個別成功 + image 行に attachments JSONB', async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ContentType: 'image/jpeg', ContentLength: 2048 })
+    server.use(
+      http.post(META_SEND_URL, async ({ request }) => {
+        const b = (await request.json()) as { message?: { attachment?: unknown } }
+        const mid = b.message?.attachment ? 'mid_img' : 'mid_text'
+        return HttpResponse.json({ message_id: mid, recipient_id: PSID })
+      }),
+    )
+
+    const mockTx = buildTx({})
+    const result = await handleSendReply(mockTx, TENANT_ID, USER_ID, {
+      conversationId: CONV_ID,
+      body: 'here is the photo',
+      attachment: { s3Key: VALID_KEY },
+    })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.parts).toEqual([
+        { kind: 'text', ok: true, error: undefined },
+        { kind: 'image', ok: true, error: undefined },
+      ])
+    }
+
+    const inserts = capturedInserts(mockTx)
+    // 順序: text が先、image が後
+    expect(inserts[0]).toMatchObject({ messageType: 'text', body: 'here is the photo' })
+    expect(inserts[1]).toMatchObject({
+      messageType: 'image',
+      body: '',
+      attachments: [{ index: 0, type: 'image', s3Key: VALID_KEY, contentType: 'image/jpeg', sizeBytes: 2048 }],
+    })
+  })
+
+  it('text 成功 + image 失敗: ok=false / parts で個別成否 / text パーツは成功のまま', async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ContentType: 'image/png', ContentLength: 500 })
+    server.use(
+      http.post(META_SEND_URL, async ({ request }) => {
+        const b = (await request.json()) as { message?: { attachment?: unknown } }
+        if (b.message?.attachment) {
+          // 画像だけ 400 invalid_request → meta_error に写像
+          return HttpResponse.json({ error: { code: 100 } }, { status: 400 })
+        }
+        return HttpResponse.json({ message_id: 'mid_text_ok', recipient_id: PSID })
+      }),
+    )
+
+    const mockTx = buildTx({})
+    const result = await handleSendReply(mockTx, TENANT_ID, USER_ID, {
+      conversationId: CONV_ID,
+      body: 'text ok image fails',
+      attachment: { s3Key: VALID_KEY },
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toBe('meta_error') // 最初に失敗したパーツ = image
+      expect(result.parts).toEqual([
+        { kind: 'text', ok: true, error: undefined },
+        { kind: 'image', ok: false, error: 'meta_error' },
+      ])
+    }
   })
 })

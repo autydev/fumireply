@@ -52,7 +52,7 @@ function ThreadPending() {
 }
 
 function ThreadPage() {
-  const { conversation, messages, latest_draft, conversations } = Route.useLoaderData()
+  const { conversation, messages, latest_draft, conversations, mediaUploadEnabled } = Route.useLoaderData()
   const { id } = Route.useParams()
   const router = useRouter()
   const [filter, setFilter] = useState<FilterKey>('all')
@@ -220,6 +220,7 @@ function ThreadPage() {
           conversation={conversation}
           latestDraft={latest_draft}
           latestInboundMessageId={latestInboundMessageId}
+          mediaUploadEnabled={mediaUploadEnabled}
         />
       </div>
 

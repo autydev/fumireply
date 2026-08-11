@@ -41,6 +41,7 @@ function makeDetail(overrides: Partial<ConversationDetail> = {}): ConversationDe
     },
     messages: [],
     latest_draft: null,
+    mediaUploadEnabled: false,
     ...overrides,
   }
 }
@@ -222,6 +223,7 @@ describe('Thread page', () => {
           conversation={detail.conversation}
           latestDraft={detail.latest_draft}
           latestInboundMessageId="msg-1"
+          mediaUploadEnabled={false}
         />
       ),
       initialEntries: [`/threads/${CONV_ID}`],
@@ -307,6 +309,7 @@ describe('Thread page', () => {
           conversation={detail.conversation}
           latestDraft={null}
           latestInboundMessageId={null}
+          mediaUploadEnabled={false}
         />
       ),
       initialEntries: [`/threads/${CONV_ID}`],
