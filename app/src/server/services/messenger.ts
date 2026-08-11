@@ -28,10 +28,17 @@ export async function sendMessengerReply(params: {
 }): Promise<SendResult> {
   const { pageAccessToken, recipientPsid, messageText, imageUrl, deadlineMs } = params
 
-  const message =
-    imageUrl !== undefined
-      ? { attachment: { type: 'image', payload: { url: imageUrl, is_reusable: false } } }
-      : { text: messageText ?? '' }
+  // messageText / imageUrl は排他必須 (XOR)。両方未指定 or 両方指定は呼び出し側のバグ。
+  // 空テキスト送信や意図しない分岐を避けるため即 invalid_request で弾く。
+  const hasText = messageText !== undefined
+  const hasImage = imageUrl !== undefined
+  if (hasText === hasImage) {
+    return { ok: false, error: 'invalid_request' }
+  }
+
+  const message = hasImage
+    ? { attachment: { type: 'image', payload: { url: imageUrl, is_reusable: false } } }
+    : { text: messageText }
 
   const body = JSON.stringify({
     recipient: { id: recipientPsid },
@@ -43,7 +50,8 @@ export async function sendMessengerReply(params: {
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     if (attempt > 0) {
-      // Exponential backoff: 500ms, 1500ms, 4500ms
+      // Exponential backoff. MAX_RETRIES=3 では attempt=1,2 の 2 回のみ発生するため
+      // 実際に効くのは 500ms と 1500ms (4500ms には到達しない)。
       await sleep(500 * Math.pow(3, attempt - 1))
     }
 

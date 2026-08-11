@@ -108,7 +108,13 @@ resource "aws_s3_bucket_cors_configuration" "media" {
 
   cors_rule {
     allowed_methods = ["PUT"]
-    allowed_origins = concat(["https://${var.domain_name}"], var.media_cors_dev_origins)
+    # 本番 origin (domain_name) + ACM SAN の additional_domain_names + 任意の開発 origin。
+    # CloudFront に別ドメインでアクセスしても presigned PUT が CORS で通るようにする。
+    allowed_origins = concat(
+      ["https://${var.domain_name}"],
+      [for d in var.additional_domain_names : "https://${d}"],
+      var.media_cors_dev_origins,
+    )
     allowed_headers = ["content-type"]
     max_age_seconds = 3600
   }

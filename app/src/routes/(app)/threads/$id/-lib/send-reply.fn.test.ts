@@ -53,6 +53,12 @@ vi.mock('~/server/services/crypto', () => ({
   decryptToken: vi.fn().mockReturnValue(DECRYPTED_TOKEN),
 }))
 
+// 010: presigned GET URL 発行をモック。既定は URL を返し、null 経路 (presign 不能) を個別に検証する。
+const { mockGetAttachmentUrl } = vi.hoisted(() => ({
+  mockGetAttachmentUrl: vi.fn(async (_key: string) => 'https://signed.example/get'),
+}))
+vi.mock('~/server/services/media-url', () => ({ getAttachmentUrl: mockGetAttachmentUrl }))
+
 function buildMockTx(opts: {
   lastInboundAt?: Date | null
   conversationExists?: boolean
@@ -359,8 +365,9 @@ describe('handleSendReply — attachment', () => {
     expect(captureInsertValues(tx)).toHaveLength(0)
   })
 
-  it('HeadObject の型が allowlist 外 → validation_failed', async () => {
+  it('HeadObject の型が allowlist 外 → validation_failed + head_validation_failed ログ', async () => {
     s3Mock.on(HeadObjectCommand).resolves({ ContentType: 'application/pdf', ContentLength: 100 })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const tx = buildMockTx({})
     const { handleSendReply } = await import('./send-reply.server')
@@ -372,6 +379,35 @@ describe('handleSendReply — attachment', () => {
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toBe('validation_failed')
+    const log = warnSpy.mock.calls.find(
+      (c) => (c[0] as { event?: string })?.event === 'outbound_attachment_send_failed',
+    )
+    expect(log![0]).toMatchObject({ reason: 'head_validation_failed', s3Key: VALID_KEY })
+    warnSpy.mockRestore()
+  })
+
+  it('presign 不能 (getAttachmentUrl=null) は Meta を呼ばず meta_error で失敗', async () => {
+    s3Mock.on(HeadObjectCommand).resolves({ ContentType: 'image/jpeg', ContentLength: 400 })
+    mockGetAttachmentUrl.mockResolvedValueOnce(null as unknown as string)
+    let metaCalled = false
+    server.use(
+      http.post(META_MESSAGES_URL, () => {
+        metaCalled = true
+        return HttpResponse.json({ message_id: 'x' })
+      }),
+    )
+
+    const tx = buildMockTx({})
+    const { handleSendReply } = await import('./send-reply.server')
+    const result = await handleSendReply(tx, TENANT_ID, USER_ID, {
+      conversationId: CONVERSATION_ID,
+      body: '',
+      attachment: { s3Key: VALID_KEY },
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('meta_error')
+    expect(metaCalled).toBe(false)
   })
 
   // T022: サーバー側の拒否経路の回帰

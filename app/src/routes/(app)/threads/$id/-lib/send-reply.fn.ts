@@ -12,6 +12,7 @@ import { maybeEnqueueSummaryJob } from '~/server/services/summary-trigger'
 import { isUniqueViolation, META_MESSAGE_ID_UNIQUE } from '~/server/db/errors'
 import {
   TWENTY_FOUR_HOURS_MS,
+  logAttachmentValidationFailure,
   mapSendError,
   validateAttachment,
   type PartResult,
@@ -212,7 +213,10 @@ async function handleAttachmentSend(
 
   // s3Key 検証 + HeadObject (allowlist/サイズ)
   const val = await validateAttachment(tenantId, data.conversationId, data.attachment.s3Key)
-  if (!val.ok) return { ok: false, error: 'validation_failed' }
+  if (!val.ok) {
+    logAttachmentValidationFailure(tenantId, data.conversationId, data.attachment.s3Key, val.reason)
+    return { ok: false, error: 'validation_failed' }
+  }
 
   // Meta 送信の前に token を復号
   let pageAccessToken: string
@@ -311,10 +315,16 @@ async function runPartLive(
   // HTTP (tx 外)
   let sendResult: Awaited<ReturnType<typeof sendMessengerReply>>
   try {
-    sendResult =
-      part.kind === 'text'
-        ? await sendMessengerReply({ pageAccessToken: ctx.pageAccessToken, recipientPsid: ctx.customerPsid, messageText: part.body, deadlineMs })
-        : await sendMessengerReply({ pageAccessToken: ctx.pageAccessToken, recipientPsid: ctx.customerPsid, imageUrl: (await getAttachmentUrl(part.s3Key)) ?? '', deadlineMs })
+    if (part.kind === 'text') {
+      sendResult = await sendMessengerReply({ pageAccessToken: ctx.pageAccessToken, recipientPsid: ctx.customerPsid, messageText: part.body, deadlineMs })
+    } else {
+      // presign できないときは空 URL で Meta を叩かず即失敗扱いにする (無効リクエスト回避)。
+      const imageUrl = await getAttachmentUrl(part.s3Key)
+      sendResult =
+        imageUrl === null
+          ? { ok: false, error: 'meta_server_error' }
+          : await sendMessengerReply({ pageAccessToken: ctx.pageAccessToken, recipientPsid: ctx.customerPsid, imageUrl, deadlineMs })
+    }
   } catch {
     await withTenant(ctx.tenantId, async (tx) => {
       await tx.update(messages).set({ sendStatus: 'failed', sendError: 'meta_error' }).where(eq(messages.id, inserted.id))

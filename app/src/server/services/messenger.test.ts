@@ -14,7 +14,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { sendMessengerReply } from './messenger'
-import { SEND_MIN_ATTEMPT_MS } from './media-upload'
+import { SEND_MIN_ATTEMPT_MS } from '~/lib/media-constants'
 
 const META_MESSAGES_URL = 'https://graph.facebook.com/v19.0/me/messages'
 
@@ -145,6 +145,38 @@ describe('sendMessengerReply', () => {
       deadlineMs: Date.now() + SEND_MIN_ATTEMPT_MS - 500,
     })
     expect(result).toEqual({ ok: false, error: 'timeout' })
+    expect(called).toBe(false)
+  })
+
+  // 010: messageText / imageUrl は XOR。両方 or どちらも無しは invalid_request
+  it('returns invalid_request when neither messageText nor imageUrl is given', async () => {
+    let called = false
+    server.use(
+      http.post(META_MESSAGES_URL, () => {
+        called = true
+        return HttpResponse.json({ message_id: 'x' })
+      }),
+    )
+    const result = await sendMessengerReply({ pageAccessToken: 'tok', recipientPsid: '1' })
+    expect(result).toEqual({ ok: false, error: 'invalid_request' })
+    expect(called).toBe(false)
+  })
+
+  it('returns invalid_request when both messageText and imageUrl are given', async () => {
+    let called = false
+    server.use(
+      http.post(META_MESSAGES_URL, () => {
+        called = true
+        return HttpResponse.json({ message_id: 'x' })
+      }),
+    )
+    const result = await sendMessengerReply({
+      pageAccessToken: 'tok',
+      recipientPsid: '1',
+      messageText: 'hi',
+      imageUrl: 'https://s3/x',
+    })
+    expect(result).toEqual({ ok: false, error: 'invalid_request' })
     expect(called).toBe(false)
   })
 

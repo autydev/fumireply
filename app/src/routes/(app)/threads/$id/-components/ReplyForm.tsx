@@ -179,8 +179,14 @@ export function ReplyForm({
     }
   }, [])
 
-  // 010: 添付をクリアしてプレビュー URL を revoke する。
+  // 010: 進行中アップロードの識別子。取り消し/差し替えでインクリメントして
+  // in-flight のアップロードを無効化する (完了後の setAttachment 復活を防ぐ)。
+  const uploadSeqRef = useRef(0)
+
+  // 010: 添付をクリアしてプレビュー URL を revoke する。アップロード中でも呼べる —
+  // uploadSeq を進めることで in-flight の完了ハンドラが状態を書き戻さなくなる。
   const clearAttachment = useCallback(() => {
+    uploadSeqRef.current += 1
     setAttachment((prev) => {
       if (prev) URL.revokeObjectURL(prev.previewUrl)
       return null
@@ -218,6 +224,17 @@ export function ReplyForm({
 
       const previewUrl = URL.createObjectURL(file)
       const contentType = file.type as (typeof ALLOWED_IMAGE_TYPES)[number]
+      const mySeq = ++uploadSeqRef.current
+      // このアップロードが取り消し/差し替えされたか。true なら state を書き戻さず previewUrl だけ解放。
+      const superseded = () => uploadSeqRef.current !== mySeq
+      const abort = (msg?: string) => {
+        URL.revokeObjectURL(previewUrl)
+        if (superseded()) return // 既に別操作が state を握っている
+        if (msg) setError(msg)
+        setAttachment(null)
+        setUploadState('idle')
+      }
+
       setAttachment({ file, previewUrl, contentType, s3Key: null })
       setUploadState('uploading')
 
@@ -225,14 +242,15 @@ export function ReplyForm({
         const issued = await createUploadUrlFn({
           data: { conversationId, contentType, sizeBytes: file.size },
         })
+        if (superseded()) {
+          URL.revokeObjectURL(previewUrl)
+          return
+        }
         if (!issued.ok) {
           const messages: Record<string, string> = {
             outside_window: m.reply_error_outside_window(),
           }
-          setError(messages[issued.error] ?? m.thread_attach_upload_failed())
-          URL.revokeObjectURL(previewUrl)
-          setAttachment(null)
-          setUploadState('idle')
+          abort(messages[issued.error] ?? m.thread_attach_upload_failed())
           return
         }
 
@@ -241,21 +259,19 @@ export function ReplyForm({
           headers: { 'content-type': contentType },
           body: file,
         })
-        if (!putRes.ok) {
-          setError(m.thread_attach_upload_failed())
+        if (superseded()) {
           URL.revokeObjectURL(previewUrl)
-          setAttachment(null)
-          setUploadState('idle')
+          return
+        }
+        if (!putRes.ok) {
+          abort(m.thread_attach_upload_failed())
           return
         }
 
         setAttachment({ file, previewUrl, contentType, s3Key: issued.s3Key })
         setUploadState('ready')
       } catch {
-        setError(m.thread_attach_upload_failed())
-        URL.revokeObjectURL(previewUrl)
-        setAttachment(null)
-        setUploadState('idle')
+        abort(m.thread_attach_upload_failed())
       }
     },
     [conversationId],

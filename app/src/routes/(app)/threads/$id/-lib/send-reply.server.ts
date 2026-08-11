@@ -80,6 +80,25 @@ export async function validateAttachment(
   return { ok: true, contentType: head.contentType, sizeBytes: head.contentLength }
 }
 
+// 010: attachment 検証で弾いたときの構造化ログ。key_rejected は validateAttachment 内で
+// 既に出しているため、ここでは head 検証失敗を送信失敗 reason 別集計 (contracts §8) に載せる。
+export function logAttachmentValidationFailure(
+  tenantId: string,
+  conversationId: string,
+  s3Key: string,
+  reason: 'not_configured' | 'key_rejected' | 'head_validation_failed',
+): void {
+  if (reason === 'head_validation_failed') {
+    console.warn({
+      event: 'outbound_attachment_send_failed',
+      tenantId,
+      conversationId,
+      s3Key,
+      reason: 'head_validation_failed',
+    })
+  }
+}
+
 interface PartCtx {
   tenantId: string
   conversationId: string
@@ -129,20 +148,27 @@ export async function processSendPart(
     .returning({ id: messages.id, body: messages.body, timestamp: messages.timestamp })
   const inserted = insertedRows[0]
 
-  const sendResult =
-    part.kind === 'text'
-      ? await sendMessengerReply({
-          pageAccessToken: ctx.pageAccessToken,
-          recipientPsid: ctx.customerPsid,
-          messageText: part.body,
-          deadlineMs,
-        })
-      : await sendMessengerReply({
-          pageAccessToken: ctx.pageAccessToken,
-          recipientPsid: ctx.customerPsid,
-          imageUrl: (await getAttachmentUrl(part.s3Key)) ?? '',
-          deadlineMs,
-        })
+  let sendResult: Awaited<ReturnType<typeof sendMessengerReply>>
+  if (part.kind === 'text') {
+    sendResult = await sendMessengerReply({
+      pageAccessToken: ctx.pageAccessToken,
+      recipientPsid: ctx.customerPsid,
+      messageText: part.body,
+      deadlineMs,
+    })
+  } else {
+    // presign できないときは空 URL で Meta を叩かず即失敗扱いにする (無効リクエスト回避)。
+    const imageUrl = await getAttachmentUrl(part.s3Key)
+    sendResult =
+      imageUrl === null
+        ? { ok: false, error: 'meta_server_error' }
+        : await sendMessengerReply({
+            pageAccessToken: ctx.pageAccessToken,
+            recipientPsid: ctx.customerPsid,
+            imageUrl,
+            deadlineMs,
+          })
+  }
 
   if (sendResult.ok) {
     let finalMessageId = inserted.id
@@ -255,7 +281,10 @@ export async function handleSendReply(
   // ─── attachment パス (parts 逐次) ───────────────────────────────────────
   if (data.attachment) {
     const val = await validateAttachment(tenantId, data.conversationId, data.attachment.s3Key)
-    if (!val.ok) return { ok: false, error: 'validation_failed' }
+    if (!val.ok) {
+      logAttachmentValidationFailure(tenantId, data.conversationId, data.attachment.s3Key, val.reason)
+      return { ok: false, error: 'validation_failed' }
+    }
 
     const deadlineMs = Date.now() + SEND_TOTAL_BUDGET_MS
     const parts: SendPart[] = []
