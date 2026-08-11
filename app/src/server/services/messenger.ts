@@ -1,3 +1,5 @@
+import { SEND_MIN_ATTEMPT_MS } from '~/lib/media-constants'
+
 const META_API_BASE = 'https://graph.facebook.com/v19.0'
 const TIMEOUT_MS = 5000
 const MAX_RETRIES = 3
@@ -13,17 +15,28 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// 010: テキスト送信は `messageText`、画像送信は `imageUrl` (presigned GET URL) を渡す。
+// どちらか一方のみ。`deadlineMs` を渡すと、複数通の合計を単一の時間予算に収めるため
+// 各試行前に残余時間で fetch timeout を切り詰め、残余が SEND_MIN_ATTEMPT_MS 未満なら
+// Meta を呼ばずに timeout を返す (contracts §5)。省略時は従来と完全同一挙動。
 export async function sendMessengerReply(params: {
   pageAccessToken: string
   recipientPsid: string
-  messageText: string
+  messageText?: string
+  imageUrl?: string
+  deadlineMs?: number
 }): Promise<SendResult> {
-  const { pageAccessToken, recipientPsid, messageText } = params
+  const { pageAccessToken, recipientPsid, messageText, imageUrl, deadlineMs } = params
+
+  const message =
+    imageUrl !== undefined
+      ? { attachment: { type: 'image', payload: { url: imageUrl, is_reusable: false } } }
+      : { text: messageText ?? '' }
 
   const body = JSON.stringify({
     recipient: { id: recipientPsid },
     messaging_type: 'RESPONSE',
-    message: { text: messageText },
+    message,
   })
 
   let lastError: SendResult = { ok: false, error: 'meta_server_error' }
@@ -34,6 +47,16 @@ export async function sendMessengerReply(params: {
       await sleep(500 * Math.pow(3, attempt - 1))
     }
 
+    // 共有 deadline: 残余がこれ未満なら以降の試行を打ち切り、fetch timeout を残余でクランプ。
+    let timeoutMs = TIMEOUT_MS
+    if (deadlineMs !== undefined) {
+      const remaining = deadlineMs - Date.now()
+      if (remaining < SEND_MIN_ATTEMPT_MS) {
+        return { ok: false, error: 'timeout' }
+      }
+      timeoutMs = Math.min(TIMEOUT_MS, remaining)
+    }
+
     let response: Response
     try {
       response = await fetch(
@@ -42,7 +65,7 @@ export async function sendMessengerReply(params: {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body,
-          signal: AbortSignal.timeout(TIMEOUT_MS),
+          signal: AbortSignal.timeout(timeoutMs),
         },
       )
     } catch (err) {

@@ -101,6 +101,19 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "media" {
   }
 }
 
+# 010: オペレーターが送信する画像はブラウザから presigned URL で直接 PUT する。
+# クロスオリジンの PUT を許可するため CORS を設定 (本番 origin + 任意の開発 origin)。
+resource "aws_s3_bucket_cors_configuration" "media" {
+  bucket = aws_s3_bucket.media.id
+
+  cors_rule {
+    allowed_methods = ["PUT"]
+    allowed_origins = concat(["https://${var.domain_name}"], var.media_cors_dev_origins)
+    allowed_headers = ["content-type"]
+    max_age_seconds = 3600
+  }
+}
+
 ###############################################################################
 # Secrets / SSM
 ###############################################################################
