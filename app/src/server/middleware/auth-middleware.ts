@@ -1,10 +1,11 @@
 import { createMiddleware } from '@tanstack/react-start'
-import { getCookie, setCookie } from '@tanstack/react-start/server'
+import { getCookie } from '@tanstack/react-start/server'
 import { redirect } from '@tanstack/react-router'
 import { eq } from 'drizzle-orm'
 import { dbAdmin } from '../db/client'
 import { tenants } from '../db/schema'
 import { verifyAccessToken, refreshSession } from '../services/auth'
+import { ACCESS_COOKIE, REFRESH_COOKIE, setAuthCookies } from '../services/auth-cookies'
 
 export type AuthUser = {
   id: string
@@ -15,16 +16,14 @@ export type AuthUser = {
 
 export const authMiddleware = createMiddleware({ type: 'function' }).server(
   async ({ next }) => {
-    const accessToken = getCookie('sb-access-token')
-
-    if (!accessToken) {
-      throw redirect({ to: '/login', search: { returnTo: undefined, error: undefined } })
-    }
-
-    let user = await verifyAccessToken(accessToken)
+    // access Cookie は maxAge=30日で保持するが、JWT 本体は Supabase 側で短命(既定1h)。
+    // access Cookie が無い（=消えた）だけでは即ログアウトせず、refresh Cookie があれば
+    // リフレッシュで復帰を試みる。ここで即 /login に飛ばしていたのが「1時間ごとログアウト」の主因だった。
+    const accessToken = getCookie(ACCESS_COOKIE)
+    let user = accessToken ? await verifyAccessToken(accessToken) : null
 
     if (!user) {
-      const refreshToken = getCookie('sb-refresh-token')
+      const refreshToken = getCookie(REFRESH_COOKIE)
       if (!refreshToken) {
         throw redirect({ to: '/login', search: { returnTo: undefined, error: undefined } })
       }
@@ -32,20 +31,7 @@ export const authMiddleware = createMiddleware({ type: 'function' }).server(
       if (!refreshed) {
         throw redirect({ to: '/login', search: { returnTo: undefined, error: undefined } })
       }
-      setCookie('sb-access-token', refreshed.accessToken, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 3600,
-      })
-      setCookie('sb-refresh-token', refreshed.refreshToken, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 2592000,
-      })
+      setAuthCookies(refreshed.accessToken, refreshed.refreshToken)
       user = refreshed.user
     }
 

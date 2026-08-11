@@ -29,10 +29,13 @@ describe('PageCustomPromptEditor save feedback (#84)', () => {
         connectedPageId={PAGE_UUID}
         pageName="Test Page"
         customPrompt={null}
+        priceGuide={null}
       />,
     )
 
-    fireEvent.change(screen.getByRole('textbox'), {
+    // The prompt (shop-policy) field is the first textarea; the second is the
+    // price-guide field, which saves independently and is out of scope here.
+    fireEvent.change(screen.getAllByRole('textbox')[0], {
       target: { value: 'Ship within 3 days' },
     })
 
@@ -55,10 +58,11 @@ describe('PageCustomPromptEditor save feedback (#84)', () => {
         connectedPageId={PAGE_UUID}
         pageName="Test Page"
         customPrompt={null}
+        priceGuide={null}
       />,
     )
 
-    fireEvent.change(screen.getByRole('textbox'), {
+    fireEvent.change(screen.getAllByRole('textbox')[0], {
       target: { value: 'Policy that fails to save' },
     })
 

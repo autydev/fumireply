@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { authMiddleware } from '~/server/middleware/auth-middleware'
 import { aiDrafts } from '~/server/db/schema'
@@ -33,10 +33,12 @@ export const regenerateDraftFn = createServerFn({ method: 'POST' })
     const trimmed = data.instruction?.trim()
     const instructionForPayload = trimmed && trimmed.length > 0 ? trimmed : undefined
 
-    // 1. Flip the active draft to pending (and clear any prior regenerate error).
-    //    RLS via withTenant scopes the update to the caller's tenant.
+    // 1. Flip the active draft to pending (and clear any prior error). RLS via
+    //    withTenant scopes the update to the caller's tenant.
     const affected = await withTenant(tenantId, async (tx) => {
-      const rows = await tx
+      // Prefer an existing active (pending/ready) draft — the normal regenerate
+      // path.
+      const active = await tx
         .update(aiDrafts)
         .set({ status: 'pending', error: null, updatedAt: new Date() })
         .where(
@@ -46,7 +48,30 @@ export const regenerateDraftFn = createServerFn({ method: 'POST' })
           ),
         )
         .returning({ id: aiDrafts.id })
-      return rows.length
+      if (active.length > 0) return active.length
+
+      // No active draft: retry after a failed generation. Revive the single most
+      // recent failed row (targeted by id) so the pending/ready unique index is
+      // never violated by a concurrently-created pending draft.
+      const [failed] = await tx
+        .select({ id: aiDrafts.id })
+        .from(aiDrafts)
+        .where(
+          and(
+            eq(aiDrafts.conversationId, data.conversationId),
+            eq(aiDrafts.status, 'failed'),
+          ),
+        )
+        .orderBy(desc(aiDrafts.createdAt))
+        .limit(1)
+      if (!failed) return 0
+
+      const revived = await tx
+        .update(aiDrafts)
+        .set({ status: 'pending', error: null, updatedAt: new Date() })
+        .where(eq(aiDrafts.id, failed.id))
+        .returning({ id: aiDrafts.id })
+      return revived.length
     })
 
     if (affected === 0) {

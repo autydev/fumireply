@@ -14,7 +14,14 @@ export function getSupabaseClient(): SupabaseClient {
     supabaseInstance = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_PUBLISHABLE_KEY!,
-      { global: { fetch: fetchWithTimeout } },
+      {
+        // サーバー(Lambda)用途では内部セッションを持たせない。
+        // これを付けないと singleton クライアントが並行リクエスト間で内部セッションを共有し、
+        // autoRefreshToken が裏で勝手にトークンをローテーションして Cookie と乖離 → invalid_grant を誘発する。
+        // e2e シード(seed/e2e.ts)は元からこの設定で、ランタイム側だけ抜けていた。
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+        global: { fetch: fetchWithTimeout },
+      },
     )
   }
   return supabaseInstance

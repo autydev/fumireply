@@ -71,7 +71,7 @@ describe('ReplyForm auto-save (#83/#84)', () => {
 
   it('persists edits to the draft via saveDraftBodyFn and shows 保存済み', async () => {
     vi.mocked(saveDraftBodyFn).mockResolvedValue({ ok: true, saved: true })
-    await renderReplyForm({ body: 'AI draft', status: 'ready' })
+    await renderReplyForm({ body: 'AI draft', status: 'ready', error: null })
 
     const textarea = screen.getByRole('textbox', { name: '返信本文' })
     fireEvent.change(textarea, { target: { value: 'Edited by operator' } })
@@ -91,7 +91,7 @@ describe('ReplyForm auto-save (#83/#84)', () => {
 
   it('shows 保存に失敗しました + 再試行 on failure, and retry re-saves', async () => {
     vi.mocked(saveDraftBodyFn).mockRejectedValueOnce(new Error('network'))
-    await renderReplyForm({ body: 'AI draft', status: 'ready' })
+    await renderReplyForm({ body: 'AI draft', status: 'ready', error: null })
 
     const textarea = screen.getByRole('textbox', { name: '返信本文' })
     fireEvent.change(textarea, { target: { value: 'Edited then fails' } })
@@ -114,7 +114,7 @@ describe('ReplyForm auto-save (#83/#84)', () => {
 
   it('does NOT show 保存済み when the server reports saved:false (no ready draft to write)', async () => {
     vi.mocked(saveDraftBodyFn).mockResolvedValue({ ok: true, saved: false })
-    await renderReplyForm({ body: 'AI draft', status: 'ready' })
+    await renderReplyForm({ body: 'AI draft', status: 'ready', error: null })
 
     const textarea = screen.getByRole('textbox', { name: '返信本文' })
     fireEvent.change(textarea, { target: { value: 'Edited but nothing persisted' } })
