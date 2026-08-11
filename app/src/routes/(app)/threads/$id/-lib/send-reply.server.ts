@@ -203,7 +203,12 @@ export async function processSendPart(
   const sendError = mapSendError(sendResult.error)
   await tx.update(messages).set({ sendStatus: 'failed', sendError }).where(eq(messages.id, inserted.id))
   if (part.kind === 'image') {
-    const reason = sendResult.error === 'timeout' ? 'budget_exceeded' : 'meta_error'
+    const reason =
+      sendResult.error === 'timeout'
+        ? sendResult.timeoutKind === 'http'
+          ? 'timeout'
+          : 'budget_exceeded'
+        : 'meta_error'
     console.warn({
       event: 'outbound_attachment_send_failed',
       tenantId: ctx.tenantId,

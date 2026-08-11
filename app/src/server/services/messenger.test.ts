@@ -1,15 +1,5 @@
-// messenger.ts imports media-upload → env proxy validates on first access
-process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test'
-process.env.DATABASE_URL_SERVICE_ROLE = 'postgresql://test:test@localhost:5432/test'
-process.env.SUPABASE_URL = 'https://test.supabase.co'
-process.env.SUPABASE_PUBLISHABLE_KEY = 'test-key'
-process.env.SUPABASE_SECRET_KEY = 'test-secret'
-process.env.META_APP_ID = 'test-app-id'
-process.env.META_APP_SECRET_SSM_KEY = '/test/meta/secret'
-process.env.WEBHOOK_VERIFY_TOKEN_SSM_KEY = '/test/webhook/token'
-process.env.ANTHROPIC_API_KEY_SSM_KEY = '/test/anthropic/key'
-process.env.AWS_REGION = 'ap-northeast-1'
-
+// messenger.ts / SEND_MIN_ATTEMPT_MS はいずれも純粋モジュール (S3/env 非依存) のため
+// env の前提セットは不要。
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -144,7 +134,7 @@ describe('sendMessengerReply', () => {
       ...baseParams,
       deadlineMs: Date.now() + SEND_MIN_ATTEMPT_MS - 500,
     })
-    expect(result).toEqual({ ok: false, error: 'timeout' })
+    expect(result).toEqual({ ok: false, error: 'timeout', timeoutKind: 'budget' })
     expect(called).toBe(false)
   })
 

@@ -9,6 +9,9 @@ type SendResult =
   | {
       ok: false
       error: 'token_expired' | 'outside_window' | 'permission_denied' | 'invalid_request' | 'meta_server_error' | 'timeout'
+      // 010: error==='timeout' の内訳。'budget' = 共有 deadline の残余不足で Meta を呼ばず打ち切り、
+      // 'http' = 実 fetch タイムアウト。呼び出し側が観測ログの reason を正確に出せるようにする。
+      timeoutKind?: 'budget' | 'http'
     }
 
 async function sleep(ms: number): Promise<void> {
@@ -60,7 +63,7 @@ export async function sendMessengerReply(params: {
     if (deadlineMs !== undefined) {
       const remaining = deadlineMs - Date.now()
       if (remaining < SEND_MIN_ATTEMPT_MS) {
-        return { ok: false, error: 'timeout' }
+        return { ok: false, error: 'timeout', timeoutKind: 'budget' }
       }
       timeoutMs = Math.min(TIMEOUT_MS, remaining)
     }
@@ -78,9 +81,10 @@ export async function sendMessengerReply(params: {
       )
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') {
-        lastError = { ok: false, error: 'timeout' }
-        // Retry once on timeout
+        lastError = { ok: false, error: 'timeout', timeoutKind: 'http' }
+        // Retry once on timeout; 2 回目の timeout は timeout(http) として確定する
         if (attempt < 1) continue
+        return lastError
       }
       return { ok: false, error: 'meta_server_error' }
     }

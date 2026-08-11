@@ -364,13 +364,19 @@ async function runPartLive(
     const sendError = mapSendError(sendResult.error)
     await tx.update(messages).set({ sendStatus: 'failed', sendError }).where(eq(messages.id, inserted.id))
     if (part.kind === 'image') {
+      const reason =
+        sendResult.error === 'timeout'
+          ? sendResult.timeoutKind === 'http'
+            ? 'timeout'
+            : 'budget_exceeded'
+          : 'meta_error'
       console.warn({
         event: 'outbound_attachment_send_failed',
         tenantId: ctx.tenantId,
         conversationId: ctx.conversationId,
         messageId: inserted.id,
         s3Key: part.s3Key,
-        reason: sendResult.error === 'timeout' ? 'budget_exceeded' : 'meta_error',
+        reason,
       })
     }
     return { ok: false as const, error: sendError }
