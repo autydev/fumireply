@@ -22,7 +22,6 @@
   "reply_send_button": "送信",
   "reply_sending_button": "送信中…",
   "reply_ai_suggestion_label": "AI 下書き",
-  "reply_draft_saved": "下書き保存済",
   "reply_window_closed_warning": "24時間窓が閉じているため返信できません。",
   "reply_policy_countdown": "Meta 24時間ポリシー · 返信期限迫る",
   "reply_error_outside_window": "24時間窓が閉じています。返信できません。",
@@ -38,7 +37,6 @@
   "thread_attach_too_large": "画像サイズが上限（25MB）を超えています。",
   "thread_attach_upload_failed": "画像のアップロードに失敗しました。もう一度お試しください。",
   "thread_attach_partial_failure": "テキストは送信済みですが、画像の送信に失敗しました。",
-  "reply_saving": "保存中…",
   "reply_body_label": "返信本文",
   "reply_policy_time_remaining": "残り {hours}h {minutes}m",
   "onboarding_title": "Facebook ページを連携する",
@@ -100,6 +98,9 @@
   "settings_page_prompt_label": "店舗ポリシー / カスタム指示",
   "settings_page_prompt_placeholder": "例: 購入後 30 日以降は返品を受け付けません。在庫確認前に入荷を確約しないでください。",
   "settings_page_prompt_help": "このテキストは、このページからのメッセージに対するすべての AI 下書きに含まれます。",
+  "settings_page_price_guide_label": "取り扱い商品の相場",
+  "settings_page_price_guide_placeholder": "例: リザードン VMAX ¥3,000〜4,000 / ピカチュウ プロモ ¥500。買取は相場の 6〜7 割。",
+  "settings_page_price_guide_help": "価格・見積もりの問い合わせを受けたとき、AI がこの相場を参照して下書きを作成します。",
   "settings_chars_remaining": "残り {remaining} 文字",
   "cp_section_persona": "AI 要約",
   "cp_persona_disclaimer": "これは過去の会話をもとに AI が生成した要約です。",
@@ -119,6 +120,8 @@
   "autosave_editing": "編集中…",
   "autosave_saving": "保存中…",
   "autosave_saved": "保存済み",
+  "autosave_error": "保存に失敗しました",
+  "autosave_retry": "再試行",
   "cp_persona_updated_at": "最終更新: {at}",
   "reply_draft_regenerate_button": "再生成",
   "reply_draft_regenerate_instruction_placeholder": "この回だけの追加指示（例：OP-09 は ¥800、これで案内）",
@@ -126,5 +129,7 @@
   "reply_draft_regenerate_chars_remaining": "残り {count} 文字",
   "reply_draft_regenerate_timeout": "再生成がタイムアウトしました。もう一度お試しください。",
   "reply_draft_regenerate_failed": "再生成に失敗しました: {message}",
-  "reply_draft_regenerate_enqueue_failed": "再生成リクエストの送信に失敗しました"
+  "reply_draft_regenerate_enqueue_failed": "再生成リクエストの送信に失敗しました",
+  "reply_draft_generate_failed": "下書きの生成に失敗しました。再生成をお試しください。",
+  "reply_draft_generate_timeout": "下書きの生成がタイムアウトしました。再生成をお試しください。"
 }

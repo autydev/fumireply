@@ -1,5 +1,5 @@
-import { setCookie } from '@tanstack/react-start/server'
 import { getSupabaseClient } from '~/server/services/auth'
+import { setAuthCookies } from '~/server/services/auth-cookies'
 
 export type LoginResult =
   | {
@@ -51,20 +51,7 @@ export async function performLogin(data: {
     return { ok: false, error: 'invalid_credentials' }
   }
 
-  setCookie('sb-access-token', session.access_token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 3600,
-  })
-  setCookie('sb-refresh-token', session.refresh_token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 2592000,
-  })
+  setAuthCookies(session.access_token, session.refresh_token)
 
   const rawRole = user.app_metadata?.role as string | undefined
   const role: 'operator' | 'reviewer' | null =

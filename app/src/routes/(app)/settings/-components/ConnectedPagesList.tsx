@@ -19,6 +19,7 @@ export function ConnectedPagesList({ connectedPages }: ConnectedPagesListProps) 
           connectedPageId={page.id}
           pageName={page.pageName}
           customPrompt={page.customPrompt}
+          priceGuide={page.priceGuide}
         />
       ))}
     </div>

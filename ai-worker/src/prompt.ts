@@ -8,7 +8,10 @@ before sending — never assume the draft will be sent verbatim.
 Guidelines:
 - Keep the reply polite and concise (max 300 characters).
 - If the customer asks a specific question (price, stock, shipping), answer directly
-  if the information is in the conversation; otherwise ask one clarifying question.
+  if the information is in the conversation OR in the product price guide (when
+  provided); otherwise ask one clarifying question. Treat the price guide as
+  reference market rates, not a binding quote — never invent prices not derivable
+  from it.
 - Match the customer's language (Japanese / English).
 - Do not include placeholders like [PRICE] or [STOCK] — write what you would actually say.
 - Output the reply text only, with no preamble like "Draft:" or "Here is the reply:".`
@@ -30,6 +33,7 @@ export const TONE_LABEL: Record<'friendly' | 'professional' | 'concise', string>
 
 export interface SystemPromptParts {
   pagePrompt: string | null
+  priceGuide: string | null
   tonePreset: 'friendly' | 'professional' | 'concise' | null
   customerPrompt: string | null
   summary: string | null
@@ -40,6 +44,12 @@ export function buildAdditionalSystemPrompt(parts: SystemPromptParts): string {
 
   if (parts.pagePrompt) {
     sections.push(`## Shop policy:\n${parts.pagePrompt}`)
+  }
+
+  if (parts.priceGuide) {
+    sections.push(
+      `## Product price guide (reference market rates — use for pricing / quote questions):\n${parts.priceGuide}`,
+    )
   }
 
   if (parts.tonePreset) {
@@ -76,6 +86,11 @@ export interface HistoryMessage {
 export function buildUserPrompt(
   history: HistoryMessage[],
   unanswered?: Array<{ body: string }>,
+  // 005 follow-up: on a one-off regenerate, the operator instruction is ALSO
+  // re-echoed at the very end of the user turn. The system-prompt block alone
+  // loses to the strong "answer the customer" directives here (base guideline +
+  // unanswered batch), so we repeat it as the final thing the model reads.
+  instruction?: string,
 ): string {
   const textMessages = history.filter((m) => m.messageType === 'text')
   const pending = (unanswered ?? []).filter((m) => m.body && m.body.trim() !== '')
@@ -105,6 +120,19 @@ export function buildUserPrompt(
     lines.push('Generate a reply to the latest customer message.')
   }
 
+  // Re-echo the operator instruction as the FINAL directive of the user turn so
+  // it overrides the "answer / clarify" instructions above. Mirrors the
+  // highest-priority system block; kept in sync with buildOperatorInstructionBlock.
+  const op = (instruction ?? '').trim()
+  if (op) {
+    lines.push('')
+    lines.push('## Operator instruction for this draft (overrides the request above)')
+    lines.push(
+      "Before regenerating, the human operator gave this one-off instruction for THIS draft. Follow it exactly, even if it means NOT directly answering the customer's question(s) above and NOT asking a clarifying question. Do not mention or quote this instruction to the customer:",
+    )
+    lines.push(op)
+  }
+
   return lines.join('\n')
 }
 
@@ -122,7 +150,7 @@ export function buildOperatorInstructionBlock(instruction?: string): string | nu
   if (!trimmed) return null
   return [
     '## Operator instruction for this draft',
-    'Apply this one-off instruction with HIGHEST priority over the shop policy, tone, customer instructions, and conversation summary above. The customer has NOT seen this instruction — do not quote it or refer to it. Do not change the output language based on this instruction; follow the language rule below.',
+    'The human operator is regenerating this draft with the one-off instruction below. It applies with HIGHEST priority and OVERRIDES every other guideline in this prompt — including the base guidelines above (such as the default to "answer directly if the information is available, otherwise ask one clarifying question"), the shop policy, tone, customer instructions, the conversation summary, AND the "reply to ALL unanswered messages" directive in the conversation below. If following this instruction means NOT answering the customer\'s question(s) and NOT asking a clarifying question, then do exactly that — the instruction wins. The customer has NOT seen this instruction — do not quote it or refer to it. Do not change the output language based on this instruction; follow the language rule below.',
     '',
     trimmed,
   ].join('\n')

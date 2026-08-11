@@ -74,6 +74,9 @@ export type ConversationDetail = {
   latest_draft: {
     body: string
     status: 'pending' | 'ready' | 'failed'
+    // Non-null when the last generation attempt failed. Drives the failure
+    // banner + retry button in ReplyForm.
+    error: string | null
   } | null
   // 010: media バケットが設定済みなら送信側の画像添付 UI を出す。additive。
   mediaUploadEnabled: boolean
@@ -129,14 +132,18 @@ export async function handleGetConversation(
     .where(eq(messages.conversationId, conversationId))
     .orderBy(asc(messages.timestamp))
 
-  // Conversation-scoped active draft (at most one pending/ready row).
+  // Conversation-scoped active draft. 'pending'/'ready' are the active states
+  // (unique per conversation); 'failed' is also surfaced so the UI can show a
+  // retry button + error. When a new inbound arrives after a failure the webhook
+  // inserts a fresh pending row, so ordering by createdAt DESC lets the newer
+  // pending/ready supersede the stale failed row.
   const activeDraftRows = await tx
-    .select({ status: aiDrafts.status, body: aiDrafts.body })
+    .select({ status: aiDrafts.status, body: aiDrafts.body, error: aiDrafts.error })
     .from(aiDrafts)
     .where(
       and(
         eq(aiDrafts.conversationId, conversationId),
-        inArray(aiDrafts.status, ['pending', 'ready']),
+        inArray(aiDrafts.status, ['pending', 'ready', 'failed']),
       ),
     )
     .orderBy(desc(aiDrafts.createdAt))
@@ -195,7 +202,7 @@ export async function handleGetConversation(
     })),
   )
 
-  // latest_draft: the conversation's active (pending/ready) draft.
+  // latest_draft: the conversation's active (pending/ready) or last-failed draft.
   let latestDraft: ConversationDetail['latest_draft'] = null
   const activeDraft = activeDraftRows[0]
   if (activeDraft) {
@@ -203,7 +210,7 @@ export async function handleGetConversation(
       activeDraft.status === 'ready' || activeDraft.status === 'failed'
         ? activeDraft.status
         : 'pending'
-    latestDraft = { body: activeDraft.body ?? '', status }
+    latestDraft = { body: activeDraft.body ?? '', status, error: activeDraft.error ?? null }
   }
 
   return {

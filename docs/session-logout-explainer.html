@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>すぐログアウトされる問題の仕組み解説 — fumireply</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --ink: #1c2430;
+    --muted: #5b6673;
+    --line: #e3e7ec;
+    --accent: #2f6fed;
+    --accent-soft: #eaf1fe;
+    --danger: #d64545;
+    --danger-soft: #fdecec;
+    --ok: #1f9d6b;
+    --ok-soft: #e7f6ef;
+    --warn: #b8860b;
+    --warn-soft: #fbf3df;
+    --code-bg: #1e2530;
+    --code-ink: #e6edf3;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
+    line-height: 1.8;
+    font-size: 16px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 48px 22px 96px; }
+  header.hero {
+    background: linear-gradient(135deg, #2f6fed, #6a4bd6);
+    color: #fff;
+    border-radius: 18px;
+    padding: 36px 34px;
+    margin-bottom: 34px;
+    box-shadow: 0 12px 34px rgba(47,111,237,0.25);
+  }
+  header.hero .tag {
+    display: inline-block;
+    font-size: 12px; font-weight: 700; letter-spacing: .08em;
+    background: rgba(255,255,255,0.18);
+    padding: 4px 12px; border-radius: 999px; margin-bottom: 14px;
+  }
+  header.hero h1 { margin: 0 0 10px; font-size: 27px; line-height: 1.4; }
+  header.hero p { margin: 0; opacity: .92; font-size: 15px; }
+
+  h2 {
+    font-size: 22px; margin: 46px 0 16px;
+    padding-bottom: 10px; border-bottom: 2px solid var(--line);
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2 .num {
+    flex: none;
+    width: 34px; height: 34px; border-radius: 9px;
+    background: var(--accent); color: #fff;
+    display: grid; place-items: center; font-size: 17px; font-weight: 700;
+  }
+  h3 { font-size: 17px; margin: 28px 0 10px; }
+  p { margin: 12px 0; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+    margin: 18px 0;
+  }
+  .callout {
+    border-left: 5px solid var(--accent);
+    background: var(--accent-soft);
+    border-radius: 10px;
+    padding: 14px 18px; margin: 18px 0;
+  }
+  .callout.danger { border-color: var(--danger); background: var(--danger-soft); }
+  .callout.ok { border-color: var(--ok); background: var(--ok-soft); }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .callout .label { font-weight: 700; font-size: 13px; letter-spacing: .04em; display: block; margin-bottom: 4px; }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f0f3f7; font-weight: 700; }
+  td code, p code, li code { background: #eef1f5; color: #b8285e; padding: 1px 6px; border-radius: 5px; font-size: 13.5px; }
+
+  pre {
+    background: var(--code-bg); color: var(--code-ink);
+    border-radius: 12px; padding: 18px 20px; overflow-x: auto;
+    font-size: 13.5px; line-height: 1.7; margin: 16px 0;
+  }
+  pre code { color: inherit; background: none; padding: 0; }
+  .cmt { color: #8b98a5; }
+  .add { color: #7ee787; }
+  .del { color: #ff9492; }
+  .kw { color: #79c0ff; }
+
+  ol, ul { padding-left: 22px; }
+  li { margin: 7px 0; }
+
+  /* race diagram */
+  .flow { display: grid; gap: 10px; margin: 18px 0; }
+  .req {
+    display: grid; grid-template-columns: 130px 1fr auto; gap: 12px; align-items: center;
+    background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px;
+  }
+  .req .who { font-weight: 700; font-size: 13.5px; }
+  .req .bar { height: 8px; border-radius: 5px; background: linear-gradient(90deg,#cdd6e0,#eef1f5); }
+  .req .res { font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .req .res.win { color: var(--ok); }
+  .req .res.lose { color: var(--danger); }
+
+  /* figures / sequence diagrams */
+  figure.fig { margin: 22px 0; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 16px 12px; }
+  figure.fig svg { width: 100%; height: auto; display: block; }
+  figure.fig figcaption { font-size: 13px; color: var(--muted); text-align: center; margin-top: 10px; }
+  .fig-scroll { overflow-x: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin: 4px 0 2px; font-size: 12.5px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 22px; height: 3px; border-radius: 2px; display: inline-block; }
+
+  /* annotated code with highlighted problem lines */
+  pre .line { display: block; }
+  pre .bad { background: rgba(214,69,69,0.22); border-left: 3px solid #ff9492; padding-left: 8px; margin-left: -11px; }
+  pre .note { color: #ffd479; }
+
+  .glossary dt { font-weight: 700; margin-top: 16px; color: var(--accent); }
+  .glossary dd { margin: 4px 0 0; color: var(--ink); }
+
+  .footer-note { margin-top: 40px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 18px; }
+  .pill { display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px; }
+  .pill.A { background: var(--danger-soft); color: var(--danger); }
+  .pill.B { background: var(--warn-soft); color: var(--warn); }
+  .pill.C { background: var(--accent-soft); color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <span class="tag">SESSION / AUTH 解説</span>
+  <h1>「すぐログアウトされる」のはなぜか<br>— セッション管理の仕組みと直し方</h1>
+  <p>fumireply アプリ（TanStack Start + Supabase Auth + AWS Lambda 構成）における、ログイン直後に弾かれてしまう現象を、仕組みから丁寧に解説します。「Lambda で Web をやっているから」という要素も、結論から言うと <strong>関係あります</strong>。</p>
+</header>
+
+<div class="callout">
+  <span class="label">この文書の要点（30秒版）</span>
+  1画面を開くと複数のサーバー処理が<strong>同時に</strong>走ります。アクセストークンが切れた瞬間、それらが<strong>同じリフレッシュトークンで一斉に更新をかける</strong>のですが、Supabase はリフレッシュトークンを<strong>1回使ったら捨てる（ローテーション）</strong>方式なので、勝つのは1本だけ。残りは「無効」と判定されてログイン画面へ飛ばされます。さらに Lambda は<strong>リクエストごとに別インスタンスで動く（状態を共有しない）</strong>ため、この競合を防ぐ仕組みが効きにくい ── これが根本原因です。
+</div>
+
+<!-- ============ 1 ============ -->
+<h2><span class="num">1</span>現在のセッション管理</h2>
+
+<p>fumireply は独自のセッションテーブルやセッション用の署名鍵を持っていません。認証は <strong>Supabase Auth の JWT 方式</strong>にまるごと乗っています。仕組みはこうです。</p>
+
+<div class="card">
+  <h3>トークンは2種類、Cookie に保存</h3>
+  <p>ログインに成功すると、Supabase が2つのトークンを発行し、ブラウザの <code>httpOnly</code> Cookie に保存します。</p>
+  <table>
+    <thead><tr><th>トークン</th><th>Cookie 名</th><th>寿命 (maxAge)</th><th>役割</th></tr></thead>
+    <tbody>
+      <tr><td>アクセストークン</td><td><code>sb-access-token</code></td><td><strong>3600秒 = 1時間</strong></td><td>「この人は本人」を証明する短命の入館証。毎リクエストで提示する。</td></tr>
+      <tr><td>リフレッシュトークン</td><td><code>sb-refresh-token</code></td><td><strong>2592000秒 = 30日</strong></td><td>アクセストークンが切れたとき、新しいものと交換するための長命な引換券。</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:13.5px;color:var(--muted);margin-bottom:0">Cookie 属性は全箇所で統一：<code>httpOnly / secure / sameSite:'lax' / path:'/'</code>（<code>domain</code> 未指定＝ホストオンリー）。</p>
+</div>
+
+<div class="card">
+  <h3>毎リクエストで検証する「認証ミドルウェア」</h3>
+  <p>サーバー側の各処理（会話一覧の取得、ページ状態の確認…）には <code>authMiddleware</code>（<code>app/src/server/middleware/auth-middleware.ts</code>）が付いていて、実行前に必ずこの流れを通します。</p>
+  <ol>
+    <li>Cookie から <code>sb-access-token</code> を取り出す → 無ければ即 <code>/login</code>。</li>
+    <li>アクセストークンを Supabase に問い合わせて検証（<code>verifyAccessToken</code>）。</li>
+    <li>検証に失敗（＝期限切れ等）したら、<code>sb-refresh-token</code> を使って <strong>新しいトークンに交換</strong>（<code>refreshSession</code>）。</li>
+    <li>交換で得た新トークンを Cookie に上書き保存し直す（<code>setCookie</code>）。</li>
+    <li>それでもダメなら <code>/login</code> へリダイレクト（＝ログアウト）。</li>
+  </ol>
+  <p style="margin-bottom:0">つまり「期限切れは自動リフレッシュで救う」設計自体は正しいのですが、<strong>複数の処理が同時にリフレッシュしたときの調整（排他制御）が無い</strong>のがこの後の問題につながります。</p>
+</div>
+
+<div class="card">
+  <h3>「Lambda で Web」という土台</h3>
+  <p>このアプリのサーバー処理は AWS Lambda 上で動いています（<code>terraform/modules/app-lambda</code>、メモリ 1024MB / タイムアウト 30秒、同時実行数の予約なし＝<strong>オンデマンドで自動スケール</strong>）。ここが効いてきます。</p>
+  <ul>
+    <li><strong>ステートレス（状態を持たない）</strong>：Lambda は原則リクエストが来るたびに実行される関数で、処理の間でメモリを共有しません。「今リフレッシュ中だから待って」という<strong>共有ロックをアプリのメモリ上に置けない</strong>。</li>
+    <li><strong>同時実行＝別インスタンス</strong>：ブラウザが1画面で5本のリクエストを同時に送ると、AWS はそれを<strong>別々の Lambda インスタンス</strong>で並行処理することがあります。5つの処理はお互いの存在を知りません。</li>
+  </ul>
+  <p style="margin-bottom:0">この「共有状態が無い・並行で走る」性質が、次章のレース（競合）を起こりやすくし、<strong>単純なメモリ内ロックでは直しきれない</strong>理由にもなります。</p>
+</div>
+
+<!-- ============ 2 ============ -->
+<h2><span class="num">2</span>何が問題か？</h2>
+
+<p>原因は大小3つあります。<span class="pill A">A 本命</span> が主犯、<span class="pill B">B</span><span class="pill C">C</span> が悪化要因です。</p>
+
+<h3><span class="pill A">A</span> リフレッシュトークンのローテーション競合（本命）</h3>
+<p>Supabase のリフレッシュトークンは <strong>ワンタイム</strong>です。1回使って新トークンに交換すると、<strong>元のリフレッシュトークンは即座に無効</strong>になります（＝ローテーション）。盗まれたトークンの再利用を防ぐためのセキュリティ仕様です。</p>
+<p>ところが fumireply では、1画面を開くと <code>checkConnectedPagesFn</code>・会話一覧・ページ状態…といった処理が<strong>並列</strong>に走ります。アクセストークンが切れた瞬間、これらが全員<strong>同じ1本のリフレッシュトークン</strong>で同時に交換をかけます。</p>
+
+<figure class="fig">
+  <div class="legend">
+    <span><i style="background:#7a8794"></i>リクエスト</span>
+    <span><i style="background:#1f9d6b"></i>成功（トークン交換 OK）</span>
+    <span><i style="background:#d64545"></i>失敗（invalid_grant / ログアウト）</span>
+  </div>
+  <div class="fig-scroll">
+  <svg viewBox="0 0 830 600" role="img" aria-label="複数 Lambda インスタンスが同じリフレッシュトークンで同時に Supabase を叩き競合するシーケンス図" font-family="-apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif">
+    <defs>
+      <marker id="mg" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7a8794"/></marker>
+      <marker id="mgr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1f9d6b"/></marker>
+      <marker id="mrd" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#d64545"/></marker>
+    </defs>
+
+    <!-- lane headers -->
+    <g font-size="12.5" font-weight="700" text-anchor="middle">
+      <rect x="35"  y="12" width="110" height="34" rx="8" fill="#eaf1fe" stroke="#2f6fed"/>
+      <text x="90"  y="34" fill="#1c2430">ブラウザ</text>
+      <rect x="232" y="12" width="116" height="34" rx="8" fill="#e7f6ef" stroke="#1f9d6b"/>
+      <text x="290" y="29" fill="#1c2430">Lambda①</text><text x="290" y="42" fill="#1f9d6b" font-size="10.5">先着＝勝ち</text>
+      <rect x="374" y="12" width="112" height="34" rx="8" fill="#fdecec" stroke="#d64545"/>
+      <text x="430" y="29" fill="#1c2430">Lambda②</text><text x="430" y="42" fill="#d64545" font-size="10.5">別インスタンス</text>
+      <rect x="504" y="12" width="112" height="34" rx="8" fill="#fdecec" stroke="#d64545"/>
+      <text x="560" y="29" fill="#1c2430">Lambda③</text><text x="560" y="42" fill="#d64545" font-size="10.5">別インスタンス</text>
+      <rect x="666" y="12" width="128" height="34" rx="8" fill="#f0f3f7" stroke="#5b6673"/>
+      <text x="730" y="29" fill="#1c2430">Supabase</text><text x="730" y="42" fill="#5b6673" font-size="10.5">Auth サーバー</text>
+    </g>
+
+    <!-- lifelines -->
+    <g stroke="#cdd6e0" stroke-width="1.5" stroke-dasharray="4 4">
+      <line x1="90"  y1="46" x2="90"  y2="560"/>
+      <line x1="290" y1="46" x2="290" y2="560"/>
+      <line x1="430" y1="46" x2="430" y2="560"/>
+      <line x1="560" y1="46" x2="560" y2="560"/>
+      <line x1="730" y1="46" x2="730" y2="560"/>
+    </g>
+
+    <!-- phase 1: browser fans out (parallel) -->
+    <text x="90" y="66" font-size="10.5" fill="#5b6673" text-anchor="start">Cookie: access=失効 / refresh=<tspan font-weight="700">RT0</tspan></text>
+    <g font-size="10.5" fill="#3a4450" text-anchor="middle">
+      <line x1="90" y1="88"  x2="288" y2="88"  stroke="#7a8794" stroke-width="1.6" marker-end="url(#mg)"/>
+      <text x="188" y="83">① GET 会話一覧</text>
+      <line x1="90" y1="110" x2="428" y2="110" stroke="#7a8794" stroke-width="1.6" marker-end="url(#mg)"/>
+      <text x="235" y="105">② GET ページ状態</text>
+      <line x1="90" y1="132" x2="558" y2="132" stroke="#7a8794" stroke-width="1.6" marker-end="url(#mg)"/>
+      <text x="300" y="127">③ GET 設定</text>
+    </g>
+    <text x="415" y="152" font-size="10.5" fill="#8a2be2" text-anchor="middle" font-style="italic">1画面ロードで並列に発火（お互いを知らない）</text>
+
+    <!-- phase 2: each lambda -> supabase refreshSession(RT0) -->
+    <g font-size="10.5" fill="#3a4450" text-anchor="middle">
+      <line x1="290" y1="185" x2="728" y2="185" stroke="#7a8794" stroke-width="1.6" marker-end="url(#mg)"/>
+      <text x="505" y="180">refreshSession(<tspan font-weight="700" fill="#b8285e">RT0</tspan>)</text>
+      <line x1="430" y1="205" x2="728" y2="205" stroke="#7a8794" stroke-width="1.6" marker-end="url(#mg)"/>
+      <text x="585" y="200">refreshSession(<tspan font-weight="700" fill="#b8285e">RT0</tspan>)</text>
+      <line x1="560" y1="225" x2="728" y2="225" stroke="#7a8794" stroke-width="1.6" marker-end="url(#mg)"/>
+      <text x="648" y="220">refreshSession(<tspan font-weight="700" fill="#b8285e">RT0</tspan>)</text>
+    </g>
+
+    <!-- phase 3: supabase rotation note -->
+    <rect x="560" y="244" width="256" height="56" rx="8" fill="#fbf3df" stroke="#b8860b"/>
+    <text x="688" y="263" font-size="10.5" fill="#6b4e00" text-anchor="middle" font-weight="700">Supabase の判定（ローテーション）</text>
+    <text x="688" y="279" font-size="10.5" fill="#6b4e00" text-anchor="middle">先着の1本だけ成立 → RT0 を即無効化し</text>
+    <text x="688" y="293" font-size="10.5" fill="#6b4e00" text-anchor="middle">新 AT1 + RT1 を発行。RT0 の再利用は拒否。</text>
+
+    <!-- phase 4: supabase responses -->
+    <g font-size="10.5" text-anchor="middle">
+      <line x1="728" y1="330" x2="292" y2="330" stroke="#1f9d6b" stroke-width="2" marker-end="url(#mgr)"/>
+      <text x="500" y="325" fill="#1f9d6b" font-weight="700">200 ✓ AT1 + RT1</text>
+      <line x1="728" y1="354" x2="432" y2="354" stroke="#d64545" stroke-width="2" marker-end="url(#mrd)"/>
+      <text x="585" y="349" fill="#d64545" font-weight="700">400 ✗ invalid_grant</text>
+      <line x1="728" y1="378" x2="562" y2="378" stroke="#d64545" stroke-width="2" marker-end="url(#mrd)"/>
+      <text x="648" y="373" fill="#d64545" font-weight="700">400 ✗ invalid_grant</text>
+    </g>
+
+    <!-- phase 5: lambda -> browser -->
+    <g font-size="10.5" text-anchor="middle">
+      <line x1="290" y1="432" x2="92"  y2="432" stroke="#1f9d6b" stroke-width="2" marker-end="url(#mgr)"/>
+      <text x="188" y="427" fill="#1f9d6b" font-weight="700">200 + Set-Cookie RT1</text>
+      <line x1="430" y1="456" x2="92"  y2="456" stroke="#d64545" stroke-width="2" marker-end="url(#mrd)"/>
+      <text x="255" y="451" fill="#d64545" font-weight="700">302 → /login</text>
+      <line x1="560" y1="480" x2="92"  y2="480" stroke="#d64545" stroke-width="2" marker-end="url(#mrd)"/>
+      <text x="320" y="475" fill="#d64545" font-weight="700">302 → /login</text>
+    </g>
+
+    <!-- bottom conclusion -->
+    <rect x="35" y="508" width="759" height="60" rx="10" fill="#fdecec" stroke="#d64545"/>
+    <text x="414" y="530" font-size="11.5" fill="#8a1f1f" text-anchor="middle" font-weight="700">結果：ブラウザには「成功 Set-Cookie」と「/login リダイレクト」が混在。</text>
+    <text x="414" y="549" font-size="11.5" fill="#8a1f1f" text-anchor="middle">しかも Set-Cookie が競合し、最後に残る Cookie がローテーション済み（無効）になりうる →</text>
+    <text x="414" y="562" font-size="11.5" fill="#8a1f1f" text-anchor="middle" font-weight="700">次のリクエストで再ログアウト。体感「すぐログアウトされる」。</text>
+  </svg>
+  </div>
+  <figcaption>図1：アクセストークン失効の瞬間、並列リクエストが<strong>同じ RT0</strong> で一斉に交換をかける。Supabase は先着1本しか通さないため、残りは <code>invalid_grant</code> でログアウトへ。Lambda が<strong>別インスタンス</strong>に散るので、アプリ内のロックでは止められない。</figcaption>
+</figure>
+
+<p>最初に交換できた1本だけが勝ち、残りは「もう無効なトークンです（<code>invalid_grant</code>）」と拒否され、<strong>ログイン画面へ飛ばされます</strong>。さらに悪いことに、成功した処理も<strong>バラバラのタイミングで別々の新 Cookie を書き込む</strong>ため、最終的にブラウザに残る Cookie が<strong>既にローテーション済み（無効）</strong>のものになり、次のリクエストでまたログアウト、という連鎖が起きます。</p>
+
+<div class="callout danger">
+  <span class="label">Lambda がここで効く</span>
+  もし全処理が「1つのサーバーの1つのメモリ」で動いていれば、「今リフレッシュ中だから他は待つ」というロック（デデュープ）で防げます。しかし Lambda では処理が<strong>別インスタンスに散る</strong>ため、アプリのメモリ内ロックはインスタンスをまたいで効きません。「Lambda で Web をやっているから」という要素は、ここで確かに効いています。
+</div>
+
+<div class="card">
+  <h3>問題のコードはここ</h3>
+  <p><code>app/src/server/middleware/auth-middleware.ts</code>（赤ハイライトが問題行）</p>
+<pre><code><span class="line">24  let user = await verifyAccessToken(accessToken)</span>
+<span class="line">26  if (!user) {                                <span class="note">// ← アクセストークン失効</span></span>
+<span class="line">27    const refreshToken = getCookie('sb-refresh-token')  <span class="note">// 全処理が同じ RT0 を読む</span></span>
+<span class="line bad">31    const refreshed = await refreshSession(refreshToken)  ★問題① 調整なしで一斉に RT0 を交換</span>
+<span class="line">32    if (!refreshed) { throw redirect({ to: '/login' }) }  <span class="note">// 2本目以降は invalid_grant→ここでログアウト</span></span>
+<span class="line bad">35    setCookie('sb-access-token',  refreshed.accessToken,  ...)  ★問題② 各処理が別々の新 Cookie を</span>
+<span class="line bad">42    setCookie('sb-refresh-token', refreshed.refreshToken, ...)     上書き→無効トークンが最後に残りうる</span>
+<span class="line">49    user = refreshed.user</span>
+<span class="line">50  }</span></code></pre>
+  <p style="margin-bottom:6px"><strong>問題①（31行目）</strong>：並列に走る各リクエストが、<strong>互いを知らないまま同じ <code>RT0</code> で交換</strong>をかける。排他制御・デデュープが無い。</p>
+  <p style="margin-bottom:0"><strong>問題②（35–48行目）</strong>：成功した処理が<strong>それぞれ独立に Cookie を上書き</strong>する。順序次第で、ブラウザに最後まで残る Cookie が既にローテーション済み（無効）のトークンになる。</p>
+</div>
+
+<div class="card">
+  <h3>「1本化」を差し込むべき場所</h3>
+  <p><code>app/src/server/services/auth.ts:30-41</code> の <code>refreshSession</code> は <code>supabase.auth.refreshSession()</code> を<strong>そのまま叩くだけ</strong>で、同一トークンの同時実行をまとめる仕掛けがありません。修正（ロック／デデュープ／reuse interval の利用）はこの関数か、その呼び出し元 <code>auth-middleware.ts:31</code> に入れます。</p>
+<pre><code>30  export async function refreshSession(refreshToken) {
+31    const supabase = getSupabaseClient()
+33    const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken })
+      <span class="note">// ↑ ここに来る前に「同じ RT0 の交換は1本にまとめる」処理が必要</span>
+34    if (error || !data.session || !data.user) return null
+      ...
+41  }</code></pre>
+</div>
+
+<h3><span class="pill B">B</span> Supabase クライアントの状態共有</h3>
+<p><code>getSupabaseClient()</code>（<code>app/src/server/services/auth.ts</code>）は Lambda インスタンス内で <strong>使い回しの単一インスタンス（singleton）</strong>を作りますが、生成オプションで <code>persistSession</code> / <code>autoRefreshToken</code> を<strong>無効化していません（＝デフォルトの true のまま）</strong>。</p>
+<p>このため、同じインスタンスで並行する複数リクエスト（別テナントを含む）が、1つのクライアントの<strong>内部セッション状態を共有</strong>してしまいます。ログアウト処理の <code>signOut({ scope: 'global' })</code> の影響が想定外に広がる恐れもあります。実際、E2E テスト用のシードでは <code>persistSession:false, autoRefreshToken:false</code> を<strong>明示している</strong>のに、本番ランタイム側だけ指定漏れという不整合があります。</p>
+
+<h3><span class="pill C">C</span> 一過性エラーと「本当に無効」の混同</h3>
+<p><code>verifyAccessToken</code> は、error でも user が空でも<strong>一律 <code>null</code> を返します</strong>。つまり「トークンが本当に無効」と「Supabase に一瞬つながらなかった（15秒タイムアウト等のネットワーク不調）」を<strong>区別していません</strong>。一過性の障害でも即ログアウト扱いになり、続くリフレッシュも一時失敗すれば <code>/login</code> へ。Lambda のコールドスタートや外部通信の揺らぎと相まって、体感の「突然ログアウト」を増やします。</p>
+
+<!-- ============ 3 ============ -->
+<h2><span class="num">3</span>解決方法</h2>
+
+<p>優先度は <strong>A ≫ B ＞ C</strong>。A を潰せば体感はほぼ解消し、B・C で堅牢性を上げます。</p>
+
+<div class="card">
+  <h3><span class="pill A">A</span> リフレッシュを「1本化」する</h3>
+  <p>並列に走る処理が同じリフレッシュトークンで一斉に交換をかけないよう、交換を<strong>直列化・重複排除（デデュープ）</strong>します。Lambda でインスタンスが散る前提なので、選択肢は3系統あります。</p>
+
+  <div class="callout ok">
+    <span class="label">追加コストを避けたいなら → (b) が第一候補</span>
+    <strong>(b) Supabase の refresh token reuse interval を数秒に設定</strong>すれば、<strong>お金の追加コストゼロ・コードほぼ無し</strong>で、同時多発の交換を実質1回にまとめられます。インスタンスをまたいでも効くのが利点。まずこれを入れ、足りなければ (a) を<strong>既存 Postgres の advisory lock</strong>（＝インフラ増なし）で足します。(c) は変更範囲が広く非推奨。
+  </div>
+
+  <table>
+    <thead><tr><th>案</th><th>追加コスト</th><th>コード変更</th><th>根治力</th></tr></thead>
+    <tbody>
+      <tr><td><strong>(b)</strong> reuse interval</td><td><strong>ゼロ</strong>（設定トグル）</td><td>ほぼ無し</td><td>高</td></tr>
+      <tr><td><strong>(a)</strong> 分散ロック</td><td>Postgres advisory lock なら<strong>増なし</strong> / Redis は課金増</td><td>中</td><td>最も確実</td></tr>
+      <tr><td><strong>(c)</strong> 入口を集約</td><td>ゼロ（フロント改修大）</td><td>大</td><td>高</td></tr>
+    </tbody>
+  </table>
+
+  <ul>
+    <li><strong>(a) 分散ロック / シングルフライト</strong>：短時間のロックを共有ストア（例：DB の advisory lock、あるいは Redis 等）に置き、リフレッシュ中は他は完了を待って<strong>新トークンを共有</strong>する。インスタンスをまたいでも効く本命の対処。</li>
+    <li><strong>(b) リフレッシュの猶予（グレース）を許容</strong>：Supabase 側の設定で「ローテーション後も直前のトークンを数秒だけ有効」にする（<em>refresh token reuse interval</em>）。同時多発の交換を実質1回にまとめられ、コード変更を最小化できる。まず試す価値が高い。</li>
+    <li><strong>(c) 交換の入口を1本に絞る</strong>：各処理が個別にリフレッシュせず、専用の「トークン更新エンドポイント」経由に集約し、フロント側で更新完了を待ってから本処理を投げる。</li>
+  </ul>
+  <div class="callout warn">
+    <span class="label">注意</span>アプリのメモリ内 Promise デデュープ（同一インスタンス内の in-flight 共有）は<strong>同じ Lambda インスタンスに載ったリクエスト同士にしか効きません</strong>。改善はしますが、根治には (a) か (b) が要ります。
+  </div>
+
+  <figure class="fig" style="margin-bottom:0">
+    <div class="legend">
+      <span><i style="background:#7a8794"></i>リクエスト</span>
+      <span><i style="background:#1f9d6b"></i>全処理が成功（ログアウトしない）</span>
+    </div>
+    <div class="fig-scroll">
+    <svg viewBox="0 0 830 340" role="img" aria-label="1本化した後のシーケンス図。並列リクエストが1回の交換結果を共有して全員成功する" font-family="-apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif">
+      <defs>
+        <marker id="mg2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7a8794"/></marker>
+        <marker id="mgr2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1f9d6b"/></marker>
+      </defs>
+      <g font-size="12.5" font-weight="700" text-anchor="middle">
+        <rect x="35"  y="12" width="110" height="34" rx="8" fill="#eaf1fe" stroke="#2f6fed"/>
+        <text x="90"  y="34" fill="#1c2430">ブラウザ</text>
+        <rect x="250" y="12" width="200" height="34" rx="8" fill="#e7f6ef" stroke="#1f9d6b"/>
+        <text x="350" y="29" fill="#1c2430">Lambda①②③</text><text x="350" y="42" fill="#1f9d6b" font-size="10.5">交換を1本化（ロック or reuse interval）</text>
+        <rect x="666" y="12" width="128" height="34" rx="8" fill="#f0f3f7" stroke="#5b6673"/>
+        <text x="730" y="29" fill="#1c2430">Supabase</text><text x="730" y="42" fill="#5b6673" font-size="10.5">Auth サーバー</text>
+      </g>
+      <g stroke="#cdd6e0" stroke-width="1.5" stroke-dasharray="4 4">
+        <line x1="90" y1="46" x2="90" y2="300"/>
+        <line x1="350" y1="46" x2="350" y2="300"/>
+        <line x1="730" y1="46" x2="730" y2="300"/>
+      </g>
+      <g font-size="10.5" fill="#3a4450" text-anchor="middle">
+        <line x1="90" y1="86"  x2="348" y2="86"  stroke="#7a8794" stroke-width="1.6" marker-end="url(#mg2)"/>
+        <line x1="90" y1="102" x2="348" y2="102" stroke="#7a8794" stroke-width="1.6" marker-end="url(#mg2)"/>
+        <line x1="90" y1="118" x2="348" y2="118" stroke="#7a8794" stroke-width="1.6" marker-end="url(#mg2)"/>
+        <text x="219" y="79">並列3リクエスト（Cookie=RT0）</text>
+      </g>
+      <line x1="350" y1="160" x2="728" y2="160" stroke="#7a8794" stroke-width="1.6" marker-end="url(#mg2)"/>
+      <text x="539" y="154" font-size="10.5" fill="#3a4450" text-anchor="middle">refreshSession(RT0) は<tspan font-weight="700" fill="#1f9d6b"> 1回だけ</tspan></text>
+      <rect x="250" y="132" width="200" height="20" rx="6" fill="#e7f6ef" stroke="#1f9d6b"/>
+      <text x="350" y="146" font-size="10" fill="#1f9d6b" text-anchor="middle" font-weight="700">先頭が交換、残りは結果を待って共有</text>
+      <line x1="728" y1="196" x2="352" y2="196" stroke="#1f9d6b" stroke-width="2" marker-end="url(#mgr2)"/>
+      <text x="539" y="190" font-size="10.5" fill="#1f9d6b" text-anchor="middle" font-weight="700">200 ✓ AT1 + RT1（全処理で共有）</text>
+      <g font-size="10.5" fill="#1f9d6b" text-anchor="middle" font-weight="700">
+        <line x1="350" y1="236" x2="92" y2="236" stroke="#1f9d6b" stroke-width="2" marker-end="url(#mgr2)"/>
+        <line x1="350" y1="252" x2="92" y2="252" stroke="#1f9d6b" stroke-width="2" marker-end="url(#mgr2)"/>
+        <line x1="350" y1="268" x2="92" y2="268" stroke="#1f9d6b" stroke-width="2" marker-end="url(#mgr2)"/>
+        <text x="221" y="229">3処理とも 200 + 一貫した Set-Cookie RT1</text>
+      </g>
+      <rect x="35" y="296" width="759" height="32" rx="9" fill="#e7f6ef" stroke="#1f9d6b"/>
+      <text x="414" y="316" font-size="11.5" fill="#136e4b" text-anchor="middle" font-weight="700">RT0 の交換は1回きり。invalid_grant が出ず、ブラウザには有効な RT1 だけが残る → ログアウトしない。</text>
+    </svg>
+    </div>
+    <figcaption>図2：修正後。並列リクエストは<strong>1回の交換結果を共有</strong>するので、<code>invalid_grant</code> が発生せず、ブラウザには一貫した有効トークンだけが残る。</figcaption>
+  </figure>
+</div>
+
+<div class="card">
+  <h3><span class="pill B">B</span> Supabase クライアントを「状態レス」にする</h3>
+  <p>サーバー用途では内部セッションを持たせない設定にします。ランタイムと E2E シードの不整合も解消します。</p>
+<pre><code><span class="kw">createClient</span>(url, key, {
+  <span class="add">auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },</span>
+  global: { fetch: fetchWithTimeout },
+})</code></pre>
+  <p style="margin-bottom:0">これでインスタンス内の並行リクエストが内部セッションを共有せず、<code>signOut</code> の副作用も限定されます。トークンは Cookie で明示的に受け渡す今の方針とも整合します。</p>
+</div>
+
+<div class="card">
+  <h3><span class="pill C">C</span> 一過性エラーで即ログアウトしない</h3>
+  <p>「トークン無効（401 相当）」と「到達不能・タイムアウト（5xx / ネットワーク）」を<strong>区別</strong>し、後者はログアウトさせずリトライ or 現行セッション維持にします。</p>
+<pre><code><span class="cmt">// 例：エラー種別で分岐</span>
+<span class="kw">const</span> { data, error } = <span class="kw">await</span> supabase.auth.getUser(token)
+<span class="kw">if</span> (error?.status === 401) <span class="kw">return</span> { kind: <span class="add">'invalid'</span> }   <span class="cmt">// 本当に無効 → refresh へ</span>
+<span class="kw">if</span> (error)                  <span class="kw">return</span> { kind: <span class="del">'transient'</span> } <span class="cmt">// 一過性 → 即ログアウトしない</span>
+<span class="kw">return</span> { kind: <span class="add">'ok'</span>, user: data.user }</code></pre>
+  <p style="margin-bottom:0">合わせて、リダイレクトで <code>invalid_grant</code> の連発が観測できるよう構造化ログを入れておくと、A の裏取りと再発監視ができます。</p>
+</div>
+
+<div class="callout ok">
+  <span class="label">おすすめの進め方</span>
+  <strong>① まず A-(b)</strong>（Supabase の refresh token reuse interval を数秒に）で即効性を確認 → <strong>② B</strong>（クライアントを状態レス化、低リスク）を同時投入 → <strong>③ 必要なら A-(a)</strong>（分散ロック）で根治 → <strong>④ C</strong>で堅牢化。裏取りは CloudWatch Logs で <code>invalid_grant</code> と <code>/login</code> リダイレクトの相関を見るのが確実です。
+</div>
+
+<!-- ============ 用語 ============ -->
+<h2>用語解説</h2>
+<div class="card glossary">
+<dl>
+  <dt>JWT（JSON Web Token）</dt>
+  <dd>「本人であること」等の情報に署名を付けた文字列。受け取った側は署名を検証するだけで本物と分かるため、毎回 DB を引かなくても認証できる。アクセストークンの実体がこれ。</dd>
+
+  <dt>アクセストークン / リフレッシュトークン</dt>
+  <dd>アクセストークンは短命（1時間）の「入館証」で毎リクエスト提示する。リフレッシュトークンは長命（30日）の「引換券」で、入館証が切れたとき新しいものと交換するために使う。</dd>
+
+  <dt>トークンのローテーション</dt>
+  <dd>リフレッシュトークンを1回使うと即座に無効化し、新しいリフレッシュトークンを併せて発行する方式。盗まれた券の再利用を検知・遮断できる代わりに、<strong>同じ券を2回使うと2回目が必ず失敗する</strong>。今回の競合の核心。</dd>
+
+  <dt><code>invalid_grant</code></dt>
+  <dd>OAuth/Supabase が「その引換券はもう使えません（無効・期限切れ・使用済み）」と返すエラー。ローテーション済みのリフレッシュトークンを使うとこれが出て、ログイン画面へ飛ぶ。</dd>
+
+  <dt>httpOnly Cookie</dt>
+  <dd>JavaScript から読めない Cookie。XSS でトークンを盗まれにくくするための保護。fumireply はトークンをこれで保存している。</dd>
+
+  <dt>レース条件（race condition）</dt>
+  <dd>複数の処理が同じ資源に同時アクセスして、実行順序次第で結果が壊れる不具合。今回は「同じリフレッシュトークンを同時に使う」レース。</dd>
+
+  <dt>排他制御 / デデュープ / シングルフライト</dt>
+  <dd>同時に走る処理を1本にまとめる仕組み。「今リフレッシュ中なら他は待って結果を共有する」ようにすると、券の二重使用を防げる。</dd>
+
+  <dt>ステートレス（Lambda）</dt>
+  <dd>関数がリクエスト間でメモリ状態を保持しない性質。スケールしやすい反面、「今処理中」を共有メモリで管理できないので、ロックは外部ストア（DB/Redis 等）に置く必要がある。</dd>
+
+  <dt>同時実行 / コールドスタート（Lambda）</dt>
+  <dd>同時実行：複数リクエストを別インスタンスで並行処理すること（今回は並列リフレッシュの温床）。コールドスタート：新インスタンス起動時の初回遅延で、一過性のタイムアウトを招きやすい。</dd>
+
+  <dt>singleton</dt>
+  <dd>1つのインスタンスを使い回す設計。<code>getSupabaseClient()</code> がこれ。ただし Lambda インスタンス<strong>ごと</strong>に別の singleton になる点に注意（グローバルに1つではない）。</dd>
+</dl>
+</div>
+
+<div class="footer-note">
+  参照コード：<code>app/src/server/middleware/auth-middleware.ts</code>（認証・リフレッシュの流れ）、<code>app/src/server/services/auth.ts</code>（Supabase クライアント / 検証・交換）、<code>app/src/routes/(auth)/login/-lib/login.server.ts</code>（Cookie 初回発行）、<code>terraform/modules/app-lambda/main.tf</code>（Lambda 構成）。<br>
+  作成：2026-07-26 ／ 本文書は現行コードの調査に基づく解説であり、修正はまだ未適用です。
+</div>
+
+</div>
+</body>
+</html>

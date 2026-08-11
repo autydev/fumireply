@@ -48,12 +48,19 @@ export const connectedPages = pgTable(
     connectedAt: timestamp('connected_at', { withTimezone: true }).notNull().defaultNow(),
     isActive: boolean('is_active').notNull().default(true),
     customPrompt: text('custom_prompt'),
+    // Free-text market-rate / price guide for the shop's products. Injected into
+    // the AI draft system prompt so pricing questions can be answered from it.
+    priceGuide: text('price_guide'),
   },
   (t) => [
     index('connected_pages_tenant_id_idx').on(t.tenantId),
     check(
       'connected_pages_custom_prompt_length',
       sql`${t.customPrompt} IS NULL OR char_length(${t.customPrompt}) <= 2000`,
+    ),
+    check(
+      'connected_pages_price_guide_length',
+      sql`${t.priceGuide} IS NULL OR char_length(${t.priceGuide}) <= 4000`,
     ),
   ],
 )

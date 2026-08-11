@@ -212,7 +212,7 @@ async function generateDraft(input: {
   tenantId: string
   isRegenerate: boolean
 }): Promise<void> {
-  const { conversationId, triggerMessageId, instruction, tenantId, isRegenerate } = input
+  const { conversationId, instruction, tenantId, isRegenerate } = input
 
   // 005: log the regenerate entry once we've resolved the tenant. instruction
   // body itself is NOT logged — only its length — to avoid leaking operator text.
@@ -224,14 +224,15 @@ async function generateDraft(input: {
     })
   }
 
-  // 2. Read coalesce state + settings + unanswered batch + context in one RLS tx
-  type Outcome = 'generate' | 'superseded' | 'no_unanswered'
+  // 2. Read latest-inbound + settings + unanswered batch + context in one RLS tx
+  type Outcome = 'generate' | 'no_unanswered'
   // Cast keeps the union type so reassignments inside the tx callback below are
   // not narrowed away by control-flow analysis.
   let outcome: Outcome = 'no_unanswered' as Outcome
   let history: HistoryItem[] = []
   let unanswered: Array<{ body: string }> = []
   let pagePrompt: string | null = null
+  let priceGuide: string | null = null
   let tonePreset: string | null = null
   let customerPrompt: string | null = null
   let summary: string | null = null
@@ -240,8 +241,12 @@ async function generateDraft(input: {
   let latestInboundIdAtStart: string | null = null
 
   await withTenant(tenantId, async (tx) => {
-    // Coalesce: only the job triggered by the latest inbound text message generates.
-    // Earlier jobs in a burst skip — the last one produces the final batch draft.
+    // Coalesce: a job always generates for the CURRENT latest unanswered batch,
+    // not for whatever message it was triggered by. The batch below reads every
+    // unanswered inbound since the last outbound, so an earlier job that fires
+    // after a newer message simply produces a draft covering the newer message
+    // too ("adopt the newest"). The webhook's stale-pending guard prevents
+    // redundant duplicate jobs, so this normally runs once per burst.
     const [latestInbound] = await tx
       .select({ id: messages.id })
       .from(messages)
@@ -267,20 +272,14 @@ async function generateDraft(input: {
       latestInboundIdAtStart = latestInbound.id
     }
 
-    // 005: regenerate jobs bypass coalesce — the operator's explicit intent must
-    // always run, even if a newer inbound arrived after the regenerate was queued.
-    if (!isRegenerate && triggerMessageId && latestInbound && latestInbound.id !== triggerMessageId) {
-      outcome = 'superseded'
-      return
-    }
-
-    // Conversation settings + page custom_prompt
+    // Conversation settings + page custom_prompt + page price_guide
     let convoSettings: {
       summary: string | null
       lastSummarizedAt: Date | null
       tonePreset: string | null
       customPrompt: string | null
       pageCustomPrompt: string | null
+      pagePriceGuide: string | null
     } | null = null
 
     try {
@@ -291,6 +290,7 @@ async function generateDraft(input: {
           tonePreset: conversations.tonePreset,
           customPrompt: conversations.customPrompt,
           pageCustomPrompt: connectedPages.customPrompt,
+          pagePriceGuide: connectedPages.priceGuide,
         })
         .from(conversations)
         .leftJoin(connectedPages, eq(conversations.pageId, connectedPages.id))
@@ -308,6 +308,7 @@ async function generateDraft(input: {
     }
 
     pagePrompt = convoSettings?.pageCustomPrompt ?? null
+    priceGuide = convoSettings?.pagePriceGuide ?? null
     tonePreset = convoSettings?.tonePreset ?? null
     customerPrompt = convoSettings?.customPrompt ?? null
     summary = convoSettings?.summary ?? null
@@ -371,11 +372,6 @@ async function generateDraft(input: {
     outcome = 'generate'
   })
 
-  if (outcome === 'superseded') {
-    console.info({ event: 'draft_superseded', conversationId, triggerMessageId })
-    return
-  }
-
   if (outcome === 'no_unanswered') {
     await dismissActiveDraft(tenantId, conversationId)
     console.info({ event: 'draft_no_unanswered', conversationId })
@@ -385,6 +381,7 @@ async function generateDraft(input: {
   // 3. Build system prompt blocks (unchanged from 003)
   const additionalText = buildAdditionalSystemPrompt({
     pagePrompt,
+    priceGuide,
     tonePreset: tonePreset as 'friendly' | 'professional' | 'concise' | null,
     customerPrompt,
     summary,
@@ -406,6 +403,7 @@ async function generateDraft(input: {
   systemBlocks.push({ type: 'text', text: LANGUAGE_DIRECTIVE })
 
   const _pp = pagePrompt as string | null
+  const _pg = priceGuide as string | null
   const _cp = customerPrompt as string | null
   const _sm = summary as string | null
   console.info({
@@ -413,6 +411,7 @@ async function generateDraft(input: {
     tenantId,
     conversationId,
     page_prompt_present: _pp != null && _pp.trim() !== '',
+    price_guide_present: _pg != null && _pg.trim() !== '',
     tone_present: tonePreset !== null,
     customer_prompt_present: _cp != null && _cp.trim() !== '',
     summary_present: _sm != null && _sm.trim() !== '',
@@ -421,7 +420,9 @@ async function generateDraft(input: {
   })
 
   // 4. Call Anthropic OUTSIDE any DB transaction — no connection held during API latency
-  const userPrompt = buildUserPrompt(history, unanswered)
+  // 005 follow-up: pass the operator instruction so it is also re-echoed as the
+  // final directive of the user turn (not just the system block).
+  const userPrompt = buildUserPrompt(history, unanswered, instruction)
   const apiKey = await getSsmParameter(ANTHROPIC_API_KEY_SSM)
   const anthropic = new Anthropic({ apiKey, timeout: ANTHROPIC_TIMEOUT_MS, maxRetries: 0 })
 
@@ -512,7 +513,21 @@ async function generateDraft(input: {
   // job, self-enqueue a normal auto-batch so the final draft still reflects the
   // latest customer message. Skip if regen failed (operator will retry) or no
   // newer inbound exists.
-  if (isRegenerate && update.status === 'ready' && 'body' in update) {
+  //
+  // 005 follow-up fix: when the operator supplied a one-off instruction, do NOT
+  // self-enqueue. That auto-batch job carries no instruction, so it would
+  // silently overwrite the draft the operator just deliberately shaped — the
+  // exact "my instruction had no effect" symptom. The instruction is one-off and
+  // never persisted, so it cannot be propagated to the follow-up; the operator
+  // regenerates again if they want the newer message covered.
+  const hadInstruction = !!instruction && instruction.trim() !== ''
+  if (isRegenerate && hadInstruction && update.status === 'ready' && 'body' in update) {
+    console.info({
+      event: 'draft_regenerate_followup_skipped_instruction',
+      conversationId,
+    })
+  }
+  if (isRegenerate && !hadInstruction && update.status === 'ready' && 'body' in update) {
     try {
       const [latestNow] = await dbAdmin
         .select({ id: messages.id })

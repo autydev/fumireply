@@ -349,18 +349,24 @@ describe('handler — 008 regression: conversation WITH outbound messages (#75)'
   })
 })
 
-describe('handler — coalesce (debounce)', () => {
-  it('skips generation when a newer inbound message exists (superseded)', async () => {
+describe('handler — coalesce (adopt newest)', () => {
+  it('generates for the latest batch even when a newer inbound arrived after the trigger', async () => {
     // Latest inbound is OTHER_MESSAGE_ID, but this job was triggered by MESSAGE_ID.
+    // The job no longer supersedes itself — it generates a draft covering the
+    // current unanswered batch (which includes the newer message).
     const readTx = buildReadTx({ latestInboundId: OTHER_MESSAGE_ID })
-    mockWithTenant.mockImplementationOnce(
-      async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx),
-    )
+    const { mockTx: writeTx, updateWhere } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(readTx))
+      .mockImplementationOnce(async (_id: string, fn: (tx: unknown) => unknown) => fn(writeTx))
+    mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
 
     await handler(makeSqsEvent(draftJob()), {} as never, () => {})
 
-    expect(mockAnthropicCreate).not.toHaveBeenCalled()
-    expect(mockWithTenant).toHaveBeenCalledTimes(1) // read only, no write
+    expect(mockAnthropicCreate).toHaveBeenCalledOnce()
+    expect(updateWhere).toHaveBeenCalledOnce()
+    const setCall = writeTx.update.mock.results[0].value.set.mock.calls[0][0]
+    expect(setCall.status).toBe('ready')
   })
 })
 

@@ -220,6 +220,14 @@ beforeEach(() => {
   // First call: tenant resolve
   // (additional calls inside processDraftJob for follow-up enqueue look up
   // the latest inbound via dbAdmin — overridden per test as needed)
+  //
+  // mockReset (not just clearAllMocks) so any mockResolvedValueOnce values a
+  // test queued but did NOT consume are dropped rather than leaking into the
+  // next test. This matters now that an instruction-carrying regenerate skips
+  // the follow-up dbAdmin lookup entirely: such tests queue one Once they no
+  // longer consume, and without a reset that stale value would shift every
+  // later test's dbAdmin call sequence.
+  mockDbAdminWhere.mockReset()
   mockDbAdminWhere.mockResolvedValue([{ tenantId: TENANT_ID }])
   mockSqsSend.mockResolvedValue(undefined)
 })
@@ -392,7 +400,7 @@ describe('regenerate: 008 outer catch — final receive keeps body (INV-3)', () 
 })
 
 describe('regenerate: self-enqueue followup', () => {
-  it('enqueues auto-batch when a newer inbound arrived during regenerate', async () => {
+  it('enqueues auto-batch when a newer inbound arrived during an instruction-less regenerate', async () => {
     const readTx = buildReadTx({ latestInboundId: MESSAGE_ID })
     const { mockTx: writeTx } = buildWriteTx()
     mockWithTenant
@@ -404,7 +412,8 @@ describe('regenerate: self-enqueue followup', () => {
       .mockResolvedValueOnce([{ id: NEWER_INBOUND_ID }])
     mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
 
-    await handler(makeSqsEvent(regenJob()), {} as never, () => {})
+    // No instruction → the follow-up may safely overwrite (nothing to lose).
+    await handler(makeSqsEvent(regenJob({ instruction: undefined })), {} as never, () => {})
 
     expect(mockSqsSend).toHaveBeenCalledOnce()
     const arg = mockSqsSend.mock.calls[0][0] as {
@@ -413,6 +422,25 @@ describe('regenerate: self-enqueue followup', () => {
     }
     expect(arg.conversationId).toBe(CONVERSATION_ID)
     expect(arg.triggerMessageId).toBe(NEWER_INBOUND_ID)
+  })
+
+  it('does NOT enqueue followup when the regenerate carried an operator instruction, even with a newer inbound', async () => {
+    // Regression for the overwrite race: the follow-up auto-batch carries no
+    // instruction, so it must not clobber the instruction-following draft.
+    const readTx = buildReadTx({ latestInboundId: MESSAGE_ID })
+    const { mockTx: writeTx } = buildWriteTx()
+    mockWithTenant
+      .mockImplementationOnce(async (_id, fn) => fn(readTx))
+      .mockImplementationOnce(async (_id, fn) => fn(writeTx))
+    // After write: latest inbound is NEWER — but the instruction must still win.
+    mockDbAdminWhere
+      .mockResolvedValueOnce([{ tenantId: TENANT_ID }])
+      .mockResolvedValueOnce([{ id: NEWER_INBOUND_ID }])
+    mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
+
+    await handler(makeSqsEvent(regenJob({ instruction: 'say we will follow up later' })), {} as never, () => {})
+
+    expect(mockSqsSend).not.toHaveBeenCalled()
   })
 
   it('does NOT enqueue followup when latest inbound is unchanged', async () => {
@@ -426,7 +454,9 @@ describe('regenerate: self-enqueue followup', () => {
       .mockResolvedValueOnce([{ id: MESSAGE_ID }])
     mockAnthropicCreate.mockResolvedValue(makeAnthropicResponse())
 
-    await handler(makeSqsEvent(regenJob()), {} as never, () => {})
+    // Instruction-less so this exercises the unchanged-inbound gate specifically,
+    // not the operator-instruction gate.
+    await handler(makeSqsEvent(regenJob({ instruction: undefined })), {} as never, () => {})
 
     expect(mockSqsSend).not.toHaveBeenCalled()
   })
